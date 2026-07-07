@@ -2,6 +2,14 @@ import { useState } from "react";
 import { useList } from "../../api/hooks";
 import type { Local, Regiao, Sentido, Usuario } from "../../api/types";
 
+export interface PassageiroFormValores {
+  sentido: Sentido;
+  hora: string;
+  origem: string;
+  regiao_origem_id: number | "";
+  destino_id: number | "";
+}
+
 interface Props {
   onFechar: () => void;
   onConfirmar: (dados: {
@@ -13,19 +21,31 @@ interface Props {
     destino_id: number | null;
     regiao_destino_id: number | null;
   }) => void;
+  titulo?: string;
+  textoConfirmar?: string;
+  /** Quando informado, o usuario nao pode ser trocado (usado ao editar um atendimento ja lancado). */
+  usuarioFixo?: { id: number; nome: string };
+  valoresIniciais?: Partial<PassageiroFormValores>;
 }
 
-export default function AdicionarPassageiroModal({ onFechar, onConfirmar }: Props) {
+export default function AdicionarPassageiroModal({
+  onFechar,
+  onConfirmar,
+  titulo = "Adicionar passageiro",
+  textoConfirmar = "Adicionar",
+  usuarioFixo,
+  valoresIniciais,
+}: Props) {
   const { data: usuarios } = useList<Usuario>("usuarios", "/usuarios", { status: "Ativo" });
   const { data: regioes } = useList<Regiao>("regioes", "/regioes");
   const { data: locais } = useList<Local>("locais", "/locais");
 
-  const [usuarioId, setUsuarioId] = useState<number | "">("");
-  const [sentido, setSentido] = useState<Sentido>("Ida");
-  const [hora, setHora] = useState("");
-  const [origem, setOrigem] = useState("");
-  const [regiaoOrigemId, setRegiaoOrigemId] = useState<number | "">("");
-  const [destinoId, setDestinoId] = useState<number | "">("");
+  const [usuarioId, setUsuarioId] = useState<number | "">(usuarioFixo?.id ?? "");
+  const [sentido, setSentido] = useState<Sentido>(valoresIniciais?.sentido ?? "Ida");
+  const [hora, setHora] = useState(valoresIniciais?.hora ?? "");
+  const [origem, setOrigem] = useState(valoresIniciais?.origem ?? "");
+  const [regiaoOrigemId, setRegiaoOrigemId] = useState<number | "">(valoresIniciais?.regiao_origem_id ?? "");
+  const [destinoId, setDestinoId] = useState<number | "">(valoresIniciais?.destino_id ?? "");
 
   function confirmar() {
     if (usuarioId === "" || !hora) return;
@@ -44,18 +64,22 @@ export default function AdicionarPassageiroModal({ onFechar, onConfirmar }: Prop
   return (
     <div className="modal-fundo" onClick={onFechar}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Adicionar passageiro</h3>
+        <h3>{titulo}</h3>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
           <div className="campo">
             <label>Usuario</label>
-            <select value={usuarioId} onChange={(e) => setUsuarioId(e.target.value ? Number(e.target.value) : "")}>
-              <option value="">Selecione</option>
-              {(usuarios ?? []).map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.nome}
-                </option>
-              ))}
-            </select>
+            {usuarioFixo ? (
+              <input value={usuarioFixo.nome} disabled />
+            ) : (
+              <select value={usuarioId} onChange={(e) => setUsuarioId(e.target.value ? Number(e.target.value) : "")}>
+                <option value="">Selecione</option>
+                {(usuarios ?? []).map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.nome}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="campo">
             <label>Sentido</label>
@@ -97,7 +121,7 @@ export default function AdicionarPassageiroModal({ onFechar, onConfirmar }: Prop
         </div>
         <div className="linha-toolbar" style={{ marginTop: "1rem" }}>
           <button className="btn btn-primario" onClick={confirmar}>
-            Adicionar
+            {textoConfirmar}
           </button>
           <button className="btn" onClick={onFechar}>
             Cancelar

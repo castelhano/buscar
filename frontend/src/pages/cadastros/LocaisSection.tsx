@@ -8,32 +8,37 @@ interface FormState {
   nome: string;
   tipo: TipoLocal;
   regiao_id: number | "";
+  observacao: string;
 }
 
-const vazio: FormState = { nome: "", tipo: "Escola", regiao_id: "" };
+const vazio: FormState = { nome: "", tipo: "Escola", regiao_id: "", observacao: "" };
 
 export default function LocaisSection() {
   const { data: locais, error } = useList<Local>("locais", "/locais");
   const { data: regioes } = useList<Regiao>("regioes", "/regioes");
-  const criar = useCreate<Local, FormState>("locais", "/locais");
-  const atualizar = useUpdate<Local, FormState>("locais", "/locais");
+  const criar = useCreate<Local, unknown>("locais", "/locais");
+  const atualizar = useUpdate<Local, unknown>("locais", "/locais");
   const remover = useRemove("locais", "/locais");
 
   const [form, setForm] = useState<FormState>(vazio);
   const [editandoId, setEditandoId] = useState<number | null>(null);
 
+  function payload() {
+    return { nome: form.nome, tipo: form.tipo, regiao_id: form.regiao_id, observacao: form.observacao || null };
+  }
+
   function salvar() {
     if (!form.nome.trim() || form.regiao_id === "") return;
     if (editandoId !== null) {
-      atualizar.mutate({ id: editandoId, body: form }, { onSuccess: cancelarEdicao });
+      atualizar.mutate({ id: editandoId, body: payload() }, { onSuccess: cancelarEdicao });
     } else {
-      criar.mutate(form, { onSuccess: () => setForm(vazio) });
+      criar.mutate(payload(), { onSuccess: () => setForm(vazio) });
     }
   }
 
   function editar(local: Local) {
     setEditandoId(local.id);
-    setForm({ nome: local.nome, tipo: local.tipo, regiao_id: local.regiao_id });
+    setForm({ nome: local.nome, tipo: local.tipo, regiao_id: local.regiao_id, observacao: local.observacao ?? "" });
   }
 
   function cancelarEdicao() {
@@ -77,6 +82,10 @@ export default function LocaisSection() {
             ))}
           </select>
         </div>
+        <div className="campo">
+          <label>Observacao</label>
+          <input value={form.observacao} onChange={(e) => setForm({ ...form, observacao: e.target.value })} />
+        </div>
         <button className="btn btn-primario" onClick={salvar} disabled={criar.isPending || atualizar.isPending}>
           {editandoId !== null ? "Salvar edicao" : "Adicionar"}
         </button>
@@ -92,6 +101,7 @@ export default function LocaisSection() {
             <th>Nome</th>
             <th>Tipo</th>
             <th>Regiao</th>
+            <th>Observacao</th>
             <th></th>
           </tr>
         </thead>
@@ -101,6 +111,7 @@ export default function LocaisSection() {
               <td>{l.nome}</td>
               <td>{l.tipo}</td>
               <td>{nomeRegiao(l.regiao_id)}</td>
+              <td>{l.observacao ?? "-"}</td>
               <td>
                 <button className="btn btn-sm" onClick={() => editar(l)}>
                   Editar

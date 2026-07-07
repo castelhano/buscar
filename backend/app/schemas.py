@@ -38,6 +38,7 @@ class LocalCreate(BaseModel):
     nome: str
     tipo: TipoLocal
     regiao_id: int
+    observacao: str | None = None
 
 
 class LocalRead(ORMModel):
@@ -45,6 +46,7 @@ class LocalRead(ORMModel):
     nome: str
     tipo: TipoLocal
     regiao_id: int
+    observacao: str | None
 
 
 class EmpresaCreate(BaseModel):
@@ -258,6 +260,8 @@ class ViagemDiaRead(ORMModel):
     observacoes: str | None
     passageiros: list[ViagemDiaPassageiroRead] = []
     condutor_em_ferias: bool = False
+    conflito_horario: bool = False
+    motivo_conflito_horario: str | None = None
 
 
 class ViagemDiaPassageiroCreate(BaseModel):

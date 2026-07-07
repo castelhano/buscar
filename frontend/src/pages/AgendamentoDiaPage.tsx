@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { api } from "../api/client";
 import { useList } from "../api/hooks";
-import type { Condutor, Empresa, Regiao, Sentido, Sobras, Veiculo, ViagemDia } from "../api/types";
+import type { Condutor, Empresa, Regiao, Sentido, Sobras, Veiculo, ViagemDia, ViagemDiaPassageiro } from "../api/types";
 import CarroCard from "../components/board/CarroCard";
 import SobrasPanel from "../components/board/SobrasPanel";
 import AdicionarPassageiroModal from "../components/board/AdicionarPassageiroModal";
@@ -12,6 +12,7 @@ import AbrirCarroModal from "../components/board/AbrirCarroModal";
 import ExportarEscalasModal from "../components/board/ExportarEscalasModal";
 import FeriasModal from "../components/board/FeriasModal";
 import CancelarPassageiroModal from "../components/board/CancelarPassageiroModal";
+import ConfirmarModal from "../components/board/ConfirmarModal";
 
 function hoje() {
   return new Date().toISOString().slice(0, 10);
@@ -58,6 +59,10 @@ export default function AgendamentoDiaPage() {
       api.patch(`/viagens/passageiros/${id}/status`, undefined, { status: "Cancelado", observacoes: motivo || undefined }),
     onSuccess: invalidarDia,
   });
+  const editarPassageiro = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: unknown }) => api.patch(`/viagens/passageiros/${id}`, body),
+    onSuccess: invalidarDia,
+  });
   const moverPassageiro = useMutation({
     mutationFn: ({ id, viagem_dia_destino_id, ordem }: { id: number; viagem_dia_destino_id: number; ordem: number }) =>
       api.patch(`/viagens/passageiros/${id}/mover`, { viagem_dia_destino_id, ordem }),
@@ -91,6 +96,8 @@ export default function AgendamentoDiaPage() {
   const [modalEscalas, setModalEscalas] = useState(false);
   const [modalFerias, setModalFerias] = useState(false);
   const [modalCancelar, setModalCancelar] = useState<number | null>(null);
+  const [modalRemoverPassageiro, setModalRemoverPassageiro] = useState<number | null>(null);
+  const [modalEditarPassageiro, setModalEditarPassageiro] = useState<ViagemDiaPassageiro | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -176,8 +183,9 @@ export default function AgendamentoDiaPage() {
               veiculos={veiculos ?? []}
               condutores={condutores ?? []}
               onAdicionarPassageiro={setModalAdicionar}
-              onRemoverPassageiro={(id) => removerPassageiro.mutate(id)}
+              onRemoverPassageiro={setModalRemoverPassageiro}
               onCancelarPassageiro={setModalCancelar}
+              onEditarPassageiro={setModalEditarPassageiro}
               onAtribuir={setModalAtribuir}
               onRemoverCarro={(id) =>
                 removerCarro.mutate(id, {
@@ -230,6 +238,49 @@ export default function AgendamentoDiaPage() {
           onFechar={() => setModalCancelar(null)}
           onConfirmar={(motivo) =>
             cancelarPassageiro.mutate({ id: modalCancelar, motivo }, { onSuccess: () => setModalCancelar(null) })
+          }
+        />
+      )}
+
+      {modalRemoverPassageiro !== null && (
+        <ConfirmarModal
+          titulo="Remover passageiro"
+          mensagem="Remover esse atendimento do carro? Ao contrario de Cancelar, isso apaga o registro sem deixar historico."
+          onFechar={() => setModalRemoverPassageiro(null)}
+          onConfirmar={() =>
+            removerPassageiro.mutate(modalRemoverPassageiro, { onSuccess: () => setModalRemoverPassageiro(null) })
+          }
+        />
+      )}
+
+      {modalEditarPassageiro !== null && (
+        <AdicionarPassageiroModal
+          titulo="Editar atendimento"
+          textoConfirmar="Salvar edicao"
+          usuarioFixo={{ id: modalEditarPassageiro.usuario_id, nome: modalEditarPassageiro.usuario.nome }}
+          valoresIniciais={{
+            sentido: modalEditarPassageiro.sentido,
+            hora: modalEditarPassageiro.hora.slice(0, 5),
+            origem: modalEditarPassageiro.origem ?? "",
+            regiao_origem_id: modalEditarPassageiro.regiao_origem_id ?? "",
+            destino_id: modalEditarPassageiro.destino_id ?? "",
+          }}
+          onFechar={() => setModalEditarPassageiro(null)}
+          onConfirmar={(dados) =>
+            editarPassageiro.mutate(
+              {
+                id: modalEditarPassageiro.id,
+                body: {
+                  sentido: dados.sentido,
+                  hora: dados.hora,
+                  origem: dados.origem,
+                  regiao_origem_id: dados.regiao_origem_id,
+                  destino_id: dados.destino_id,
+                  regiao_destino_id: dados.regiao_destino_id,
+                },
+              },
+              { onSuccess: () => setModalEditarPassageiro(null) },
+            )
           }
         />
       )}

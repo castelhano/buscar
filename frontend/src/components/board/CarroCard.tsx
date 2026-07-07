@@ -1,6 +1,6 @@
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import type { Condutor, Empresa, Veiculo, ViagemDia } from "../../api/types";
+import type { Condutor, Empresa, Veiculo, ViagemDia, ViagemDiaPassageiro } from "../../api/types";
 import PassageiroCard from "./PassageiroCard";
 
 interface Props {
@@ -11,6 +11,7 @@ interface Props {
   onAdicionarPassageiro: (viagemId: number) => void;
   onRemoverPassageiro: (id: number) => void;
   onCancelarPassageiro: (id: number) => void;
+  onEditarPassageiro: (passageiro: ViagemDiaPassageiro) => void;
   onAtribuir: (viagemId: number) => void;
   onRemoverCarro: (viagemId: number) => void;
 }
@@ -23,6 +24,7 @@ export default function CarroCard({
   onAdicionarPassageiro,
   onRemoverPassageiro,
   onCancelarPassageiro,
+  onEditarPassageiro,
   onAtribuir,
   onRemoverCarro,
 }: Props) {
@@ -41,11 +43,16 @@ export default function CarroCard({
     else grupos.push({ hora: horaLabel, itens: [p] });
   }
 
+  const avisos: string[] = [];
+  if (viagem.condutor_em_ferias) avisos.push("Condutor em ferias nessa data");
+  if (viagem.conflito_horario) avisos.push(viagem.motivo_conflito_horario ?? "Conflito de horario");
+  const temAviso = avisos.length > 0;
+
   return (
     <div
       className="carro-card"
       ref={setNodeRef}
-      style={{ outline: isOver ? "2px solid var(--cor-primaria)" : viagem.condutor_em_ferias ? "2px solid var(--cor-alerta-borda)" : "none" }}
+      style={{ outline: isOver ? "2px solid var(--cor-primaria)" : temAviso ? "2px solid var(--cor-alerta-borda)" : "none" }}
     >
       <div className="carro-card-header">
         <div>
@@ -55,14 +62,15 @@ export default function CarroCard({
           </div>
           <div className="meta">Saida {viagem.horario_saida.slice(0, 5)} · cap. {viagem.capacidade}</div>
           {viagem.status !== "Planejada" && <span className="tag">{viagem.status}</span>}
-          {viagem.condutor_em_ferias && (
+          {avisos.map((aviso) => (
             <div
+              key={aviso}
               style={{ color: "var(--cor-alerta-borda)", fontWeight: 600, fontSize: "0.78rem", marginTop: "0.2rem" }}
-              title="Este condutor esta com ferias cadastradas para essa data. Foi escalado manualmente."
+              title={aviso}
             >
-              ⚠ Condutor em ferias
+              ⚠ {aviso}
             </div>
-          )}
+          ))}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
           <button className="btn btn-sm" onClick={() => onAtribuir(viagem.id)}>
@@ -87,6 +95,7 @@ export default function CarroCard({
                 passageiro={p}
                 onRemover={onRemoverPassageiro}
                 onCancelar={onCancelarPassageiro}
+                onEditar={onEditarPassageiro}
               />
             ))}
           </div>

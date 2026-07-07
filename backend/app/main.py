@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -13,9 +15,12 @@ from app.routers.cadastros import (
 
 app = FastAPI(title="Buscar - Agendamento de Transporte")
 
+_origens_padrao = "http://localhost:5173,http://127.0.0.1:5173"
+_origens = os.environ.get("BUSCAR_CORS_ORIGINS", _origens_padrao).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=_origens,
     allow_methods=["*"],
     allow_headers=["*"],
 )

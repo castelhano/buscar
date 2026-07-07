@@ -16,7 +16,15 @@ interface FormState {
 const vazio: FormState = { nome: "", abbr: "", status: "Ativo", detalhe: "" };
 
 export default function UsuariosPage() {
-  const { data: usuarios, error } = useList<Usuario>("usuarios", "/usuarios");
+  const [filtroNome, setFiltroNome] = useState("");
+  const [filtroFixo, setFiltroFixo] = useState(false);
+  const [filtroStatus, setFiltroStatus] = useState<StatusAtivoInativo | "">("");
+
+  const { data: usuarios, error } = useList<Usuario>("usuarios", "/usuarios", {
+    nome: filtroNome || undefined,
+    somente_fixo: filtroFixo || undefined,
+    status: filtroStatus || undefined,
+  });
   const { data: regioes } = useList<Regiao>("regioes", "/regioes");
   const { data: locais } = useList<Local>("locais", "/locais");
   const criar = useCreate<Usuario, unknown>("usuarios", "/usuarios");
@@ -85,6 +93,20 @@ export default function UsuariosPage() {
             Novo usuario
           </button>
         </div>
+        <div className="campo" style={{ marginBottom: "0.5rem" }}>
+          <input placeholder="Buscar por nome..." value={filtroNome} onChange={(e) => setFiltroNome(e.target.value)} />
+        </div>
+        <div className="campo" style={{ marginBottom: "0.5rem" }}>
+          <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value as StatusAtivoInativo | "")}>
+            <option value="">Todos os status</option>
+            <option value="Ativo">Ativo</option>
+            <option value="Inativo">Inativo</option>
+          </select>
+        </div>
+        <label style={{ display: "flex", gap: "0.4rem", alignItems: "center", fontSize: "0.85rem", marginBottom: "0.75rem" }}>
+          <input type="checkbox" checked={filtroFixo} onChange={(e) => setFiltroFixo(e.target.checked)} />
+          Somente com atendimento Fixo
+        </label>
         {error && <div className="erro-box">Erro ao carregar usuarios.</div>}
         <div style={{ maxHeight: "70vh", overflowY: "auto" }}>
           {(usuarios ?? []).map((u) => (

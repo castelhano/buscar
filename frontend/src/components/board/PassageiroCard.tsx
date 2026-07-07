@@ -7,9 +7,10 @@ interface Props {
   passageiro: ViagemDiaPassageiro;
   onRemover: (id: number) => void;
   onCancelar: (id: number) => void;
+  onEditar: (passageiro: ViagemDiaPassageiro) => void;
 }
 
-export default function PassageiroCard({ viagemId, passageiro, onRemover, onCancelar }: Props) {
+export default function PassageiroCard({ viagemId, passageiro, onRemover, onCancelar, onEditar }: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: passageiro.id,
     data: { viagemId, passageiroId: passageiro.id },
@@ -53,17 +54,28 @@ export default function PassageiroCard({ viagemId, passageiro, onRemover, onCanc
       )}
       {passageiro.status === "Em analise" && <span className="tag">Em analise</span>}
       {!cancelado && (
-        <button
-          className="btn btn-sm"
-          style={{ marginTop: "0.3rem" }}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onCancelar(passageiro.id);
-          }}
-        >
-          Cancelar
-        </button>
+        <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.3rem" }}>
+          <button
+            className="btn btn-sm"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEditar(passageiro);
+            }}
+          >
+            Editar
+          </button>
+          <button
+            className="btn btn-sm"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onCancelar(passageiro.id);
+            }}
+          >
+            Cancelar
+          </button>
+        </div>
       )}
     </div>
   );

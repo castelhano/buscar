@@ -116,6 +116,7 @@ class Local(Base):
     nome: Mapped[str] = mapped_column(String(150))
     tipo: Mapped[TipoLocal] = mapped_column(_enum(TipoLocal))
     regiao_id: Mapped[int] = mapped_column(ForeignKey("regiao.id"))
+    observacao: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     regiao: Mapped["Regiao"] = relationship()
 

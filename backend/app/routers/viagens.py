@@ -76,6 +76,43 @@ def _condutor_em_ferias(db: Session, condutor_id: int | None, data: dt.date) -> 
     )
 
 
+def _fim_viagem(viagem: models.ViagemDia) -> dt.time:
+    """Horario do ultimo atendimento da viagem (ou o proprio horario de saida, se nao houver passageiros)."""
+    horas = [p.hora for p in viagem.passageiros if p.status != models.StatusAtendimentoDia.CANCELADO]
+    return max(horas) if horas else viagem.horario_saida
+
+
+def _detectar_conflito_recurso(
+    db: Session, viagem: models.ViagemDia, campo: str, resource_id: int | None
+) -> models.ViagemDia | None:
+    """Encontra outra viagem do mesmo dia usando o mesmo condutor/veiculo em horario sobreposto.
+
+    Duas viagens do mesmo carro/condutor no mesmo dia sao normais (dois turnos)
+    desde que uma termine (ultimo atendimento) antes da outra comecar (horario de
+    saida) -- so sinaliza quando os intervalos se sobrepoem.
+    """
+    if resource_id is None:
+        return None
+    outras = (
+        db.query(models.ViagemDia)
+        .options(joinedload(models.ViagemDia.passageiros))
+        .filter(
+            models.ViagemDia.data == viagem.data,
+            models.ViagemDia.id != viagem.id,
+            getattr(models.ViagemDia, campo) == resource_id,
+            models.ViagemDia.status != models.StatusViagemDia.CANCELADA,
+        )
+        .all()
+    )
+    fim_viagem = _fim_viagem(viagem)
+    inicio_viagem = viagem.horario_saida
+    for outra in outras:
+        sem_sobreposicao = fim_viagem < outra.horario_saida or _fim_viagem(outra) < inicio_viagem
+        if not sem_sobreposicao:
+            return outra
+    return None
+
+
 def _serializar_viagem(db: Session, viagem: models.ViagemDia) -> schemas.ViagemDiaRead:
     base = schemas.ViagemDiaRead.model_validate(viagem)
     passageiros = []
@@ -83,7 +120,23 @@ def _serializar_viagem(db: Session, viagem: models.ViagemDia) -> schemas.ViagemD
         irregular, motivo = _calcular_irregularidade(db, viagem, passageiro.regiao_origem_id)
         passageiros.append(passageiro_read.model_copy(update={"irregular": irregular, "motivo_irregular": motivo}))
     condutor_em_ferias = _condutor_em_ferias(db, viagem.condutor_id, viagem.data)
-    return base.model_copy(update={"passageiros": passageiros, "condutor_em_ferias": condutor_em_ferias})
+
+    conflito_condutor = _detectar_conflito_recurso(db, viagem, "condutor_id", viagem.condutor_id)
+    conflito_veiculo = _detectar_conflito_recurso(db, viagem, "veiculo_id", viagem.veiculo_id)
+    motivos_conflito = []
+    if conflito_condutor is not None:
+        motivos_conflito.append(f"Condutor tambem escalado no carro saindo {conflito_condutor.horario_saida.strftime('%H:%M')}")
+    if conflito_veiculo is not None:
+        motivos_conflito.append(f"Veiculo tambem escalado no carro saindo {conflito_veiculo.horario_saida.strftime('%H:%M')}")
+
+    return base.model_copy(
+        update={
+            "passageiros": passageiros,
+            "condutor_em_ferias": condutor_em_ferias,
+            "conflito_horario": bool(motivos_conflito),
+            "motivo_conflito_horario": "; ".join(motivos_conflito) or None,
+        }
+    )
 
 
 def _query_viagens(db: Session, data: dt.date):

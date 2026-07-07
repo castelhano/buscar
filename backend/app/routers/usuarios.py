@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas
@@ -15,10 +16,26 @@ def _get_usuario_ou_404(db: Session, usuario_id: int) -> models.Usuario:
 
 
 @router.get("", response_model=list[schemas.UsuarioRead])
-def listar_usuarios(status: models.StatusAtivoInativo | None = None, db: Session = Depends(get_db)):
+def listar_usuarios(
+    status: models.StatusAtivoInativo | None = None,
+    nome: str | None = None,
+    somente_fixo: bool = False,
+    db: Session = Depends(get_db),
+):
     query = db.query(models.Usuario)
     if status is not None:
         query = query.filter(models.Usuario.status == status)
+    if nome:
+        query = query.filter(func.lower(models.Usuario.nome).contains(nome.lower()))
+    if somente_fixo:
+        query = query.filter(
+            models.Usuario.id.in_(
+                db.query(models.UsuarioAgendaSemanal.usuario_id).filter(
+                    models.UsuarioAgendaSemanal.tipo == models.TipoAtendimento.FIXO,
+                    models.UsuarioAgendaSemanal.ativo.is_(True),
+                )
+            )
+        )
     return query.order_by(models.Usuario.nome).all()
 
 

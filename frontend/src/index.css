@@ -255,6 +255,7 @@ th {
   display: flex;
   justify-content: space-between;
   font-weight: 600;
+  padding-right: 16px;
 }
 
 .passageiro-card .linha-2 {

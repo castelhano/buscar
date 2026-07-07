@@ -31,6 +31,7 @@ export interface Local {
   nome: string;
   tipo: TipoLocal;
   regiao_id: number;
+  observacao: string | null;
 }
 
 export interface Empresa {
@@ -155,6 +156,8 @@ export interface ViagemDia {
   observacoes: string | null;
   passageiros: ViagemDiaPassageiro[];
   condutor_em_ferias: boolean;
+  conflito_horario: boolean;
+  motivo_conflito_horario: string | null;
 }
 
 export interface Frequencia {
