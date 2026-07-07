@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+buscar.db
+buscar.db-wal
+buscar.db-shm

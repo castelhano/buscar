@@ -1,0 +1,340 @@
+:root {
+  --cor-fundo: #f5f6f8;
+  --cor-superficie: #ffffff;
+  --cor-borda: #d9dde3;
+  --cor-texto: #1f2430;
+  --cor-texto-suave: #667085;
+  --cor-primaria: #2d3748;
+  --cor-primaria-hover: #1a202c;
+  --cor-perigo: #c0392b;
+  --cor-perigo-fundo: #fdecea;
+  --cor-sucesso: #2e7d32;
+  --cor-alerta-fundo: #fff4e5;
+  --cor-alerta-borda: #f0a500;
+  --raio: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--cor-fundo);
+  color: var(--cor-texto);
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.app-nav {
+  width: 200px;
+  flex-shrink: 0;
+  background: var(--cor-primaria);
+  color: white;
+  padding: 1rem 0;
+}
+
+.app-nav a {
+  display: block;
+  padding: 0.6rem 1.2rem;
+  text-decoration: none;
+  color: #cbd5e0;
+  font-size: 0.9rem;
+}
+
+.app-nav a.active,
+.app-nav a:hover {
+  color: white;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.app-nav h1 {
+  font-size: 1rem;
+  padding: 0 1.2rem 1rem;
+  margin: 0;
+  color: white;
+}
+
+.app-content {
+  flex: 1;
+  padding: 1.5rem 2rem;
+  overflow-x: auto;
+}
+
+.painel {
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  padding: 1rem;
+}
+
+.painel + .painel {
+  margin-top: 1rem;
+}
+
+.linha-toolbar {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.campo input,
+.campo select,
+.campo textarea {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--cor-borda);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.btn {
+  border: 1px solid var(--cor-borda);
+  background: var(--cor-superficie);
+  border-radius: 6px;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.85rem;
+}
+
+.btn:hover {
+  background: var(--cor-fundo);
+}
+
+.btn-primario {
+  background: var(--cor-primaria);
+  color: white;
+  border-color: var(--cor-primaria);
+}
+
+.btn-primario:hover {
+  background: var(--cor-primaria-hover);
+}
+
+.btn-perigo {
+  color: var(--cor-perigo);
+  border-color: var(--cor-perigo);
+  background: var(--cor-perigo-fundo);
+}
+
+.btn-sm {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--cor-borda);
+}
+
+th {
+  color: var(--cor-texto-suave);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+.tag {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: #edf2f7;
+  color: var(--cor-texto-suave);
+}
+
+.tag-ativo {
+  background: #e6f4ea;
+  color: var(--cor-sucesso);
+}
+
+.tag-inativo {
+  background: var(--cor-perigo-fundo);
+  color: var(--cor-perigo);
+}
+
+/* Board de agendamento */
+
+.board {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: 1rem;
+}
+
+.carro-card {
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  width: 280px;
+  flex-shrink: 0;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.carro-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  font-size: 0.85rem;
+}
+
+.carro-card-header .titulo {
+  font-weight: 600;
+}
+
+.carro-card-header .meta {
+  color: var(--cor-texto-suave);
+  font-size: 0.78rem;
+}
+
+.horario-grupo {
+  border-top: 1px dashed var(--cor-borda);
+  padding-top: 0.4rem;
+}
+
+.horario-grupo-label {
+  font-size: 0.75rem;
+  color: var(--cor-texto-suave);
+  margin-bottom: 0.3rem;
+  font-weight: 600;
+}
+
+.passageiro-card {
+  background: var(--cor-fundo);
+  border: 1px solid var(--cor-borda);
+  border-radius: 6px;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.82rem;
+  margin-bottom: 0.35rem;
+  cursor: grab;
+  position: relative;
+}
+
+.passageiro-card.irregular {
+  background: var(--cor-alerta-fundo);
+  border-color: var(--cor-alerta-borda);
+}
+
+.passageiro-card.cancelado {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.passageiro-card .linha-1 {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.passageiro-card .linha-2 {
+  color: var(--cor-texto-suave);
+  font-size: 0.75rem;
+}
+
+.passageiro-card .remover {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  border: none;
+  background: none;
+  color: var(--cor-texto-suave);
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.passageiro-card .remover:hover {
+  color: var(--cor-perigo);
+}
+
+.carro-card-add {
+  border: 1px dashed var(--cor-borda);
+  border-radius: 6px;
+  padding: 0.5rem;
+  text-align: center;
+  color: var(--cor-texto-suave);
+  font-size: 0.8rem;
+  background: transparent;
+}
+
+.carro-card-add:hover {
+  background: var(--cor-fundo);
+}
+
+.sobras-painel {
+  display: flex;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.sobras-lista {
+  min-width: 220px;
+}
+
+.sobras-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--cor-borda);
+  font-size: 0.85rem;
+}
+
+.modal-fundo {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 20, 30, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.modal {
+  background: var(--cor-superficie);
+  border-radius: var(--raio);
+  padding: 1.5rem;
+  min-width: 360px;
+  max-width: 90vw;
+}
+
+.erro-box {
+  background: var(--cor-perigo-fundo);
+  color: var(--cor-perigo);
+  border: 1px solid var(--cor-perigo);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}

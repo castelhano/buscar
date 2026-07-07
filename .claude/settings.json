@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"/c/Users/Rafael/Studio/buscar/backend/app\")",
+      "Bash(python -m venv .venv)"
+    ]
+  }
+}
