@@ -149,7 +149,6 @@ export default function AgendamentoDiaPage() {
 
       <div className="linha-toolbar">
         <div className="campo">
-          <label>Data</label>
           <input type="date" value={data} onChange={(e) => setData(e.target.value)} />
         </div>
         {viagens.length === 0 && !viagensQuery.isLoading && (
@@ -160,7 +159,13 @@ export default function AgendamentoDiaPage() {
         <button className="btn" onClick={() => setModalAbrirCarro(true)}>
           + Abrir carro
         </button>
-        <a className="btn" href={api.downloadUrl("/viagens/agendamentos/zip", { data })} target="_blank" rel="noreferrer">
+        <a
+          className="btn"
+          href={api.downloadUrl("/viagens/agendamentos/zip", { data })}
+          target="_blank"
+          rel="noreferrer"
+          style={{ textDecoration: "none" }}
+        >
           Agendamentos (zip)
         </a>
         <button className="btn" onClick={() => setModalEscalas(true)}>
