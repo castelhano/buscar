@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useCreate, useList, useRemove, useUpdate } from "../../api/hooks";
 import type { Local, Regiao, TipoLocal } from "../../api/types";
 
-const TIPOS: TipoLocal[] = ["Escola", "Fisioterapia", "Trabalho", "Hemodialise", "Outros"];
+const TIPOS: TipoLocal[] = ["Escola", "Fisioterapia", "Equoterapia", "Trabalho", "Hemodialise", "Outros"];
 
 interface FormState {
   nome: string;

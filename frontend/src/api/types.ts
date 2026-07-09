@@ -1,9 +1,10 @@
 export type StatusAtivoInativo = "Ativo" | "Inativo";
 export type StatusVeiculo = "Ativo" | "Inativo" | "Manutencao";
 export type StatusCondutor = "Ativo" | "Desligado" | "Afastado";
+export type PeriodoCondutor = "Manha" | "Tarde";
 export type TipoAtendimento = "Fixo" | "Eventual";
 export type DiaSemana = "SEG" | "TER" | "QUA" | "QUI" | "SEX" | "SAB" | "DOM";
-export type TipoLocal = "Escola" | "Fisioterapia" | "Trabalho" | "Hemodialise" | "Outros";
+export type TipoLocal = "Escola" | "Fisioterapia" | "Equoterapia" | "Trabalho" | "Hemodialise" | "Outros";
 export type DiaTipo = "U" | "S" | "D";
 export type Sentido = "Ida" | "Retorno";
 export type StatusViagemDia = "Planejada" | "Confirmada" | "Cancelada";
@@ -55,6 +56,7 @@ export interface Condutor {
   nome: string;
   apelido: string | null;
   status: StatusCondutor;
+  periodo: PeriodoCondutor;
   veiculo_preferencial_id: number | null;
 }
 

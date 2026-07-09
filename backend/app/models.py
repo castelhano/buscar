@@ -44,6 +44,11 @@ class StatusCondutor(str, enum.Enum):
     AFASTADO = "Afastado"
 
 
+class PeriodoCondutor(str, enum.Enum):
+    MANHA = "Manha"
+    TARDE = "Tarde"
+
+
 class TipoAtendimento(str, enum.Enum):
     FIXO = "Fixo"
     EVENTUAL = "Eventual"
@@ -62,6 +67,7 @@ class DiaSemana(str, enum.Enum):
 class TipoLocal(str, enum.Enum):
     ESCOLA = "Escola"
     FISIOTERAPIA = "Fisioterapia"
+    EQUOTERAPIA = "Equoterapia"
     TRABALHO = "Trabalho"
     HEMODIALISE = "Hemodialise"
     OUTROS = "Outros"
@@ -165,6 +171,7 @@ class Condutor(Base):
     nome: Mapped[str] = mapped_column(String(150))
     apelido: Mapped[str | None] = mapped_column(String(50), nullable=True)
     status: Mapped[StatusCondutor] = mapped_column(_enum(StatusCondutor), default=StatusCondutor.ATIVO)
+    periodo: Mapped[PeriodoCondutor] = mapped_column(_enum(PeriodoCondutor), default=PeriodoCondutor.MANHA)
     veiculo_preferencial_id: Mapped[int | None] = mapped_column(ForeignKey("veiculo.id"), nullable=True)
 
     empresa: Mapped["Empresa"] = relationship(back_populates="condutores")

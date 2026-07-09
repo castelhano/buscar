@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useCreate, useList, useRemove, useUpdate } from "../../api/hooks";
-import type { Condutor, Empresa, StatusCondutor, Veiculo } from "../../api/types";
+import type { Condutor, Empresa, PeriodoCondutor, StatusCondutor, Veiculo } from "../../api/types";
 
 const STATUS: StatusCondutor[] = ["Ativo", "Desligado", "Afastado"];
+const PERIODOS: PeriodoCondutor[] = ["Manha", "Tarde"];
 
 interface FormState {
   empresa_id: number | "";
@@ -10,10 +11,19 @@ interface FormState {
   nome: string;
   apelido: string;
   status: StatusCondutor;
+  periodo: PeriodoCondutor;
   veiculo_preferencial_id: number | "";
 }
 
-const vazio: FormState = { empresa_id: "", matricula: "", nome: "", apelido: "", status: "Ativo", veiculo_preferencial_id: "" };
+const vazio: FormState = {
+  empresa_id: "",
+  matricula: "",
+  nome: "",
+  apelido: "",
+  status: "Ativo",
+  periodo: "Manha",
+  veiculo_preferencial_id: "",
+};
 
 export default function CondutoresSection() {
   const { data: condutores, error } = useList<Condutor>("condutores", "/condutores");
@@ -33,6 +43,7 @@ export default function CondutoresSection() {
       nome: f.nome,
       apelido: f.apelido || null,
       status: f.status,
+      periodo: f.periodo,
       veiculo_preferencial_id: f.veiculo_preferencial_id === "" ? null : f.veiculo_preferencial_id,
     };
   }
@@ -54,6 +65,7 @@ export default function CondutoresSection() {
       nome: c.nome,
       apelido: c.apelido ?? "",
       status: c.status,
+      periodo: c.periodo,
       veiculo_preferencial_id: c.veiculo_preferencial_id ?? "",
     });
   }
@@ -123,6 +135,16 @@ export default function CondutoresSection() {
             ))}
           </select>
         </div>
+        <div className="campo">
+          <label>Periodo</label>
+          <select value={form.periodo} onChange={(e) => setForm({ ...form, periodo: e.target.value as PeriodoCondutor })}>
+            {PERIODOS.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </div>
         <button className="btn btn-primario" onClick={salvar} disabled={criar.isPending || atualizar.isPending}>
           {editandoId !== null ? "Salvar edicao" : "Adicionar"}
         </button>
@@ -139,6 +161,7 @@ export default function CondutoresSection() {
             <th>Matricula</th>
             <th>Empresa</th>
             <th>Status</th>
+            <th>Periodo</th>
             <th></th>
           </tr>
         </thead>
@@ -153,6 +176,7 @@ export default function CondutoresSection() {
               <td>
                 <span className={`tag ${c.status === "Ativo" ? "tag-ativo" : c.status !== "Afastado" ? "tag-inativo" : ""}`}>{c.status}</span>
               </td>
+              <td>{c.periodo}</td>
               <td>
                 <button className="btn btn-sm" onClick={() => editar(c)}>
                   Editar

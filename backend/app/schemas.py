@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 from app.models import (
     DiaSemana,
     DiaTipo,
+    PeriodoCondutor,
     Sentido,
     StatusAtivoInativo,
     StatusAtendimentoDia,
@@ -85,6 +86,7 @@ class CondutorCreate(BaseModel):
     nome: str
     apelido: str | None = None
     status: StatusCondutor = StatusCondutor.ATIVO
+    periodo: PeriodoCondutor = PeriodoCondutor.MANHA
     veiculo_preferencial_id: int | None = None
 
 
@@ -95,6 +97,7 @@ class CondutorRead(ORMModel):
     nome: str
     apelido: str | None
     status: StatusCondutor
+    periodo: PeriodoCondutor
     veiculo_preferencial_id: int | None
 
 

@@ -10,12 +10,33 @@ import os
 import re
 
 from app.database import Base, SessionLocal, engine
-from app.models import DiaSemana, Empresa, Local, Regiao, TipoAtendimento, TipoLocal, Usuario, UsuarioAgendaSemanal
+from app.models import (
+    Condutor,
+    DiaSemana,
+    Empresa,
+    Local,
+    PeriodoCondutor,
+    Regiao,
+    StatusCondutor,
+    TipoAtendimento,
+    TipoLocal,
+    Usuario,
+    UsuarioAgendaSemanal,
+    Veiculo,
+)
 
 EMPRESAS = ["AMTU", "VPAR", "RAPIDO", "CARIBUS", "INTEGRACAO"]
 
 CSV_USUARIOS_PATH = os.path.join(os.path.dirname(__file__), "seed_data", "usuarios.csv")
 CSV_AGENDAMENTO_PATH = os.path.join(os.path.dirname(__file__), "seed_data", "usuario_agendamento.csv")
+CSV_LOCAIS_PATH = os.path.join(os.path.dirname(__file__), "seed_data", "locais.csv")
+CSV_VEICULOS_PATH = os.path.join(os.path.dirname(__file__), "seed_data", "veiculos.csv")
+CSV_CONDUTORES_PATH = os.path.join(os.path.dirname(__file__), "seed_data", "condutores.csv")
+
+_PERIODO_POR_DIGITO = {
+    "1": PeriodoCondutor.MANHA,
+    "2": PeriodoCondutor.TARDE,
+}
 
 _CONECTIVOS = {"de", "da", "do", "das", "dos", "e"}
 _ROMANOS = {"i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"}
@@ -31,6 +52,16 @@ _DIA_POR_DIGITO = {
 }
 
 _REGIAO_PLACEHOLDER = "A definir"
+
+_TIPO_LOCAL_ALIASES = {
+    "ecoterapia": TipoLocal.EQUOTERAPIA,
+}
+
+
+def _parse_tipo_local(valor: str) -> TipoLocal:
+    valor = valor.strip()
+    alias = _TIPO_LOCAL_ALIASES.get(valor.lower())
+    return alias if alias is not None else TipoLocal(valor)
 
 _BAIRRO_BLACKLIST = (
     "deixar", "vizinh", "creche", "endere", "retorno", "numero", "mesma rua",
@@ -187,6 +218,98 @@ def seed_empresas() -> int:
         db.close()
 
 
+def seed_veiculos() -> int:
+    db = SessionLocal()
+    try:
+        if db.query(Veiculo).count() > 0:
+            print("Tabela veiculo ja possui dados, seed nao executado.")
+            return 0
+
+        empresas_por_nome = {e.nome: e.id for e in db.query(Empresa)}
+
+        total = 0
+        with open(CSV_VEICULOS_PATH, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                prefixo = row["prefixo"].strip()
+                empresa_nome = row["empresa"].strip()
+                placa = row["placa"].strip()
+                if not prefixo:
+                    continue
+
+                empresa_id = empresas_por_nome.get(empresa_nome)
+                if empresa_id is None:
+                    print(f"AVISO: empresa {empresa_nome!r} nao encontrada, veiculo {placa!r} ignorado.")
+                    continue
+
+                db.add(Veiculo(empresa_id=empresa_id, prefixo=prefixo, placa=placa))
+                total += 1
+
+        db.commit()
+        print(f"{total} veiculos inseridos.")
+        return total
+    finally:
+        db.close()
+
+
+def seed_condutores() -> int:
+    db = SessionLocal()
+    try:
+        if db.query(Condutor).count() > 0:
+            print("Tabela condutor ja possui dados, seed nao executado.")
+            return 0
+
+        empresas_por_nome = {e.nome: e.id for e in db.query(Empresa)}
+        # global (nao filtrado por empresa): condutores de uma empresa podem
+        # ter veiculo preferencial de outra (ex: AMTU nao tem frota propria)
+        veiculos_por_prefixo = {v.prefixo: v.id for v in db.query(Veiculo)}
+
+        total = 0
+        with open(CSV_CONDUTORES_PATH, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                matricula = row["matricula"].strip()
+                if not matricula:
+                    continue
+
+                empresa_nome = row["empresa"].strip()
+                empresa_id = empresas_por_nome.get(empresa_nome)
+                if empresa_id is None:
+                    print(f"AVISO: empresa {empresa_nome!r} nao encontrada, condutor {matricula!r} ignorado.")
+                    continue
+
+                nome = _nome_proprio(row["nome"])
+                apelido_bruto = (row.get("apelido") or "").strip()
+                apelido = _nome_proprio(apelido_bruto) if apelido_bruto else None
+                status = StatusCondutor(row["status"].strip().capitalize())
+                periodo = _PERIODO_POR_DIGITO.get(row["periodo"].strip(), PeriodoCondutor.MANHA)
+
+                prefixo_pref = (row.get("veiculo_preferencial") or "").strip()
+                veiculo_preferencial_id = veiculos_por_prefixo.get(prefixo_pref) if prefixo_pref else None
+                if prefixo_pref and veiculo_preferencial_id is None:
+                    print(
+                        f"AVISO: veiculo prefixo {prefixo_pref!r} nao encontrado, "
+                        f"condutor {matricula!r} ficou sem veiculo preferencial."
+                    )
+
+                db.add(
+                    Condutor(
+                        empresa_id=empresa_id,
+                        matricula=matricula,
+                        nome=nome,
+                        apelido=apelido,
+                        status=status,
+                        periodo=periodo,
+                        veiculo_preferencial_id=veiculo_preferencial_id,
+                    )
+                )
+                total += 1
+
+        db.commit()
+        print(f"{total} condutores inseridos.")
+        return total
+    finally:
+        db.close()
+
+
 def _get_or_create_regiao(db, nome: str) -> Regiao:
     regiao = db.query(Regiao).filter_by(nome=nome).first()
     if regiao is None:
@@ -196,9 +319,40 @@ def _get_or_create_regiao(db, nome: str) -> Regiao:
     return regiao
 
 
+def seed_locais() -> int:
+    db = SessionLocal()
+    try:
+        if db.query(Local).count() > 0:
+            print("Tabela local ja possui dados, seed nao executado.")
+            return 0
+
+        regiao_placeholder = _get_or_create_regiao(db, _REGIAO_PLACEHOLDER)
+
+        total = 0
+        with open(CSV_LOCAIS_PATH, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                nome = row["nome"].strip()
+                if not nome:
+                    continue
+                tipo = _parse_tipo_local(row["tipo"])
+                observacao = (row.get("detalhe") or "").strip() or None
+                db.add(Local(nome=nome, tipo=tipo, regiao_id=regiao_placeholder.id, observacao=observacao))
+                total += 1
+
+        db.commit()
+        print(f"{total} locais inseridos.")
+        return total
+    finally:
+        db.close()
+
+
 def _get_or_create_local(db, nome: str, regiao_id: int) -> Local:
+    """Busca o Local ja criado por seed_locais(); cria um fallback generico
+    (tipo Outros) se o destino nao constar em locais.csv."""
+
     local = db.query(Local).filter_by(nome=nome).first()
     if local is None:
+        print(f"AVISO: destino {nome!r} nao encontrado em locais.csv, criando como Outros.")
         local = Local(nome=nome, tipo=TipoLocal.OUTROS, regiao_id=regiao_id)
         db.add(local)
         db.flush()
@@ -262,5 +416,8 @@ def seed_agenda_semanal(usuario_ids: list[int]) -> int:
 if __name__ == "__main__":
     Base.metadata.create_all(bind=engine)
     seed_empresas()
+    seed_veiculos()
+    seed_condutores()
+    seed_locais()
     ids = seed_usuarios()
     seed_agenda_semanal(ids)
