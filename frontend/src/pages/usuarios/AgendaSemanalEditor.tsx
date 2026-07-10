@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { api } from "../../api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { DIAS_SEMANA, DIAS_SEMANA_LABEL } from "../../api/types";
@@ -37,16 +38,27 @@ const formVazio: FormState = {
   ativo: true,
 };
 
+// Um dia pode ter mais de um atendimento (ex: terapia de manha, escola a
+// noite). entradaId null = criando um atendimento novo pro dia; caso
+// contrario, edicao de um atendimento existente (por id, nao por dia).
+interface Edicao {
+  dia: DiaSemana;
+  entradaId: number | null;
+}
+
 export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais }: Props) {
   const queryClient = useQueryClient();
-  const [diaEmEdicao, setDiaEmEdicao] = useState<DiaSemana | null>(null);
+  const [edicao, setEdicao] = useState<Edicao | null>(null);
   const [form, setForm] = useState<FormState>(formVazio);
 
   const chaveDetalhe = ["usuario", usuarioId];
 
-  function abrirEdicao(dia: DiaSemana) {
-    const existente = agenda.find((a) => a.dia_semana === dia);
-    setDiaEmEdicao(dia);
+  const porDia = new Map<DiaSemana, UsuarioAgendaSemanal[]>();
+  for (const dia of DIAS_SEMANA) porDia.set(dia, []);
+  for (const a of agenda) porDia.get(a.dia_semana)?.push(a);
+
+  function abrirEdicao(dia: DiaSemana, existente: UsuarioAgendaSemanal | null) {
+    setEdicao({ dia, entradaId: existente?.id ?? null });
     setForm(
       existente
         ? {
@@ -65,9 +77,9 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
     );
   }
 
-  function payload() {
+  function payload(dia: DiaSemana) {
     return {
-      dia_semana: diaEmEdicao,
+      dia_semana: dia,
       tipo: form.tipo,
       modalidade: form.modalidade,
       acompanhante: form.acompanhante,
@@ -82,22 +94,100 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
   }
 
   async function salvar() {
-    if (!diaEmEdicao) return;
-    const existente = agenda.find((a) => a.dia_semana === diaEmEdicao);
-    if (existente) {
-      await api.put(`/usuarios/${usuarioId}/agenda-semanal/${existente.id}`, payload());
+    if (!edicao) return;
+    if (edicao.entradaId !== null) {
+      await api.put(`/usuarios/${usuarioId}/agenda-semanal/${edicao.entradaId}`, payload(edicao.dia));
     } else {
-      await api.post(`/usuarios/${usuarioId}/agenda-semanal`, payload());
+      await api.post(`/usuarios/${usuarioId}/agenda-semanal`, payload(edicao.dia));
     }
     await queryClient.invalidateQueries({ queryKey: chaveDetalhe });
-    setDiaEmEdicao(null);
+    setEdicao(null);
   }
 
-  async function remover(dia: DiaSemana) {
-    const existente = agenda.find((a) => a.dia_semana === dia);
-    if (!existente) return;
-    await api.delete(`/usuarios/${usuarioId}/agenda-semanal/${existente.id}`);
+  async function remover(entradaId: number) {
+    await api.delete(`/usuarios/${usuarioId}/agenda-semanal/${entradaId}`);
     await queryClient.invalidateQueries({ queryKey: chaveDetalhe });
+  }
+
+  function linhaFormulario(dia: DiaSemana, key: string) {
+    return (
+      <tr key={key}>
+        <td colSpan={9}>
+          <div className="linha-toolbar" style={{ margin: 0 }}>
+            <strong>{DIAS_SEMANA_LABEL[dia]}</strong>
+            <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value as TipoAtendimento })}>
+              <option value="Fixo">Fixo</option>
+              <option value="Eventual">Eventual</option>
+            </select>
+            <input type="time" value={form.saida} onChange={(e) => setForm({ ...form, saida: e.target.value })} title="Saida" />
+            <input type="time" value={form.retorno} onChange={(e) => setForm({ ...form, retorno: e.target.value })} title="Retorno" />
+            <input
+              placeholder="Origem (endereco)"
+              value={form.origem}
+              onChange={(e) => setForm({ ...form, origem: e.target.value })}
+            />
+            <select
+              value={form.regiao_origem_id}
+              onChange={(e) => setForm({ ...form, regiao_origem_id: e.target.value ? Number(e.target.value) : "" })}
+            >
+              <option value="">Regiao origem</option>
+              {regioes.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.nome}
+                </option>
+              ))}
+            </select>
+            <select value={form.destino_id} onChange={(e) => setForm({ ...form, destino_id: e.target.value ? Number(e.target.value) : "" })}>
+              <option value="">Destino</option>
+              {locais.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.nome}
+                </option>
+              ))}
+            </select>
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexBasis: "100%" }}>
+              <select
+                value={form.modalidade}
+                onChange={(e) => setForm({ ...form, modalidade: e.target.value as Modalidade })}
+              >
+                <option value="Somente Ida">Somente Ida</option>
+                <option value="Ida e Volta">Ida e Volta</option>
+              </select>
+              <label style={{ display: "flex", gap: "0.25rem", alignItems: "center", fontWeight: "normal" }}>
+                <input
+                  type="checkbox"
+                  checked={form.acompanhante}
+                  onChange={(e) => setForm({ ...form, acompanhante: e.target.checked })}
+                />
+                Acompanhante
+              </label>
+              <label
+                style={{ display: "flex", gap: "0.25rem", alignItems: "center", fontWeight: "normal" }}
+                title="Ordem de preenchimento dos carros na geracao do dia -- usada para manter juntos quem mora perto"
+              >
+                Ordem
+                <input
+                  type="number"
+                  style={{ width: "4rem" }}
+                  value={form.ordem}
+                  onChange={(e) => setForm({ ...form, ordem: Number(e.target.value) })}
+                />
+              </label>
+              <label style={{ display: "flex", gap: "0.25rem", alignItems: "center", fontWeight: "normal" }}>
+                <input type="checkbox" checked={form.ativo} onChange={(e) => setForm({ ...form, ativo: e.target.checked })} />
+                Ativo
+              </label>
+              <button className="btn btn-primario btn-sm" onClick={salvar}>
+                Salvar
+              </button>
+              <button className="btn btn-sm" onClick={() => setEdicao(null)}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </td>
+      </tr>
+    );
   }
 
   return (
@@ -118,110 +208,71 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
           </tr>
         </thead>
         <tbody>
-          {DIAS_SEMANA.map((dia) => {
-            const existente = agenda.find((a) => a.dia_semana === dia);
-            if (diaEmEdicao === dia) {
-              return (
-                <tr key={dia}>
-                  <td colSpan={9}>
-                    <div className="linha-toolbar" style={{ margin: 0 }}>
-                      <strong>{DIAS_SEMANA_LABEL[dia]}</strong>
-                      <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value as TipoAtendimento })}>
-                        <option value="Fixo">Fixo</option>
-                        <option value="Eventual">Eventual</option>
-                      </select>
-                      <input type="time" value={form.saida} onChange={(e) => setForm({ ...form, saida: e.target.value })} title="Saida" />
-                      <input type="time" value={form.retorno} onChange={(e) => setForm({ ...form, retorno: e.target.value })} title="Retorno" />
-                      <input
-                        placeholder="Origem (endereco)"
-                        value={form.origem}
-                        onChange={(e) => setForm({ ...form, origem: e.target.value })}
-                      />
-                      <select
-                        value={form.regiao_origem_id}
-                        onChange={(e) => setForm({ ...form, regiao_origem_id: e.target.value ? Number(e.target.value) : "" })}
-                      >
-                        <option value="">Regiao origem</option>
-                        {regioes.map((r) => (
-                          <option key={r.id} value={r.id}>
-                            {r.nome}
-                          </option>
-                        ))}
-                      </select>
-                      <select value={form.destino_id} onChange={(e) => setForm({ ...form, destino_id: e.target.value ? Number(e.target.value) : "" })}>
-                        <option value="">Destino</option>
-                        {locais.map((l) => (
-                          <option key={l.id} value={l.id}>
-                            {l.nome}
-                          </option>
-                        ))}
-                      </select>
-                      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexBasis: "100%" }}>
-                        <select
-                          value={form.modalidade}
-                          onChange={(e) => setForm({ ...form, modalidade: e.target.value as Modalidade })}
-                        >
-                          <option value="Somente Ida">Somente Ida</option>
-                          <option value="Ida e Volta">Ida e Volta</option>
-                        </select>
-                        <label style={{ display: "flex", gap: "0.25rem", alignItems: "center", fontWeight: "normal" }}>
-                          <input
-                            type="checkbox"
-                            checked={form.acompanhante}
-                            onChange={(e) => setForm({ ...form, acompanhante: e.target.checked })}
-                          />
-                          Acompanhante
-                        </label>
-                        <label
-                          style={{ display: "flex", gap: "0.25rem", alignItems: "center", fontWeight: "normal" }}
-                          title="Ordem de preenchimento dos carros na geracao do dia -- usada para manter juntos quem mora perto"
-                        >
-                          Ordem
-                          <input
-                            type="number"
-                            style={{ width: "4rem" }}
-                            value={form.ordem}
-                            onChange={(e) => setForm({ ...form, ordem: Number(e.target.value) })}
-                          />
-                        </label>
-                        <label style={{ display: "flex", gap: "0.25rem", alignItems: "center", fontWeight: "normal" }}>
-                          <input type="checkbox" checked={form.ativo} onChange={(e) => setForm({ ...form, ativo: e.target.checked })} />
-                          Ativo
-                        </label>
-                        <button className="btn btn-primario btn-sm" onClick={salvar}>
-                          Salvar
-                        </button>
-                        <button className="btn btn-sm" onClick={() => setDiaEmEdicao(null)}>
-                          Cancelar
-                        </button>
-                      </div>
-                    </div>
+          {DIAS_SEMANA.flatMap((dia) => {
+            const entradas = porDia.get(dia) ?? [];
+            const linhas: ReactNode[] = [];
+
+            entradas.forEach((existente, i) => {
+              if (edicao?.entradaId === existente.id) {
+                linhas.push(linhaFormulario(dia, `${dia}-${existente.id}-form`));
+                return;
+              }
+              linhas.push(
+                <tr key={existente.id} className={!existente.ativo ? "linha-inativa" : undefined}>
+                  <td>{i === 0 ? DIAS_SEMANA_LABEL[dia] : ""}</td>
+                  <td>
+                    <span className="tag">{existente.tipo}</span>
                   </td>
-                </tr>
-              );
-            }
-            return (
-              <tr key={dia} className={existente && !existente.ativo ? "linha-inativa" : undefined}>
-                <td>{DIAS_SEMANA_LABEL[dia]}</td>
-                <td>{existente ? <span className="tag">{existente.tipo}</span> : "-"}</td>
-                <td>{existente?.saida ?? "-"}</td>
-                <td>{existente?.retorno ?? "-"}</td>
-                <td>{existente?.regiao_origem_id ? regioes.find((r) => r.id === existente.regiao_origem_id)?.nome ?? "-" : "-"}</td>
-                <td>{existente?.destino_id ? locais.find((l) => l.id === existente.destino_id)?.nome ?? "-" : "-"}</td>
-                <td>{existente ? <span className="tag">{existente.modalidade}</span> : "-"}</td>
-                <td>{existente ? (existente.acompanhante ? "Sim" : "Nao") : "-"}</td>
-                <td>
-                  <button className="btn btn-sm" onClick={() => abrirEdicao(dia)}>
-                    {existente ? "Editar" : "Adicionar"}
-                  </button>{" "}
-                  {existente && (
-                    <button className="btn btn-sm btn-perigo" onClick={() => remover(dia)}>
+                  <td>{existente.saida ?? "-"}</td>
+                  <td>{existente.retorno ?? "-"}</td>
+                  <td>{existente.regiao_origem_id ? regioes.find((r) => r.id === existente.regiao_origem_id)?.nome ?? "-" : "-"}</td>
+                  <td>{existente.destino_id ? locais.find((l) => l.id === existente.destino_id)?.nome ?? "-" : "-"}</td>
+                  <td>
+                    <span className="tag">{existente.modalidade}</span>
+                  </td>
+                  <td>{existente.acompanhante ? "Sim" : "Nao"}</td>
+                  <td>
+                    <button className="btn btn-sm" onClick={() => abrirEdicao(dia, existente)}>
+                      Editar
+                    </button>{" "}
+                    <button className="btn btn-sm btn-perigo" onClick={() => remover(existente.id)}>
                       Remover
                     </button>
-                  )}
-                </td>
-              </tr>
-            );
+                  </td>
+                </tr>,
+              );
+            });
+
+            const criandoNestedia = edicao?.dia === dia && edicao.entradaId === null;
+
+            if (criandoNestedia) {
+              linhas.push(linhaFormulario(dia, `${dia}-novo-form`));
+            } else if (entradas.length === 0) {
+              linhas.push(
+                <tr key={dia}>
+                  <td>{DIAS_SEMANA_LABEL[dia]}</td>
+                  <td colSpan={7}>-</td>
+                  <td>
+                    <button className="btn btn-sm" onClick={() => abrirEdicao(dia, null)}>
+                      Adicionar
+                    </button>
+                  </td>
+                </tr>,
+              );
+            } else {
+              linhas.push(
+                <tr key={`${dia}-add`}>
+                  <td colSpan={8}></td>
+                  <td>
+                    <button className="btn btn-sm" onClick={() => abrirEdicao(dia, null)}>
+                      + Outro horario
+                    </button>
+                  </td>
+                </tr>,
+              );
+            }
+
+            return linhas;
           })}
         </tbody>
       </table>
