@@ -3,7 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import agendamento_base, frequencia, usuarios, viagens
+from app.routers import frequencia, usuarios, viagens
 from app.routers.cadastros import (
     router_condutores,
     router_empresas,
@@ -32,7 +32,6 @@ app.include_router(router_veiculos)
 app.include_router(router_condutores)
 app.include_router(router_ferias)
 app.include_router(usuarios.router)
-app.include_router(agendamento_base.router)
 app.include_router(viagens.router)
 app.include_router(frequencia.router)
 

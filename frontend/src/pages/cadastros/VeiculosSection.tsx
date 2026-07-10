@@ -9,9 +9,10 @@ interface FormState {
   prefixo: string;
   placa: string;
   status: StatusVeiculo;
+  capacidade: number;
 }
 
-const vazio: FormState = { empresa_id: "", prefixo: "", placa: "", status: "Ativo" };
+const vazio: FormState = { empresa_id: "", prefixo: "", placa: "", status: "Ativo", capacidade: 4 };
 
 export default function VeiculosSection() {
   const { data: veiculos, error } = useList<Veiculo>("veiculos", "/veiculos");
@@ -34,7 +35,7 @@ export default function VeiculosSection() {
 
   function editar(v: Veiculo) {
     setEditandoId(v.id);
-    setForm({ empresa_id: v.empresa_id, prefixo: v.prefixo, placa: v.placa, status: v.status });
+    setForm({ empresa_id: v.empresa_id, prefixo: v.prefixo, placa: v.placa, status: v.status, capacidade: v.capacidade });
   }
 
   function cancelarEdicao() {
@@ -79,6 +80,15 @@ export default function VeiculosSection() {
             ))}
           </select>
         </div>
+        <div className="campo">
+          <label>Capacidade</label>
+          <input
+            type="number"
+            min={1}
+            value={form.capacidade}
+            onChange={(e) => setForm({ ...form, capacidade: Number(e.target.value) })}
+          />
+        </div>
         <button className="btn btn-primario" onClick={salvar} disabled={criar.isPending || atualizar.isPending}>
           {editandoId !== null ? "Salvar edicao" : "Adicionar"}
         </button>
@@ -95,6 +105,7 @@ export default function VeiculosSection() {
             <th>Placa</th>
             <th>Empresa</th>
             <th>Status</th>
+            <th>Capacidade</th>
             <th></th>
           </tr>
         </thead>
@@ -107,6 +118,7 @@ export default function VeiculosSection() {
               <td>
                 <span className={`tag ${v.status === "Ativo" ? "tag-ativo" : v.status === "Inativo" ? "tag-inativo" : ""}`}>{v.status}</span>
               </td>
+              <td>{v.capacidade}</td>
               <td>
                 <button className="btn btn-sm" onClick={() => editar(v)}>
                   Editar

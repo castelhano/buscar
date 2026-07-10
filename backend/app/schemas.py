@@ -4,7 +4,6 @@ from pydantic import BaseModel, ConfigDict
 
 from app.models import (
     DiaSemana,
-    DiaTipo,
     Modalidade,
     PeriodoCondutor,
     Sentido,
@@ -71,6 +70,7 @@ class VeiculoCreate(BaseModel):
     prefixo: str
     placa: str
     status: StatusVeiculo = StatusVeiculo.ATIVO
+    capacidade: int = 4
 
 
 class VeiculoRead(ORMModel):
@@ -79,6 +79,7 @@ class VeiculoRead(ORMModel):
     prefixo: str
     placa: str
     status: StatusVeiculo
+    capacidade: int
 
 
 class CondutorCreate(BaseModel):
@@ -126,6 +127,7 @@ class UsuarioAgendaSemanalCreate(BaseModel):
     tipo: TipoAtendimento
     modalidade: Modalidade = Modalidade.IDA_E_VOLTA
     acompanhante: bool = False
+    ordem: int = 0
     saida: dt.time | None = None
     retorno: dt.time | None = None
     origem: str | None = None
@@ -142,6 +144,7 @@ class UsuarioAgendaSemanalRead(ORMModel):
     tipo: TipoAtendimento
     modalidade: Modalidade
     acompanhante: bool
+    ordem: int
     saida: dt.time | None
     retorno: dt.time | None
     origem: str | None
@@ -199,40 +202,6 @@ class UsuarioComAgendaRead(UsuarioRead):
 
 
 # --------------------------------------------------------------------------
-# Agendamento base + vinculo
-# --------------------------------------------------------------------------
-
-class AgendamentoBaseCreate(BaseModel):
-    dia_tipo: DiaTipo
-    regiao_id: int
-    inicio: dt.time
-    capacidade: int
-
-
-class AgendamentoBaseRead(ORMModel):
-    id: int
-    dia_tipo: DiaTipo
-    regiao_id: int
-    inicio: dt.time
-    capacidade: int
-
-
-class UsuarioAgendamentoBaseCreate(BaseModel):
-    agendamento_base_id: int
-    usuario_id: int
-    sentido: Sentido
-    hora: dt.time
-
-
-class UsuarioAgendamentoBaseRead(ORMModel):
-    id: int
-    agendamento_base_id: int
-    usuario_id: int
-    sentido: Sentido
-    hora: dt.time
-
-
-# --------------------------------------------------------------------------
 # Viagem do dia + passageiros
 # --------------------------------------------------------------------------
 
@@ -257,7 +226,6 @@ class ViagemDiaPassageiroRead(ORMModel):
 class ViagemDiaRead(ORMModel):
     id: int
     data: dt.date
-    agendamento_base_id: int | None
     regiao_id: int
     empresa_id: int | None
     condutor_id: int | None
@@ -308,7 +276,6 @@ class ViagemDiaAbrir(BaseModel):
     regiao_id: int
     horario_saida: dt.time
     capacidade: int
-    agendamento_base_id: int | None = None
 
 
 # --------------------------------------------------------------------------

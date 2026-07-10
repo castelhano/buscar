@@ -8,6 +8,7 @@ from app import models, schemas
 from app.database import get_db
 from app.services.exportacao import gerar_zip_agendamentos
 from app.services.geracao import gerar_agendamento_dia
+from app.services.recursos import fim_viagem, janelas_sobrepoem
 
 router = APIRouter(prefix="/viagens", tags=["viagens"])
 
@@ -76,12 +77,6 @@ def _condutor_em_ferias(db: Session, condutor_id: int | None, data: dt.date) -> 
     )
 
 
-def _fim_viagem(viagem: models.ViagemDia) -> dt.time:
-    """Horario do ultimo atendimento da viagem (ou o proprio horario de saida, se nao houver passageiros)."""
-    horas = [p.hora for p in viagem.passageiros if p.status != models.StatusAtendimentoDia.CANCELADO]
-    return max(horas) if horas else viagem.horario_saida
-
-
 def _detectar_conflito_recurso(
     db: Session, viagem: models.ViagemDia, campo: str, resource_id: int | None
 ) -> models.ViagemDia | None:
@@ -104,11 +99,10 @@ def _detectar_conflito_recurso(
         )
         .all()
     )
-    fim_viagem = _fim_viagem(viagem)
-    inicio_viagem = viagem.horario_saida
+    fim = fim_viagem(viagem)
+    inicio = viagem.horario_saida
     for outra in outras:
-        sem_sobreposicao = fim_viagem < outra.horario_saida or _fim_viagem(outra) < inicio_viagem
-        if not sem_sobreposicao:
+        if janelas_sobrepoem(inicio, fim, outra.horario_saida, fim_viagem(outra)):
             return outra
     return None
 
@@ -169,7 +163,6 @@ def abrir_viagem(payload: schemas.ViagemDiaAbrir, db: Session = Depends(get_db))
         regiao_id=payload.regiao_id,
         horario_saida=payload.horario_saida,
         capacidade=payload.capacidade,
-        agendamento_base_id=payload.agendamento_base_id,
         status=models.StatusViagemDia.PLANEJADA,
     )
     db.add(viagem)

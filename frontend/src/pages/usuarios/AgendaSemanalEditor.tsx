@@ -15,6 +15,7 @@ interface FormState {
   tipo: TipoAtendimento;
   modalidade: Modalidade;
   acompanhante: boolean;
+  ordem: number;
   saida: string;
   retorno: string;
   origem: string;
@@ -27,6 +28,7 @@ const formVazio: FormState = {
   tipo: "Fixo",
   modalidade: "Ida e Volta",
   acompanhante: false,
+  ordem: 0,
   saida: "",
   retorno: "",
   origem: "",
@@ -51,6 +53,7 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
             tipo: existente.tipo,
             modalidade: existente.modalidade,
             acompanhante: existente.acompanhante,
+            ordem: existente.ordem,
             saida: existente.saida ?? "",
             retorno: existente.retorno ?? "",
             origem: existente.origem ?? "",
@@ -68,6 +71,7 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
       tipo: form.tipo,
       modalidade: form.modalidade,
       acompanhante: form.acompanhante,
+      ordem: form.ordem,
       saida: form.saida || null,
       retorno: form.retorno || null,
       origem: form.origem || null,
@@ -167,6 +171,18 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
                             onChange={(e) => setForm({ ...form, acompanhante: e.target.checked })}
                           />
                           Acompanhante
+                        </label>
+                        <label
+                          style={{ display: "flex", gap: "0.25rem", alignItems: "center", fontWeight: "normal" }}
+                          title="Ordem de preenchimento dos carros na geracao do dia -- usada para manter juntos quem mora perto"
+                        >
+                          Ordem
+                          <input
+                            type="number"
+                            style={{ width: "4rem" }}
+                            value={form.ordem}
+                            onChange={(e) => setForm({ ...form, ordem: Number(e.target.value) })}
+                          />
                         </label>
                         <label style={{ display: "flex", gap: "0.25rem", alignItems: "center", fontWeight: "normal" }}>
                           <input type="checkbox" checked={form.ativo} onChange={(e) => setForm({ ...form, ativo: e.target.checked })} />

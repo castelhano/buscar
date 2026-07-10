@@ -73,12 +73,6 @@ class TipoLocal(str, enum.Enum):
     OUTROS = "Outros"
 
 
-class DiaTipo(str, enum.Enum):
-    UTIL = "U"
-    SABADO = "S"
-    DOMINGO = "D"
-
-
 class Sentido(str, enum.Enum):
     IDA = "Ida"
     RETORNO = "Retorno"
@@ -163,8 +157,13 @@ class Veiculo(Base):
     prefixo: Mapped[str] = mapped_column(String(20))
     placa: Mapped[str] = mapped_column(String(10), unique=True)
     status: Mapped[StatusVeiculo] = mapped_column(_enum(StatusVeiculo), default=StatusVeiculo.ATIVO)
+    capacidade: Mapped[int] = mapped_column(Integer, default=4)
 
     empresa: Mapped["Empresa"] = relationship(back_populates="veiculos")
+
+    __table_args__ = (
+        CheckConstraint("capacidade > 0", name="ck_veiculo_capacidade"),
+    )
 
 
 class Condutor(Base):
@@ -223,6 +222,9 @@ class UsuarioAgendaSemanal(Base):
 
     Cobre nativamente o caso de um usuario ser Fixo de Seg-Qui e Eventual na Sex,
     com horarios/locais diferentes, sem precisar de um conceito separado de excecao.
+
+    `ordem` e curado manualmente (agrupar quem mora perto) e usado pela geracao
+    do dia para decidir a sequencia de preenchimento dos carros por regiao.
     """
 
     __tablename__ = "usuario_agenda_semanal"
@@ -233,6 +235,7 @@ class UsuarioAgendaSemanal(Base):
     tipo: Mapped[TipoAtendimento] = mapped_column(_enum(TipoAtendimento))
     modalidade: Mapped[Modalidade] = mapped_column(_enum(Modalidade), default=Modalidade.IDA_E_VOLTA)
     acompanhante: Mapped[bool] = mapped_column(default=False)
+    ordem: Mapped[int] = mapped_column(Integer, default=0)
     saida: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
     retorno: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
     origem: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -283,65 +286,19 @@ class UsuarioExcecao(Base):
 
 
 # --------------------------------------------------------------------------
-# Agendamento base (template) + vinculo de usuarios fixos
-# --------------------------------------------------------------------------
-
-class AgendamentoBase(Base):
-    """Template de viagem por tipo de dia (Util/Sabado/Domingo) + regiao.
-
-    Representa um carro no agendamento base, sem amarracao com frota nem
-    condutor (revesados na geracao do dia).
-    """
-
-    __tablename__ = "agendamento_base"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    dia_tipo: Mapped[DiaTipo] = mapped_column(_enum(DiaTipo))
-    regiao_id: Mapped[int] = mapped_column(ForeignKey("regiao.id"))
-    inicio: Mapped[dt.time] = mapped_column(Time)
-    capacidade: Mapped[int] = mapped_column(Integer)
-
-    regiao: Mapped["Regiao"] = relationship()
-    usuarios: Mapped[list["UsuarioAgendamentoBase"]] = relationship(back_populates="agendamento_base")
-
-    __table_args__ = (
-        CheckConstraint("capacidade > 0", name="ck_agendamento_base_capacidade"),
-    )
-
-
-class UsuarioAgendamentoBase(Base):
-    """Vincula um usuario Fixo a uma viagem base (carro/horario padrao)."""
-
-    __tablename__ = "usuario_agendamento_base"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    agendamento_base_id: Mapped[int] = mapped_column(ForeignKey("agendamento_base.id"))
-    usuario_id: Mapped[int] = mapped_column(ForeignKey("usuario.id"))
-    sentido: Mapped[Sentido] = mapped_column(_enum(Sentido))
-    hora: Mapped[dt.time] = mapped_column(Time)
-
-    agendamento_base: Mapped["AgendamentoBase"] = relationship(back_populates="usuarios")
-    usuario: Mapped["Usuario"] = relationship()
-
-    __table_args__ = (
-        UniqueConstraint("agendamento_base_id", "usuario_id", "sentido", name="uq_usuario_agendamento_base"),
-    )
-
-
-# --------------------------------------------------------------------------
 # Viagem do dia (instancia gerada) + passageiros do dia
 # --------------------------------------------------------------------------
 
 class ViagemDia(Base):
-    """Um carro escalado para uma data especifica (gerado a partir do AgendamentoBase,
-    ou aberto manualmente quando a capacidade dos carros base estoura).
+    """Um carro escalado para uma data especifica: gerado automaticamente pela
+    geracao do dia (a partir da UsuarioAgendaSemanal), ou aberto manualmente
+    na tela de escala quando sobra usuario sem carro.
     """
 
     __tablename__ = "viagem_dia"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     data: Mapped[dt.date] = mapped_column(Date)
-    agendamento_base_id: Mapped[int | None] = mapped_column(ForeignKey("agendamento_base.id"), nullable=True)
     regiao_id: Mapped[int] = mapped_column(ForeignKey("regiao.id"))
     empresa_id: Mapped[int | None] = mapped_column(ForeignKey("empresa.id"), nullable=True)
     condutor_id: Mapped[int | None] = mapped_column(ForeignKey("condutor.id"), nullable=True)
@@ -351,7 +308,6 @@ class ViagemDia(Base):
     status: Mapped[StatusViagemDia] = mapped_column(_enum(StatusViagemDia), default=StatusViagemDia.PLANEJADA)
     observacoes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    agendamento_base: Mapped["AgendamentoBase | None"] = relationship()
     regiao: Mapped["Regiao"] = relationship()
     empresa: Mapped["Empresa | None"] = relationship()
     condutor: Mapped["Condutor | None"] = relationship()

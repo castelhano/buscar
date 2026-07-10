@@ -6,7 +6,6 @@ export type TipoAtendimento = "Fixo" | "Eventual";
 export type Modalidade = "Somente Ida" | "Ida e Volta";
 export type DiaSemana = "SEG" | "TER" | "QUA" | "QUI" | "SEX" | "SAB" | "DOM";
 export type TipoLocal = "Escola" | "Fisioterapia" | "Equoterapia" | "Trabalho" | "Hemodialise" | "Outros";
-export type DiaTipo = "U" | "S" | "D";
 export type Sentido = "Ida" | "Retorno";
 export type StatusViagemDia = "Planejada" | "Confirmada" | "Cancelada";
 export type StatusAtendimentoDia = "Agendado" | "Cancelado" | "Em analise";
@@ -48,6 +47,7 @@ export interface Veiculo {
   prefixo: string;
   placa: string;
   status: StatusVeiculo;
+  capacidade: number;
 }
 
 export interface Condutor {
@@ -85,6 +85,7 @@ export interface UsuarioAgendaSemanal {
   tipo: TipoAtendimento;
   modalidade: Modalidade;
   acompanhante: boolean;
+  ordem: number;
   saida: string | null;
   retorno: string | null;
   origem: string | null;
@@ -113,22 +114,6 @@ export interface UsuarioComAgenda extends Usuario {
   excecoes: UsuarioExcecao[];
 }
 
-export interface AgendamentoBase {
-  id: number;
-  dia_tipo: DiaTipo;
-  regiao_id: number;
-  inicio: string;
-  capacidade: number;
-}
-
-export interface UsuarioAgendamentoBase {
-  id: number;
-  agendamento_base_id: number;
-  usuario_id: number;
-  sentido: Sentido;
-  hora: string;
-}
-
 export interface ViagemDiaPassageiro {
   id: number;
   viagem_dia_id: number;
@@ -150,7 +135,6 @@ export interface ViagemDiaPassageiro {
 export interface ViagemDia {
   id: number;
   data: string;
-  agendamento_base_id: number | null;
   regiao_id: number;
   empresa_id: number | null;
   condutor_id: number | null;

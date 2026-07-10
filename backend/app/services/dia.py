@@ -1,6 +1,6 @@
 import datetime as dt
 
-from app.models import DiaSemana, DiaTipo
+from app.models import DiaSemana
 
 _DIA_SEMANA_POR_WEEKDAY = {
     0: DiaSemana.SEG,
@@ -15,12 +15,3 @@ _DIA_SEMANA_POR_WEEKDAY = {
 
 def dia_semana_from_date(data: dt.date) -> DiaSemana:
     return _DIA_SEMANA_POR_WEEKDAY[data.weekday()]
-
-
-def dia_tipo_from_date(data: dt.date) -> DiaTipo:
-    weekday = data.weekday()
-    if weekday == 5:
-        return DiaTipo.SABADO
-    if weekday == 6:
-        return DiaTipo.DOMINGO
-    return DiaTipo.UTIL
