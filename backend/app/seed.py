@@ -161,8 +161,10 @@ def _gerar_abbrs(nomes: list[str]) -> list[str]:
     return abbrs
 
 
-def _ler_csv_usuarios() -> list[tuple[str, str]]:
-    """Retorna (nome_formatado, endereco_bruto) por linha do CSV original.
+def _ler_csv_usuarios() -> list[tuple[str, str, str]]:
+    """Retorna (nome_chave, nome_formatado, endereco_bruto) por linha do CSV
+    original. nome_chave e o valor cru da coluna NOME (mesma grafia usada em
+    usuario_agendamento.csv), usado para casar os dois CSVs pelo nome.
 
     O endereco bruto nao e persistido em Usuario.detalhe (fica em branco);
     serve apenas de insumo pra tentar extrair o bairro no seed da agenda.
@@ -171,34 +173,43 @@ def _ler_csv_usuarios() -> list[tuple[str, str]]:
     with open(CSV_USUARIOS_PATH, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            nome = _nome_proprio(row["NOME"])
+            nome_chave = row["NOME"].strip()
+            nome = _nome_proprio(nome_chave)
             endereco = (row.get("DETALHE") or "").strip()
-            linhas.append((nome, endereco))
+            linhas.append((nome_chave, nome, endereco))
     return linhas
 
 
-def seed_usuarios() -> list[int]:
-    """Cria os usuarios e devolve os ids na mesma ordem do CSV (para casar
-    posicionalmente com o CSV de agendamento, que segue a mesma ordem)."""
+def seed_usuarios() -> dict[str, int]:
+    """Cria um usuario por nome unico do CSV e devolve {nome_chave: id}.
+
+    Uma mesma pessoa pode aparecer mais de uma vez no CSV de usuarios (ex:
+    enderecos de origem diferentes pra dias diferentes da semana); isso vira
+    um unico Usuario, casado com varias linhas de usuario_agendamento.csv
+    pelo nome (ver seed_agenda_semanal)."""
 
     linhas = _ler_csv_usuarios()
-    nomes = [nome for nome, _ in linhas]
-    abbrs = _gerar_abbrs(nomes)
+    nomes_chave_unicos = list(dict.fromkeys(chave for chave, _, _ in linhas))
+    nome_formatado_por_chave = {chave: nome for chave, nome, _ in linhas}
+    nomes_formatados = [nome_formatado_por_chave[chave] for chave in nomes_chave_unicos]
+    abbrs = _gerar_abbrs(nomes_formatados)
 
     db = SessionLocal()
     try:
         existentes = db.query(Usuario).count()
         if existentes > 0:
             print("Tabela usuario ja possui dados, seed nao executado.")
-            return [u.id for u in db.query(Usuario).order_by(Usuario.id)]
+            return {u.nome: u.id for u in db.query(Usuario)}
 
-        usuarios = [Usuario(nome=nome, abbr=abbr, detalhe=None) for nome, abbr in zip(nomes, abbrs)]
+        usuarios = [
+            Usuario(nome=nome, abbr=abbr, detalhe=None) for nome, abbr in zip(nomes_formatados, abbrs)
+        ]
         db.add_all(usuarios)
         db.commit()
         for u in usuarios:
             db.refresh(u)
         print(f"{len(usuarios)} usuarios inseridos.")
-        return [u.id for u in usuarios]
+        return dict(zip(nomes_chave_unicos, (u.id for u in usuarios)))
     finally:
         db.close()
 
@@ -359,17 +370,37 @@ def _get_or_create_local(db, nome: str, regiao_id: int) -> Local:
     return local
 
 
-def seed_agenda_semanal(usuario_ids: list[int]) -> int:
-    enderecos = [endereco for _, endereco in _ler_csv_usuarios()]
+def _agrupar_por_nome(pares: list[tuple[str, object]]) -> dict[str, list]:
+    """Agrupa preservando a ordem de aparicao, pra casar a k-esima ocorrencia
+    de um nome num CSV com a k-esima ocorrencia do mesmo nome no outro."""
+
+    grupos: dict[str, list] = {}
+    for nome, valor in pares:
+        grupos.setdefault(nome, []).append(valor)
+    return grupos
+
+
+def seed_agenda_semanal(usuario_ids: dict[str, int]) -> int:
+    """Casa usuarios.csv com usuario_agendamento.csv pelo nome (coluna NOME /
+    nome), nao pela posicao da linha. Uma pessoa pode ter mais de uma linha
+    em usuario_agendamento.csv (ex: atendimento seg-qua num destino e sex
+    noutro); nesse caso a k-esima linha de agendamento com aquele nome usa o
+    endereco da k-esima linha de usuarios.csv com o mesmo nome (e repete o
+    ultimo endereco conhecido se houver mais linhas de agendamento do que de
+    endereco pra aquele nome)."""
+
+    enderecos_por_nome = _agrupar_por_nome([(chave, endereco) for chave, _, endereco in _ler_csv_usuarios()])
 
     with open(CSV_AGENDAMENTO_PATH, encoding="utf-8-sig") as f:
-        linhas_agendamento = list(csv.DictReader(f))
+        linhas_agendamento = [(row["nome"].strip(), row) for row in csv.DictReader(f)]
+    agendamentos_por_nome = _agrupar_por_nome(linhas_agendamento)
 
-    if len(linhas_agendamento) != len(usuario_ids):
-        print(
-            f"AVISO: {len(linhas_agendamento)} linhas de agendamento vs "
-            f"{len(usuario_ids)} usuarios — casamento posicional pode ficar errado."
-        )
+    for nome in agendamentos_por_nome:
+        if nome not in usuario_ids:
+            print(f"AVISO: {nome!r} aparece em usuario_agendamento.csv mas nao em usuarios.csv, ignorado.")
+    for nome in enderecos_por_nome:
+        if nome not in agendamentos_por_nome:
+            print(f"AVISO: {nome!r} aparece em usuarios.csv mas nao tem nenhuma linha em usuario_agendamento.csv.")
 
     db = SessionLocal()
     try:
@@ -380,31 +411,48 @@ def seed_agenda_semanal(usuario_ids: list[int]) -> int:
         regiao_placeholder = _get_or_create_regiao(db, _REGIAO_PLACEHOLDER)
 
         total = 0
-        for usuario_id, endereco, linha in zip(usuario_ids, enderecos, linhas_agendamento):
-            destino_nome = linha["destino"].strip()
-            local = _get_or_create_local(db, destino_nome, regiao_placeholder.id)
+        for nome, linhas in agendamentos_por_nome.items():
+            usuario_id = usuario_ids.get(nome)
+            if usuario_id is None:
+                continue
 
-            tipo = TipoAtendimento.FIXO if linha["fixo"].strip().upper() == "SIM" else TipoAtendimento.EVENTUAL
-            origem = _extrair_bairro(endereco)
-            saida = dt.datetime.strptime(linha["ida"].strip(), "%H:%M").time()
-            retorno = dt.datetime.strptime(linha["volta"].strip(), "%H:%M").time()
-
-            for digito in linha["escopo"].strip():
-                dia_semana = _DIA_POR_DIGITO.get(digito)
-                if dia_semana is None:
-                    continue
-                db.add(
-                    UsuarioAgendaSemanal(
-                        usuario_id=usuario_id,
-                        dia_semana=dia_semana,
-                        tipo=tipo,
-                        saida=saida,
-                        retorno=retorno,
-                        origem=origem,
-                        destino_id=local.id,
+            enderecos = enderecos_por_nome.get(nome, [])
+            for i, linha in enumerate(linhas):
+                if i < len(enderecos):
+                    endereco = enderecos[i]
+                elif enderecos:
+                    endereco = enderecos[-1]
+                    print(
+                        f"AVISO: {nome!r} tem mais linhas de agendamento do que de endereco, "
+                        f"reaproveitando o ultimo endereco conhecido."
                     )
-                )
-                total += 1
+                else:
+                    endereco = None
+
+                destino_nome = linha["destino"].strip()
+                local = _get_or_create_local(db, destino_nome, regiao_placeholder.id)
+
+                tipo = TipoAtendimento.FIXO if linha["fixo"].strip().upper() == "SIM" else TipoAtendimento.EVENTUAL
+                origem = _extrair_bairro(endereco)
+                saida = dt.datetime.strptime(linha["ida"].strip(), "%H:%M").time()
+                retorno = dt.datetime.strptime(linha["volta"].strip(), "%H:%M").time()
+
+                for digito in linha["escopo"].strip():
+                    dia_semana = _DIA_POR_DIGITO.get(digito)
+                    if dia_semana is None:
+                        continue
+                    db.add(
+                        UsuarioAgendaSemanal(
+                            usuario_id=usuario_id,
+                            dia_semana=dia_semana,
+                            tipo=tipo,
+                            saida=saida,
+                            retorno=retorno,
+                            origem=origem,
+                            destino_id=local.id,
+                        )
+                    )
+                    total += 1
 
         db.commit()
         print(f"{total} linhas de usuario_agenda_semanal inseridas.")
