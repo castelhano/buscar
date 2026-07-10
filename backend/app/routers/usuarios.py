@@ -100,11 +100,16 @@ def criar_agenda_semanal(usuario_id: int, payload: schemas.UsuarioAgendaSemanalC
         .filter(
             models.UsuarioAgendaSemanal.usuario_id == usuario_id,
             models.UsuarioAgendaSemanal.dia_semana == payload.dia_semana,
+            models.UsuarioAgendaSemanal.saida == payload.saida,
+            models.UsuarioAgendaSemanal.destino_id == payload.destino_id,
         )
         .first()
     )
     if existente is not None:
-        raise HTTPException(status_code=409, detail="Usuario ja possui agenda cadastrada para esse dia da semana")
+        raise HTTPException(
+            status_code=409,
+            detail="Usuario ja possui esse mesmo horario/destino cadastrado para esse dia da semana",
+        )
     agenda = models.UsuarioAgendaSemanal(usuario_id=usuario_id, **payload.model_dump())
     db.add(agenda)
     db.commit()

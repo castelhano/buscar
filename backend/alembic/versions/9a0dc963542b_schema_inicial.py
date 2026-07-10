@@ -1,8 +1,8 @@
 """schema inicial
 
-Revision ID: f77c08918a4d
+Revision ID: 9a0dc963542b
 Revises: 
-Create Date: 2026-07-07 08:37:46.635402
+Create Date: 2026-07-10 16:53:01.945607
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'f77c08918a4d'
+revision: str = '9a0dc963542b'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -42,16 +42,6 @@ def upgrade() -> None:
     sa.Column('detalhe', sa.Text(), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_table('agendamento_base',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('dia_tipo', sa.Enum('UTIL', 'SABADO', 'DOMINGO', name='diatipo', native_enum=False, length=20), nullable=False),
-    sa.Column('regiao_id', sa.Integer(), nullable=False),
-    sa.Column('inicio', sa.Time(), nullable=False),
-    sa.Column('capacidade', sa.Integer(), nullable=False),
-    sa.CheckConstraint('capacidade > 0', name='ck_agendamento_base_capacidade'),
-    sa.ForeignKeyConstraint(['regiao_id'], ['regiao.id'], ),
-    sa.PrimaryKeyConstraint('id')
-    )
     op.create_table('empresa_regiao',
     sa.Column('empresa_id', sa.Integer(), nullable=False),
     sa.Column('regiao_id', sa.Integer(), nullable=False),
@@ -62,8 +52,9 @@ def upgrade() -> None:
     op.create_table('local',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('nome', sa.String(length=150), nullable=False),
-    sa.Column('tipo', sa.Enum('ESCOLA', 'FISIOTERAPIA', 'TRABALHO', 'HEMODIALISE', 'OUTROS', name='tipolocal', native_enum=False, length=20), nullable=False),
+    sa.Column('tipo', sa.Enum('ESCOLA', 'FISIOTERAPIA', 'EQUOTERAPIA', 'TRABALHO', 'HEMODIALISE', 'OUTROS', name='tipolocal', native_enum=False, length=20), nullable=False),
     sa.Column('regiao_id', sa.Integer(), nullable=False),
+    sa.Column('observacao', sa.Text(), nullable=True),
     sa.ForeignKeyConstraint(['regiao_id'], ['regiao.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -73,6 +64,8 @@ def upgrade() -> None:
     sa.Column('prefixo', sa.String(length=20), nullable=False),
     sa.Column('placa', sa.String(length=10), nullable=False),
     sa.Column('status', sa.Enum('ATIVO', 'INATIVO', 'MANUTENCAO', name='statusveiculo', native_enum=False, length=20), nullable=False),
+    sa.Column('capacidade', sa.Integer(), nullable=False),
+    sa.CheckConstraint('capacidade > 0', name='ck_veiculo_capacidade'),
     sa.ForeignKeyConstraint(['empresa_id'], ['empresa.id'], ),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('placa')
@@ -84,6 +77,7 @@ def upgrade() -> None:
     sa.Column('nome', sa.String(length=150), nullable=False),
     sa.Column('apelido', sa.String(length=50), nullable=True),
     sa.Column('status', sa.Enum('ATIVO', 'DESLIGADO', 'AFASTADO', name='statuscondutor', native_enum=False, length=20), nullable=False),
+    sa.Column('periodo', sa.Enum('MANHA', 'TARDE', name='periodocondutor', native_enum=False, length=20), nullable=False),
     sa.Column('veiculo_preferencial_id', sa.Integer(), nullable=True),
     sa.ForeignKeyConstraint(['empresa_id'], ['empresa.id'], ),
     sa.ForeignKeyConstraint(['veiculo_preferencial_id'], ['veiculo.id'], ),
@@ -95,6 +89,9 @@ def upgrade() -> None:
     sa.Column('usuario_id', sa.Integer(), nullable=False),
     sa.Column('dia_semana', sa.Enum('SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB', 'DOM', name='diasemana', native_enum=False, length=20), nullable=False),
     sa.Column('tipo', sa.Enum('FIXO', 'EVENTUAL', name='tipoatendimento', native_enum=False, length=20), nullable=False),
+    sa.Column('modalidade', sa.Enum('SOMENTE_IDA', 'IDA_E_VOLTA', name='modalidade', native_enum=False, length=20), nullable=False),
+    sa.Column('acompanhante', sa.Boolean(), nullable=False),
+    sa.Column('ordem', sa.Integer(), nullable=False),
     sa.Column('saida', sa.Time(), nullable=True),
     sa.Column('retorno', sa.Time(), nullable=True),
     sa.Column('origem', sa.String(length=200), nullable=True),
@@ -106,18 +103,7 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['regiao_origem_id'], ['regiao.id'], ),
     sa.ForeignKeyConstraint(['usuario_id'], ['usuario.id'], ),
     sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('usuario_id', 'dia_semana', name='uq_usuario_dia_semana')
-    )
-    op.create_table('usuario_agendamento_base',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('agendamento_base_id', sa.Integer(), nullable=False),
-    sa.Column('usuario_id', sa.Integer(), nullable=False),
-    sa.Column('sentido', sa.Enum('IDA', 'RETORNO', name='sentido', native_enum=False, length=20), nullable=False),
-    sa.Column('hora', sa.Time(), nullable=False),
-    sa.ForeignKeyConstraint(['agendamento_base_id'], ['agendamento_base.id'], ),
-    sa.ForeignKeyConstraint(['usuario_id'], ['usuario.id'], ),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('agendamento_base_id', 'usuario_id', 'sentido', name='uq_usuario_agendamento_base')
+    sa.UniqueConstraint('usuario_id', 'dia_semana', 'saida', 'destino_id', name='uq_usuario_dia_semana_horario_destino')
     )
     op.create_table('usuario_excecao',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -164,7 +150,6 @@ def upgrade() -> None:
     op.create_table('viagem_dia',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('data', sa.Date(), nullable=False),
-    sa.Column('agendamento_base_id', sa.Integer(), nullable=True),
     sa.Column('regiao_id', sa.Integer(), nullable=False),
     sa.Column('empresa_id', sa.Integer(), nullable=True),
     sa.Column('condutor_id', sa.Integer(), nullable=True),
@@ -174,7 +159,6 @@ def upgrade() -> None:
     sa.Column('status', sa.Enum('PLANEJADA', 'CONFIRMADA', 'CANCELADA', name='statusviagemdia', native_enum=False, length=20), nullable=False),
     sa.Column('observacoes', sa.Text(), nullable=True),
     sa.CheckConstraint('capacidade > 0', name='ck_viagem_dia_capacidade'),
-    sa.ForeignKeyConstraint(['agendamento_base_id'], ['agendamento_base.id'], ),
     sa.ForeignKeyConstraint(['condutor_id'], ['condutor.id'], ),
     sa.ForeignKeyConstraint(['empresa_id'], ['empresa.id'], ),
     sa.ForeignKeyConstraint(['regiao_id'], ['regiao.id'], ),
@@ -213,13 +197,11 @@ def downgrade() -> None:
     op.drop_table('frequencia')
     op.drop_table('condutor_ferias')
     op.drop_table('usuario_excecao')
-    op.drop_table('usuario_agendamento_base')
     op.drop_table('usuario_agenda_semanal')
     op.drop_table('condutor')
     op.drop_table('veiculo')
     op.drop_table('local')
     op.drop_table('empresa_regiao')
-    op.drop_table('agendamento_base')
     op.drop_table('usuario')
     op.drop_table('regiao')
     op.drop_table('empresa')

@@ -249,7 +249,9 @@ class UsuarioAgendaSemanal(Base):
     destino: Mapped["Local | None"] = relationship()
 
     __table_args__ = (
-        UniqueConstraint("usuario_id", "dia_semana", name="uq_usuario_dia_semana"),
+        UniqueConstraint(
+            "usuario_id", "dia_semana", "saida", "destino_id", name="uq_usuario_dia_semana_horario_destino"
+        ),
     )
 
 
