@@ -211,12 +211,14 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
           {DIAS_SEMANA.flatMap((dia) => {
             const entradas = porDia.get(dia) ?? [];
             const linhas: ReactNode[] = [];
+            const criandoNestedia = edicao?.dia === dia && edicao.entradaId === null;
 
             entradas.forEach((existente, i) => {
               if (edicao?.entradaId === existente.id) {
                 linhas.push(linhaFormulario(dia, `${dia}-${existente.id}-form`));
                 return;
               }
+              const ehUltima = i === entradas.length - 1;
               linhas.push(
                 <tr key={existente.id} className={!existente.ativo ? "linha-inativa" : undefined}>
                   <td>{i === 0 ? DIAS_SEMANA_LABEL[dia] : ""}</td>
@@ -238,12 +240,22 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
                     <button className="btn btn-sm btn-perigo" onClick={() => remover(existente.id)}>
                       Remover
                     </button>
+                    {ehUltima && !criandoNestedia && (
+                      <>
+                        {" "}
+                        <button
+                          className="btn btn-sm"
+                          title="Adicionar outro horario nesse dia"
+                          onClick={() => abrirEdicao(dia, null)}
+                        >
+                          +
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>,
               );
             });
-
-            const criandoNestedia = edicao?.dia === dia && edicao.entradaId === null;
 
             if (criandoNestedia) {
               linhas.push(linhaFormulario(dia, `${dia}-novo-form`));
@@ -255,17 +267,6 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
                   <td>
                     <button className="btn btn-sm" onClick={() => abrirEdicao(dia, null)}>
                       Adicionar
-                    </button>
-                  </td>
-                </tr>,
-              );
-            } else {
-              linhas.push(
-                <tr key={`${dia}-add`}>
-                  <td colSpan={8}></td>
-                  <td>
-                    <button className="btn btn-sm" onClick={() => abrirEdicao(dia, null)}>
-                      + Outro horario
                     </button>
                   </td>
                 </tr>,
