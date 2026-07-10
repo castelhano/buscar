@@ -161,10 +161,11 @@ def _gerar_abbrs(nomes: list[str]) -> list[str]:
     return abbrs
 
 
-def _ler_csv_usuarios() -> list[tuple[str, str, str]]:
-    """Retorna (nome_chave, nome_formatado, endereco_bruto) por linha do CSV
-    original. nome_chave e o valor cru da coluna NOME (mesma grafia usada em
-    usuario_agendamento.csv), usado para casar os dois CSVs pelo nome.
+def _ler_csv_usuarios() -> list[tuple[str, str, str, str]]:
+    """Retorna (nome_chave, nome_formatado, regiao, endereco_bruto) por linha
+    do CSV original. nome_chave e o valor cru da coluna NOME (mesma grafia
+    usada em usuario_agendamento.csv), usado para casar os dois CSVs pelo
+    nome.
 
     O endereco bruto nao e persistido em Usuario.detalhe (fica em branco);
     serve apenas de insumo pra tentar extrair o bairro no seed da agenda.
@@ -175,8 +176,9 @@ def _ler_csv_usuarios() -> list[tuple[str, str, str]]:
         for row in reader:
             nome_chave = row["NOME"].strip()
             nome = _nome_proprio(nome_chave)
+            regiao = row["REGIAO"].strip()
             endereco = (row.get("DETALHE") or "").strip()
-            linhas.append((nome_chave, nome, endereco))
+            linhas.append((nome_chave, nome, regiao, endereco))
     return linhas
 
 
@@ -189,8 +191,8 @@ def seed_usuarios() -> dict[str, int]:
     pelo nome (ver seed_agenda_semanal)."""
 
     linhas = _ler_csv_usuarios()
-    nomes_chave_unicos = list(dict.fromkeys(chave for chave, _, _ in linhas))
-    nome_formatado_por_chave = {chave: nome for chave, nome, _ in linhas}
+    nomes_chave_unicos = list(dict.fromkeys(chave for chave, _, _, _ in linhas))
+    nome_formatado_por_chave = {chave: nome for chave, nome, _, _ in linhas}
     nomes_formatados = [nome_formatado_por_chave[chave] for chave in nomes_chave_unicos]
     abbrs = _gerar_abbrs(nomes_formatados)
 
@@ -380,16 +382,34 @@ def _agrupar_por_nome(pares: list[tuple[str, object]]) -> dict[str, list]:
     return grupos
 
 
+def _valor_por_indice(valores: list[str], i: int, nome: str, rotulo: str) -> str | None:
+    """Casa a i-esima linha de agendamento com a i-esima linha de
+    usuarios.csv daquele nome; reaproveita o ultimo valor conhecido se
+    houver mais linhas de agendamento do que de usuarios.csv pra esse nome."""
+
+    if i < len(valores):
+        return valores[i]
+    if valores:
+        print(
+            f"AVISO: {nome!r} tem mais linhas de agendamento do que de {rotulo}, "
+            f"reaproveitando o ultimo {rotulo} conhecido."
+        )
+        return valores[-1]
+    return None
+
+
 def seed_agenda_semanal(usuario_ids: dict[str, int]) -> int:
     """Casa usuarios.csv com usuario_agendamento.csv pelo nome (coluna NOME /
     nome), nao pela posicao da linha. Uma pessoa pode ter mais de uma linha
     em usuario_agendamento.csv (ex: atendimento seg-qua num destino e sex
     noutro); nesse caso a k-esima linha de agendamento com aquele nome usa o
-    endereco da k-esima linha de usuarios.csv com o mesmo nome (e repete o
-    ultimo endereco conhecido se houver mais linhas de agendamento do que de
-    endereco pra aquele nome)."""
+    endereco/regiao da k-esima linha de usuarios.csv com o mesmo nome (e
+    repete o ultimo endereco/regiao conhecido se houver mais linhas de
+    agendamento do que de endereco pra aquele nome)."""
 
-    enderecos_por_nome = _agrupar_por_nome([(chave, endereco) for chave, _, endereco in _ler_csv_usuarios()])
+    linhas_usuarios = _ler_csv_usuarios()
+    enderecos_por_nome = _agrupar_por_nome([(chave, endereco) for chave, _, _, endereco in linhas_usuarios])
+    regioes_por_nome = _agrupar_por_nome([(chave, regiao) for chave, _, regiao, _ in linhas_usuarios])
 
     with open(CSV_AGENDAMENTO_PATH, encoding="utf-8-sig") as f:
         linhas_agendamento = [(row["nome"].strip(), row) for row in csv.DictReader(f)]
@@ -417,17 +437,11 @@ def seed_agenda_semanal(usuario_ids: dict[str, int]) -> int:
                 continue
 
             enderecos = enderecos_por_nome.get(nome, [])
+            regioes = regioes_por_nome.get(nome, [])
             for i, linha in enumerate(linhas):
-                if i < len(enderecos):
-                    endereco = enderecos[i]
-                elif enderecos:
-                    endereco = enderecos[-1]
-                    print(
-                        f"AVISO: {nome!r} tem mais linhas de agendamento do que de endereco, "
-                        f"reaproveitando o ultimo endereco conhecido."
-                    )
-                else:
-                    endereco = None
+                endereco = _valor_por_indice(enderecos, i, nome, "endereco")
+                regiao_nome = _valor_por_indice(regioes, i, nome, "regiao")
+                regiao_origem_id = _get_or_create_regiao(db, regiao_nome).id if regiao_nome else None
 
                 destino_nome = linha["destino"].strip()
                 local = _get_or_create_local(db, destino_nome, regiao_placeholder.id)
@@ -449,6 +463,7 @@ def seed_agenda_semanal(usuario_ids: dict[str, int]) -> int:
                             saida=saida,
                             retorno=retorno,
                             origem=origem,
+                            regiao_origem_id=regiao_origem_id,
                             destino_id=local.id,
                         )
                     )
