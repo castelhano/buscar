@@ -2,7 +2,7 @@ import { useState } from "react";
 import { api } from "../../api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { DIAS_SEMANA, DIAS_SEMANA_LABEL } from "../../api/types";
-import type { DiaSemana, Local, Regiao, TipoAtendimento, UsuarioAgendaSemanal } from "../../api/types";
+import type { DiaSemana, Local, Modalidade, Regiao, TipoAtendimento, UsuarioAgendaSemanal } from "../../api/types";
 
 interface Props {
   usuarioId: number;
@@ -13,6 +13,8 @@ interface Props {
 
 interface FormState {
   tipo: TipoAtendimento;
+  modalidade: Modalidade;
+  acompanhante: boolean;
   saida: string;
   retorno: string;
   origem: string;
@@ -21,7 +23,17 @@ interface FormState {
   ativo: boolean;
 }
 
-const formVazio: FormState = { tipo: "Fixo", saida: "", retorno: "", origem: "", regiao_origem_id: "", destino_id: "", ativo: true };
+const formVazio: FormState = {
+  tipo: "Fixo",
+  modalidade: "Ida e Volta",
+  acompanhante: false,
+  saida: "",
+  retorno: "",
+  origem: "",
+  regiao_origem_id: "",
+  destino_id: "",
+  ativo: true,
+};
 
 export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais }: Props) {
   const queryClient = useQueryClient();
@@ -37,6 +49,8 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
       existente
         ? {
             tipo: existente.tipo,
+            modalidade: existente.modalidade,
+            acompanhante: existente.acompanhante,
             saida: existente.saida ?? "",
             retorno: existente.retorno ?? "",
             origem: existente.origem ?? "",
@@ -52,6 +66,8 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
     return {
       dia_semana: diaEmEdicao,
       tipo: form.tipo,
+      modalidade: form.modalidade,
+      acompanhante: form.acompanhante,
       saida: form.saida || null,
       retorno: form.retorno || null,
       origem: form.origem || null,
@@ -90,7 +106,10 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
             <th>Tipo</th>
             <th>Saida</th>
             <th>Retorno</th>
+            <th>Regiao</th>
             <th>Destino</th>
+            <th>Modal</th>
+            <th>Acomp</th>
             <th></th>
           </tr>
         </thead>
@@ -100,7 +119,7 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
             if (diaEmEdicao === dia) {
               return (
                 <tr key={dia}>
-                  <td colSpan={6}>
+                  <td colSpan={9}>
                     <div className="linha-toolbar" style={{ margin: 0 }}>
                       <strong>{DIAS_SEMANA_LABEL[dia]}</strong>
                       <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value as TipoAtendimento })}>
@@ -133,28 +152,48 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
                           </option>
                         ))}
                       </select>
-                      <label style={{ display: "flex", gap: "0.25rem", alignItems: "center", fontWeight: "normal" }}>
-                        <input type="checkbox" checked={form.ativo} onChange={(e) => setForm({ ...form, ativo: e.target.checked })} />
-                        Ativo
-                      </label>
-                      <button className="btn btn-primario btn-sm" onClick={salvar}>
-                        Salvar
-                      </button>
-                      <button className="btn btn-sm" onClick={() => setDiaEmEdicao(null)}>
-                        Cancelar
-                      </button>
+                      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexBasis: "100%" }}>
+                        <select
+                          value={form.modalidade}
+                          onChange={(e) => setForm({ ...form, modalidade: e.target.value as Modalidade })}
+                        >
+                          <option value="Somente Ida">Somente Ida</option>
+                          <option value="Ida e Volta">Ida e Volta</option>
+                        </select>
+                        <label style={{ display: "flex", gap: "0.25rem", alignItems: "center", fontWeight: "normal" }}>
+                          <input
+                            type="checkbox"
+                            checked={form.acompanhante}
+                            onChange={(e) => setForm({ ...form, acompanhante: e.target.checked })}
+                          />
+                          Acompanhante
+                        </label>
+                        <label style={{ display: "flex", gap: "0.25rem", alignItems: "center", fontWeight: "normal" }}>
+                          <input type="checkbox" checked={form.ativo} onChange={(e) => setForm({ ...form, ativo: e.target.checked })} />
+                          Ativo
+                        </label>
+                        <button className="btn btn-primario btn-sm" onClick={salvar}>
+                          Salvar
+                        </button>
+                        <button className="btn btn-sm" onClick={() => setDiaEmEdicao(null)}>
+                          Cancelar
+                        </button>
+                      </div>
                     </div>
                   </td>
                 </tr>
               );
             }
             return (
-              <tr key={dia}>
+              <tr key={dia} className={existente && !existente.ativo ? "linha-inativa" : undefined}>
                 <td>{DIAS_SEMANA_LABEL[dia]}</td>
                 <td>{existente ? <span className="tag">{existente.tipo}</span> : "-"}</td>
                 <td>{existente?.saida ?? "-"}</td>
                 <td>{existente?.retorno ?? "-"}</td>
+                <td>{existente?.regiao_origem_id ? regioes.find((r) => r.id === existente.regiao_origem_id)?.nome ?? "-" : "-"}</td>
                 <td>{existente?.destino_id ? locais.find((l) => l.id === existente.destino_id)?.nome ?? "-" : "-"}</td>
+                <td>{existente ? <span className="tag">{existente.modalidade}</span> : "-"}</td>
+                <td>{existente ? (existente.acompanhante ? "Sim" : "Nao") : "-"}</td>
                 <td>
                   <button className="btn btn-sm" onClick={() => abrirEdicao(dia)}>
                     {existente ? "Editar" : "Adicionar"}

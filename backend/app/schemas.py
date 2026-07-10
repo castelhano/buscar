@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 from app.models import (
     DiaSemana,
     DiaTipo,
+    Modalidade,
     PeriodoCondutor,
     Sentido,
     StatusAtivoInativo,
@@ -123,6 +124,8 @@ class CondutorFeriasRead(ORMModel):
 class UsuarioAgendaSemanalCreate(BaseModel):
     dia_semana: DiaSemana
     tipo: TipoAtendimento
+    modalidade: Modalidade = Modalidade.IDA_E_VOLTA
+    acompanhante: bool = False
     saida: dt.time | None = None
     retorno: dt.time | None = None
     origem: str | None = None
@@ -137,6 +140,8 @@ class UsuarioAgendaSemanalRead(ORMModel):
     usuario_id: int
     dia_semana: DiaSemana
     tipo: TipoAtendimento
+    modalidade: Modalidade
+    acompanhante: bool
     saida: dt.time | None
     retorno: dt.time | None
     origem: str | None

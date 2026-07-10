@@ -181,6 +181,21 @@ th {
   color: var(--cor-perigo);
 }
 
+.linha-inativa td {
+  background: var(--cor-fundo);
+  color: var(--cor-texto-suave);
+  text-decoration: line-through;
+}
+
+.linha-inativa td:last-child {
+  text-decoration: none;
+}
+
+.linha-inativa .tag {
+  text-decoration: none;
+  opacity: 0.7;
+}
+
 /* Board de agendamento */
 
 .board {
