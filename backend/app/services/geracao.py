@@ -59,6 +59,7 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
         .order_by(UsuarioAgendaSemanal.ordem)
         .all()
     )
+    print(f"[geracao] {data} ({dia_semana.name}): {len(agendas)} agendas FIXO/ativas encontradas")
     usuario_ids = [a.usuario_id for a in agendas]
     excecoes = {
         e.usuario_id: e
@@ -82,6 +83,7 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
         regiao_destino_id = locais_regiao.get(destino_id) if destino_id else None
 
         if regiao_origem_id is None:
+            print(f"[geracao] usuario_id={agenda.usuario_id}: sem regiao_origem_id, ficou de fora")
             continue  # sem regiao de origem cadastrada -- fica de fora para alocacao manual
 
         pernas = (
@@ -105,17 +107,21 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
                 }
             )
 
+    print(f"[geracao] pernas por regiao: { {k: len(v) for k, v in pernas_por_regiao.items()} }")
+
     todas_viagens: list[ViagemDia] = []
     janelas: dict[int, tuple[dt.time, dt.time]] = {}
+    avisos_emitidos: set[tuple] = set()
     for regiao_id, pernas in pernas_por_regiao.items():
         pernas.sort(key=lambda p: (p["sentido"].value, p["hora"], p["ordem"]))
-        _preencher_regiao(db, regiao_id, pernas, data, todas_viagens, janelas)
+        _preencher_regiao(db, regiao_id, pernas, data, todas_viagens, janelas, avisos_emitidos)
 
     db.flush()
     _atribuir_condutores(db, todas_viagens, data)
     db.commit()
     for viagem in todas_viagens:
         db.refresh(viagem)
+    print(f"[geracao] {len(todas_viagens)} viagens geradas")
     return todas_viagens
 
 
@@ -126,6 +132,7 @@ def _preencher_regiao(
     data: dt.date,
     todas_viagens: list[ViagemDia],
     janelas: dict[int, tuple[dt.time, dt.time]],
+    avisos_emitidos: set[tuple],
 ) -> None:
     """Preenche os carros de uma regiao, na ordem de `ordem`, abrindo um novo
     carro (leg) sempre que o sentido/horario atual estoura a capacidade dos
@@ -141,7 +148,7 @@ def _preencher_regiao(
             None,
         )
         if viagem is None:
-            viagem = _abrir_carro(db, regiao_id, perna["hora"], data, todas_viagens, janelas)
+            viagem = _abrir_carro(db, regiao_id, perna["hora"], data, todas_viagens, janelas, avisos_emitidos)
             if viagem is None:
                 continue  # sem veiculo disponivel na regiao/horario -- fica de fora para alocacao manual
             abertos_por_perna[perna_chave].append(viagem)
@@ -184,14 +191,25 @@ def _abrir_carro(
     data: dt.date,
     todas_viagens: list[ViagemDia],
     janelas: dict[int, tuple[dt.time, dt.time]],
+    avisos_emitidos: set[tuple],
 ) -> ViagemDia | None:
     empresa_ids = _empresas_da_regiao(db, regiao_id)
     if not empresa_ids:
+        chave_aviso = ("sem_empresa", regiao_id)
+        if chave_aviso not in avisos_emitidos:
+            avisos_emitidos.add(chave_aviso)
+            print(f"[geracao] regiao_id={regiao_id}: nenhuma empresa vinculada (empresa_regiao vazio pra essa regiao)")
         return None
 
     horario_saida = _horario_garagem(hora)
     veiculo = _proximo_veiculo_livre(db, empresa_ids, todas_viagens, janelas, data, horario_saida, hora)
     if veiculo is None:
+        chave_aviso = ("sem_veiculo", regiao_id, hora)
+        if chave_aviso not in avisos_emitidos:
+            avisos_emitidos.add(chave_aviso)
+            print(
+                f"[geracao] regiao_id={regiao_id} hora={hora}: empresas {empresa_ids} sem veiculo ativo/livre nesse horario"
+            )
         return None  # sem veiculo disponivel na regiao/horario para abrir novo carro
 
     viagem = ViagemDia(
