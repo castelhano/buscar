@@ -62,6 +62,18 @@ alembic upgrade head
 
 Isso cria/atualiza o arquivo `buscar.db` com todas as tabelas necessárias.
 
+### Populando dados iniciais (seed)
+
+Com o banco já migrado, popule empresas, veículos, condutores, locais,
+usuários e agenda semanal a partir dos CSVs em `app/seed_data/`:
+
+```bash
+python -m app.seed
+```
+
+Cada tabela só é populada se ainda estiver vazia, então rodar o comando de
+novo não duplica os dados.
+
 ### Rodando a API
 
 ```bash
@@ -123,6 +135,7 @@ python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 alembic upgrade head
+python -m app.seed
 uvicorn app.main:app --reload --port 8123 &
 
 # Frontend (em outro terminal)
