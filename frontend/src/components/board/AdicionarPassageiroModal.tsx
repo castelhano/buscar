@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useList } from "../../api/hooks";
 import type { Local, Regiao, Sentido, Usuario } from "../../api/types";
+import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
 
 export interface PassageiroFormValores {
   sentido: Sentido;
@@ -38,6 +39,7 @@ export default function AdicionarPassageiroModal({
   usuarioFixo,
   valoresIniciais,
 }: Props) {
+  useLockBodyScroll();
   const { data: usuarios } = useList<Usuario>("usuarios", "/usuarios", { status: "Ativo" });
   const { data: regioes } = useList<Regiao>("regioes", "/regioes");
   const { data: locais } = useList<Local>("locais", "/locais");

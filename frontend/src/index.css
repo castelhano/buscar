@@ -399,6 +399,8 @@ th {
   padding: 1.5rem;
   min-width: 360px;
   max-width: 90vw;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .erro-box {

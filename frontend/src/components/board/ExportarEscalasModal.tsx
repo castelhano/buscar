@@ -2,12 +2,14 @@ import { useState } from "react";
 import { api } from "../../api/client";
 import { useList } from "../../api/hooks";
 import type { Condutor } from "../../api/types";
+import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
 
 interface Props {
   onFechar: () => void;
 }
 
 export default function ExportarEscalasModal({ onFechar }: Props) {
+  useLockBodyScroll();
   const { data: condutores } = useList<Condutor>("condutores", "/condutores");
   const [inicio, setInicio] = useState("");
   const [fim, setFim] = useState("");

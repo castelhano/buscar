@@ -1,3 +1,5 @@
+import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
+
 interface Props {
   titulo: string;
   mensagem: string;
@@ -6,6 +8,7 @@ interface Props {
 }
 
 export default function ConfirmarModal({ titulo, mensagem, onFechar, onConfirmar }: Props) {
+  useLockBodyScroll();
   return (
     <div className="modal-fundo" onClick={onFechar}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>

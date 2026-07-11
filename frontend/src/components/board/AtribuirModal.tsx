@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Condutor, Veiculo } from "../../api/types";
+import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
 
 interface Props {
   condutores: Condutor[];
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function AtribuirModal({ condutores, veiculos, observacoesIniciais, onFechar, onConfirmar }: Props) {
+  useLockBodyScroll();
   const [condutorId, setCondutorId] = useState<number | "">("");
   const [veiculoId, setVeiculoId] = useState<number | "">("");
   const [observacoes, setObservacoes] = useState(observacoesIniciais ?? "");

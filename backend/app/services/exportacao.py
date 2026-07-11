@@ -74,10 +74,10 @@ def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.tim
     elementos.append(Spacer(1, 0.6 * cm))
 
     for indice, viagem in enumerate(pernas):
-        sentido_ref = next(
-            (p.sentido.value for p in viagem.passageiros if p.status != StatusAtendimentoDia.CANCELADO), "-"
-        )
         if indice == 0:
+            sentido_ref = next(
+                (p.sentido.value for p in viagem.passageiros if p.status != StatusAtendimentoDia.CANCELADO), "-"
+            )
             elementos.append(
                 Paragraph(
                     f"{sentido_ref} · {_hora_referencia(viagem).strftime('%H:%M')} "
@@ -87,14 +87,7 @@ def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.tim
                 )
             )
         else:
-            elementos.append(Spacer(1, 0.6 * cm))
-            elementos.append(
-                Paragraph(
-                    f"{sentido_ref} · {_hora_referencia(viagem).strftime('%H:%M')} "
-                    f"(regiao {viagem.regiao.nome if viagem.regiao else '-'})",
-                    _ESTILOS["Heading3"],
-                )
-            )
+            elementos.append(Spacer(1, 0.3 * cm))
 
         linhas = [["Hora", "Sentido", "Origem", "Destino", "Observacoes"]]
         passageiros = sorted(
@@ -130,7 +123,6 @@ def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.tim
             )
         )
         elementos.append(tabela)
-        elementos.append(Spacer(1, 0.6 * cm))
 
     doc.build(elementos)
     return buffer.getvalue()

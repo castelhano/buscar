@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Regiao } from "../../api/types";
+import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
 
 interface Props {
   regioes: Regiao[];
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export default function AbrirCarroModal({ regioes, onFechar, onConfirmar }: Props) {
+  useLockBodyScroll();
   const [regiaoId, setRegiaoId] = useState<number | "">("");
   const [horario, setHorario] = useState("06:00");
   const [capacidade, setCapacidade] = useState(4);

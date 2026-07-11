@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
 
 interface Props {
   onFechar: () => void;
@@ -6,6 +7,7 @@ interface Props {
 }
 
 export default function CancelarPassageiroModal({ onFechar, onConfirmar }: Props) {
+  useLockBodyScroll();
   const [motivo, setMotivo] = useState("");
 
   return (

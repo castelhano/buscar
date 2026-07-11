@@ -1,10 +1,12 @@
 import FeriasSection from "../../pages/cadastros/FeriasSection";
+import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
 
 interface Props {
   onFechar: () => void;
 }
 
 export default function FeriasModal({ onFechar }: Props) {
+  useLockBodyScroll();
   return (
     <div className="modal-fundo" onClick={onFechar}>
       <div className="modal" style={{ width: "min(90vw, 900px)" }} onClick={(e) => e.stopPropagation()}>
