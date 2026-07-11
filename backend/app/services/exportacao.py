@@ -87,7 +87,7 @@ def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.tim
     elementos.append(
         Paragraph(
             f"{condutor.matricula if condutor else '-'} {condutor.nome if condutor else '-'} "
-            f"{hora_inicio} - {hora_fim} | {veiculo.prefixo if veiculo else '-'}",
+            f"{hora_inicio} - {hora_fim} | VEICULO: {veiculo.prefixo if veiculo else '-'}",
             _ESTILO_CABECALHO_CONDUTOR,
         )
     )
@@ -114,7 +114,7 @@ def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.tim
                 observacoes = (f"[EM ANALISE] {observacoes}").strip()
             nome = passageiro.usuario.nome
             if passageiro.acompanhante:
-                nome = f"+ ACOMP {nome}"
+                nome = f"{nome} + ACOMP"
             linhas.append(
                 [
                     passageiro.hora.strftime("%H:%M"),
