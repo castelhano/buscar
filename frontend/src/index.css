@@ -223,11 +223,19 @@ th {
 
 /* Board de agendamento */
 
+.board-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
 .board {
   display: flex;
   gap: 1rem;
   overflow-x: auto;
   padding-bottom: 1rem;
+  flex: 1;
+  min-width: 0;
 }
 
 .carro-card {
@@ -399,9 +407,18 @@ th {
   font-size: 0.85rem;
 }
 
+.sem-vaga-painel {
+  width: 280px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+
 .sem-vaga-lista {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 0.6rem;
 }
 

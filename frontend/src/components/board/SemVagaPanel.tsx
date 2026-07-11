@@ -14,7 +14,7 @@ export default function SemVagaPanel({ passageiros, locais, onRemover, onCancela
   if (passageiros.length === 0) return null;
 
   return (
-    <div className="painel">
+    <div className="painel sem-vaga-painel">
       <h3>Sem vaga ({passageiros.length})</h3>
       <p style={{ fontSize: "0.8rem", color: "var(--cor-texto-suave)", marginTop: 0 }}>
         Usuarios que nao couberam em nenhum carro na geracao (frota esgotada) -- arraste pra um carro pra alocar

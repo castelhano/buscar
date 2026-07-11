@@ -273,27 +273,39 @@ export default function AgendamentoDiaPage() {
       {viagensQuery.isLoading && <p>Carregando...</p>}
 
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <div className="board">
-          {gruposCondutor.map((grupo) => (
-            <CarroCard
-              key={grupo[0].condutor_id !== null ? `c${grupo[0].condutor_id}` : `v${grupo[0].id}`}
-              viagens={grupo}
-              empresas={empresas ?? []}
-              veiculos={veiculos ?? []}
-              condutores={condutores ?? []}
+        <div className="board-layout">
+          <div className="board">
+            {gruposCondutor.map((grupo) => (
+              <CarroCard
+                key={grupo[0].condutor_id !== null ? `c${grupo[0].condutor_id}` : `v${grupo[0].id}`}
+                viagens={grupo}
+                empresas={empresas ?? []}
+                veiculos={veiculos ?? []}
+                condutores={condutores ?? []}
+                locais={locais ?? []}
+                onAdicionarPassageiro={setModalAdicionar}
+                onRemoverPassageiro={setModalRemoverPassageiro}
+                onCancelarPassageiro={setModalCancelar}
+                onEditarPassageiro={setModalEditarPassageiro}
+                onAtribuir={setModalAtribuir}
+                onRemoverCarro={(id) =>
+                  removerCarro.mutate(id, {
+                    onError: (e: unknown) => setErro(e instanceof Error ? e.message : "Nao foi possivel remover o carro"),
+                  })
+                }
+              />
+            ))}
+          </div>
+
+          {semVagaQuery.data && (
+            <SemVagaPanel
+              passageiros={semVagaQuery.data}
               locais={locais ?? []}
-              onAdicionarPassageiro={setModalAdicionar}
-              onRemoverPassageiro={setModalRemoverPassageiro}
-              onCancelarPassageiro={setModalCancelar}
-              onEditarPassageiro={setModalEditarPassageiro}
-              onAtribuir={setModalAtribuir}
-              onRemoverCarro={(id) =>
-                removerCarro.mutate(id, {
-                  onError: (e: unknown) => setErro(e instanceof Error ? e.message : "Nao foi possivel remover o carro"),
-                })
-              }
+              onRemover={setModalRemoverPassageiro}
+              onCancelar={setModalCancelar}
+              onEditar={setModalEditarPassageiro}
             />
-          ))}
+          )}
         </div>
 
         {sobrasQuery.data && (
@@ -301,16 +313,6 @@ export default function AgendamentoDiaPage() {
         )}
 
         {desconsideradosQuery.data && <DesconsideradosPanel desconsiderados={desconsideradosQuery.data} />}
-
-        {semVagaQuery.data && (
-          <SemVagaPanel
-            passageiros={semVagaQuery.data}
-            locais={locais ?? []}
-            onRemover={setModalRemoverPassageiro}
-            onCancelar={setModalCancelar}
-            onEditar={setModalEditarPassageiro}
-          />
-        )}
       </DndContext>
 
       {modalAdicionar !== null && (
