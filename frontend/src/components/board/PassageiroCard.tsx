@@ -5,12 +5,13 @@ import type { ViagemDiaPassageiro } from "../../api/types";
 interface Props {
   viagemId: number;
   passageiro: ViagemDiaPassageiro;
+  destinoNome?: string;
   onRemover: (id: number) => void;
   onCancelar: (id: number) => void;
   onEditar: (passageiro: ViagemDiaPassageiro) => void;
 }
 
-export default function PassageiroCard({ viagemId, passageiro, onRemover, onCancelar, onEditar }: Props) {
+export default function PassageiroCard({ viagemId, passageiro, destinoNome, onRemover, onCancelar, onEditar }: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: passageiro.id,
     data: { viagemId, passageiroId: passageiro.id },
@@ -46,7 +47,7 @@ export default function PassageiroCard({ viagemId, passageiro, onRemover, onCanc
           {passageiro.sentido} {passageiro.hora.slice(0, 5)}
         </span>
       </div>
-      <div className="linha-2">{passageiro.destino_id ? "destino cadastrado" : passageiro.origem ?? "-"}</div>
+      <div className="linha-2">{passageiro.destino_id ? destinoNome ?? "destino cadastrado" : passageiro.origem ?? "-"}</div>
       {passageiro.irregular && (
         <div className="linha-2" title={passageiro.motivo_irregular ?? ""} style={{ color: "var(--cor-alerta-borda)", fontWeight: 600 }}>
           ⚠ {passageiro.motivo_irregular}

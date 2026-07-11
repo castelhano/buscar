@@ -1,11 +1,12 @@
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import type { ViagemDia, ViagemDiaPassageiro } from "../../api/types";
+import type { Local, ViagemDia, ViagemDiaPassageiro } from "../../api/types";
 import PassageiroCard from "./PassageiroCard";
 
 interface Props {
   viagem: ViagemDia;
   isPrimeira: boolean;
+  locais: Local[];
   onAdicionarPassageiro: (viagemId: number) => void;
   onRemoverPassageiro: (id: number) => void;
   onCancelarPassageiro: (id: number) => void;
@@ -17,6 +18,7 @@ interface Props {
 export default function LegBlock({
   viagem,
   isPrimeira,
+  locais,
   onAdicionarPassageiro,
   onRemoverPassageiro,
   onCancelarPassageiro,
@@ -73,6 +75,7 @@ export default function LegBlock({
             key={p.id}
             viagemId={viagem.id}
             passageiro={p}
+            destinoNome={locais.find((l) => l.id === p.destino_id)?.nome}
             onRemover={onRemoverPassageiro}
             onCancelar={onCancelarPassageiro}
             onEditar={onEditarPassageiro}

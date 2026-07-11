@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { api } from "../api/client";
 import { useList } from "../api/hooks";
-import type { Condutor, Empresa, Regiao, Sentido, Sobras, Veiculo, ViagemDia, ViagemDiaPassageiro } from "../api/types";
+import type { Condutor, Empresa, Local, Regiao, Sentido, Sobras, Veiculo, ViagemDia, ViagemDiaPassageiro } from "../api/types";
 import CarroCard from "../components/board/CarroCard";
 import SobrasPanel from "../components/board/SobrasPanel";
 import AdicionarPassageiroModal from "../components/board/AdicionarPassageiroModal";
@@ -59,6 +59,7 @@ export default function AgendamentoDiaPage() {
   const { data: empresas } = useList<Empresa>("empresas", "/empresas");
   const { data: veiculos } = useList<Veiculo>("veiculos", "/veiculos");
   const { data: condutores } = useList<Condutor>("condutores", "/condutores");
+  const { data: locais } = useList<Local>("locais", "/locais");
 
   const viagensQuery = useQuery({
     queryKey: ["viagens", data],
@@ -237,6 +238,7 @@ export default function AgendamentoDiaPage() {
               empresas={empresas ?? []}
               veiculos={veiculos ?? []}
               condutores={condutores ?? []}
+              locais={locais ?? []}
               onAdicionarPassageiro={setModalAdicionar}
               onRemoverPassageiro={setModalRemoverPassageiro}
               onCancelarPassageiro={setModalCancelar}

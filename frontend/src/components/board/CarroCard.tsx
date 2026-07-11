@@ -1,4 +1,4 @@
-import type { Condutor, Empresa, Veiculo, ViagemDia, ViagemDiaPassageiro } from "../../api/types";
+import type { Condutor, Empresa, Local, Veiculo, ViagemDia, ViagemDiaPassageiro } from "../../api/types";
 import LegBlock from "./LegBlock";
 
 interface Props {
@@ -6,6 +6,7 @@ interface Props {
   empresas: Empresa[];
   veiculos: Veiculo[];
   condutores: Condutor[];
+  locais: Local[];
   onAdicionarPassageiro: (viagemId: number) => void;
   onRemoverPassageiro: (id: number) => void;
   onCancelarPassageiro: (id: number) => void;
@@ -19,6 +20,7 @@ export default function CarroCard({
   empresas,
   veiculos,
   condutores,
+  locais,
   onAdicionarPassageiro,
   onRemoverPassageiro,
   onCancelarPassageiro,
@@ -49,6 +51,7 @@ export default function CarroCard({
           key={viagem.id}
           viagem={viagem}
           isPrimeira={indice === 0}
+          locais={locais}
           onAdicionarPassageiro={onAdicionarPassageiro}
           onRemoverPassageiro={onRemoverPassageiro}
           onCancelarPassageiro={onCancelarPassageiro}
