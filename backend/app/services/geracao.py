@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session, joinedload
 from app.models import (
     Condutor,
     CondutorFerias,
-    Empresa,
     Local,
     LocalRecesso,
     PeriodoCondutor,
@@ -136,6 +135,9 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     dia_semana, agendas, excecoes, locais_em_recesso = _agendas_fixo_do_dia(db, data)
     print(f"[geracao] {data} ({dia_semana.name}): {len(agendas)} agendas FIXO/ativas encontradas")
     locais_regiao = dict(db.query(Local.id, Local.regiao_id).all())
+    ultimos_usos_veiculo = _ultimos_usos(db, ViagemDia.veiculo_id, data)
+    ultimos_usos_condutor = _ultimos_usos(db, ViagemDia.condutor_id, data)
+    empresas_por_regiao = _mapa_empresas_por_regiao(db)
 
     pernas_por_regiao: dict[int, list[dict]] = defaultdict(list)
     for agenda in agendas:
@@ -181,10 +183,12 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     avisos_emitidos: set[tuple] = set()
     for regiao_id, pernas in pernas_por_regiao.items():
         pernas.sort(key=lambda p: (p["sentido"].value, p["hora"], p["ordem"]))
-        _preencher_regiao(db, regiao_id, pernas, data, todas_viagens, janelas, avisos_emitidos)
+        _preencher_regiao(
+            db, regiao_id, pernas, data, todas_viagens, janelas, avisos_emitidos, ultimos_usos_veiculo, empresas_por_regiao
+        )
 
     db.flush()
-    _atribuir_condutores(db, todas_viagens, data)
+    _atribuir_condutores(db, todas_viagens, data, ultimos_usos_condutor, empresas_por_regiao)
     db.commit()
     for viagem in todas_viagens:
         db.refresh(viagem)
@@ -200,6 +204,8 @@ def _preencher_regiao(
     todas_viagens: list[ViagemDia],
     janelas: dict[int, tuple[dt.time, dt.time]],
     avisos_emitidos: set[tuple],
+    ultimos_usos_veiculo: dict[int, dt.date],
+    empresas_por_regiao: dict[int, list[int]],
 ) -> None:
     """Preenche os carros de uma regiao, na ordem de `ordem`, abrindo um novo
     carro (leg) sempre que o sentido/horario atual estoura a capacidade dos
@@ -222,7 +228,17 @@ def _preencher_regiao(
             None,
         )
         if viagem is None:
-            viagem = _abrir_carro(db, regiao_id, perna["hora"], data, todas_viagens, janelas, avisos_emitidos)
+            viagem = _abrir_carro(
+                db,
+                regiao_id,
+                perna["hora"],
+                data,
+                todas_viagens,
+                janelas,
+                avisos_emitidos,
+                ultimos_usos_veiculo,
+                empresas_por_regiao,
+            )
             if viagem is None:
                 # sem veiculo disponivel na regiao/horario -- fica "orfao" (sem
                 # carro) no container "Sem vaga" da tela do dia, pra alocacao manual
@@ -265,14 +281,15 @@ def _horario_garagem(hora: dt.time) -> dt.time:
     return referencia.time()
 
 
-def _empresas_da_regiao(db: Session, regiao_id: int) -> list[int]:
-    return [
-        row[0]
-        for row in db.query(Empresa.id)
-        .join(empresa_regiao, Empresa.id == empresa_regiao.c.empresa_id)
-        .filter(empresa_regiao.c.regiao_id == regiao_id)
-        .all()
-    ]
+def _mapa_empresas_por_regiao(db: Session) -> dict[int, list[int]]:
+    """Empresas de cada regiao, pre-carregado uma unica vez por geracao --
+    antes era consultado de novo a cada carro aberto e a cada viagem na
+    atribuicao de condutor.
+    """
+    resultado: dict[int, list[int]] = defaultdict(list)
+    for empresa_id, regiao_id in db.query(empresa_regiao.c.empresa_id, empresa_regiao.c.regiao_id).all():
+        resultado[regiao_id].append(empresa_id)
+    return resultado
 
 
 def _abrir_carro(
@@ -283,8 +300,10 @@ def _abrir_carro(
     todas_viagens: list[ViagemDia],
     janelas: dict[int, tuple[dt.time, dt.time]],
     avisos_emitidos: set[tuple],
+    ultimos_usos_veiculo: dict[int, dt.date],
+    empresas_por_regiao: dict[int, list[int]],
 ) -> ViagemDia | None:
-    empresa_ids = _empresas_da_regiao(db, regiao_id)
+    empresa_ids = empresas_por_regiao.get(regiao_id, [])
     if not empresa_ids:
         chave_aviso = ("sem_empresa", regiao_id)
         if chave_aviso not in avisos_emitidos:
@@ -293,7 +312,7 @@ def _abrir_carro(
         return None
 
     horario_saida = _horario_garagem(hora)
-    veiculo = _proximo_veiculo_livre(db, empresa_ids, todas_viagens, janelas, data, horario_saida, hora)
+    veiculo = _proximo_veiculo_livre(db, empresa_ids, todas_viagens, janelas, horario_saida, hora, ultimos_usos_veiculo)
     if veiculo is None:
         chave_aviso = ("sem_veiculo", regiao_id, hora)
         if chave_aviso not in avisos_emitidos:
@@ -323,9 +342,9 @@ def _proximo_veiculo_livre(
     empresa_ids: list[int],
     todas_viagens: list[ViagemDia],
     janelas: dict[int, tuple[dt.time, dt.time]],
-    data: dt.date,
     inicio: dt.time,
     fim: dt.time,
+    ultimos_usos_veiculo: dict[int, dt.date],
 ) -> Veiculo | None:
     """Escolhe o proximo veiculo (rodizio) livre para o intervalo [inicio, fim].
 
@@ -351,11 +370,17 @@ def _proximo_veiculo_livre(
     disponiveis = [v for v in candidatos if livre(v.id)]
     if not disponiveis:
         return None
-    disponiveis.sort(key=lambda v: _ultimo_uso(db, ViagemDia.veiculo_id, v.id, data))
+    disponiveis.sort(key=lambda v: ultimos_usos_veiculo.get(v.id, dt.date.min))
     return disponiveis[0]
 
 
-def _atribuir_condutores(db: Session, viagens: list[ViagemDia], data: dt.date) -> None:
+def _atribuir_condutores(
+    db: Session,
+    viagens: list[ViagemDia],
+    data: dt.date,
+    ultimos_usos_condutor: dict[int, dt.date],
+    empresas_por_regiao: dict[int, list[int]],
+) -> None:
     """Atribui condutor a cada viagem, priorizando quem foi usado ha mais tempo
     (rodizio entre dias), mas permitindo reaproveitar o mesmo condutor em
     carros do mesmo dia que nao se sobrepoem (ex: o mesmo condutor faz a
@@ -371,11 +396,11 @@ def _atribuir_condutores(db: Session, viagens: list[ViagemDia], data: dt.date) -
     }
 
     for viagem in viagens:
-        empresa_ids = _empresas_da_regiao(db, viagem.regiao_id)
+        empresa_ids = empresas_por_regiao.get(viagem.regiao_id, [])
         if not empresa_ids:
             continue
 
-        condutor = _proximo_condutor_livre(db, empresa_ids, em_ferias, viagens, data, viagem)
+        condutor = _proximo_condutor_livre(db, empresa_ids, em_ferias, viagens, viagem, ultimos_usos_condutor)
         if condutor is not None:
             viagem.condutor_id = condutor.id
 
@@ -385,8 +410,8 @@ def _proximo_condutor_livre(
     empresa_ids: list[int],
     em_ferias: set[int],
     viagens: list[ViagemDia],
-    data: dt.date,
     viagem: ViagemDia,
+    ultimos_usos_condutor: dict[int, dt.date],
 ) -> Condutor | None:
     periodo = _periodo_da_viagem(viagem)
     candidatos = (
@@ -437,14 +462,19 @@ def _proximo_condutor_livre(
         if preferenciais:
             return preferenciais[0]
 
-    disponiveis.sort(key=lambda c: _ultimo_uso(db, ViagemDia.condutor_id, c.id, data))
+    disponiveis.sort(key=lambda c: ultimos_usos_condutor.get(c.id, dt.date.min))
     return disponiveis[0]
 
 
-def _ultimo_uso(db: Session, coluna, entidade_id: int, antes_de: dt.date) -> dt.date:
-    ultimo = (
-        db.query(func.max(ViagemDia.data))
-        .filter(coluna == entidade_id, ViagemDia.data < antes_de)
-        .scalar()
+def _ultimos_usos(db: Session, coluna, antes_de: dt.date) -> dict[int, dt.date]:
+    """Ultima data de uso (antes de `antes_de`) de cada valor de `coluna`
+    (condutor_id ou veiculo_id) em ViagemDia -- uma unica query agregada em
+    vez de uma query por candidato dentro do sort() de rodizio.
+    """
+    linhas = (
+        db.query(coluna, func.max(ViagemDia.data))
+        .filter(coluna.isnot(None), ViagemDia.data < antes_de)
+        .group_by(coluna)
+        .all()
     )
-    return ultimo or dt.date.min
+    return dict(linhas)

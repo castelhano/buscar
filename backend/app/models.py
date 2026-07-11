@@ -6,6 +6,7 @@ from sqlalchemy import (
     Date,
     Enum as SAEnum,
     ForeignKey,
+    Index,
     Integer,
     String,
     Table,
@@ -217,6 +218,7 @@ class CondutorFerias(Base):
 
     __table_args__ = (
         CheckConstraint("data_fim >= data_inicio", name="ck_condutor_ferias_periodo"),
+        Index("ix_condutor_ferias_periodo", "data_inicio", "data_fim"),
     )
 
 
@@ -252,7 +254,7 @@ class UsuarioAgendaSemanal(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     usuario_id: Mapped[int] = mapped_column(ForeignKey("usuario.id"))
-    dia_semana: Mapped[DiaSemana] = mapped_column(_enum(DiaSemana))
+    dia_semana: Mapped[DiaSemana] = mapped_column(_enum(DiaSemana), index=True)
     tipo: Mapped[TipoAtendimento] = mapped_column(_enum(TipoAtendimento))
     modalidade: Mapped[Modalidade] = mapped_column(_enum(Modalidade), default=Modalidade.IDA_E_VOLTA)
     acompanhante: Mapped[bool] = mapped_column(default=False)
@@ -321,7 +323,7 @@ class ViagemDia(Base):
     __tablename__ = "viagem_dia"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    data: Mapped[dt.date] = mapped_column(Date)
+    data: Mapped[dt.date] = mapped_column(Date, index=True)
     regiao_id: Mapped[int] = mapped_column(ForeignKey("regiao.id"))
     empresa_id: Mapped[int | None] = mapped_column(ForeignKey("empresa.id"), nullable=True)
     condutor_id: Mapped[int | None] = mapped_column(ForeignKey("condutor.id"), nullable=True)
@@ -394,7 +396,7 @@ class Frequencia(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     condutor_id: Mapped[int] = mapped_column(ForeignKey("condutor.id"))
-    data: Mapped[dt.date] = mapped_column(Date)
+    data: Mapped[dt.date] = mapped_column(Date, index=True)
     tipo: Mapped[StatusFrequencia] = mapped_column(_enum(StatusFrequencia), default=StatusFrequencia.PENDENTE)
     hora_entrada: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
     intervalo_inicio: Mapped[dt.time | None] = mapped_column(Time, nullable=True)

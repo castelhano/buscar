@@ -1,4 +1,6 @@
 import datetime as dt
+from collections import defaultdict
+from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
@@ -7,7 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import models, schemas
 from app.database import get_db
 from app.services.exportacao import gerar_pdf_resumo_dia, gerar_zip_agendamentos
-from app.services.frequencia import intervalo_do_condutor
+from app.services.frequencia import INTERVALO_PADRAO_POR_PERIODO
 from app.services.geracao import gerar_agendamento_dia, listar_desconsiderados_dia
 from app.services.recursos import fim_viagem, janelas_sobrepoem
 
@@ -45,86 +47,128 @@ def _verificar_conflito(
         )
 
 
-def _calcular_irregularidade(db: Session, viagem: models.ViagemDia, regiao_origem_id: int | None):
-    if viagem.empresa_id is None or regiao_origem_id is None:
-        return False, None
-    habilitada = (
-        db.query(models.empresa_regiao)
-        .filter(
-            models.empresa_regiao.c.empresa_id == viagem.empresa_id,
-            models.empresa_regiao.c.regiao_id == regiao_origem_id,
+@dataclass
+class _ContextoDia:
+    """Lookups pre-carregados pra serializar as viagens de um dia sem
+    disparar uma query por viagem/passageiro (evita N+1 em /viagens e /gerar).
+    """
+
+    regioes_habilitadas: set[tuple[int, int]]
+    nomes_regiao: dict[int, str]
+    condutores_em_ferias: set[int]
+    intervalos_condutor: dict[int, tuple[dt.time, dt.time] | None]
+    conflitos_condutor: dict[int, models.ViagemDia]
+    conflitos_veiculo: dict[int, models.ViagemDia]
+
+
+def _mapa_conflitos(viagens: list[models.ViagemDia], campo: str) -> dict[int, models.ViagemDia]:
+    """Pra cada viagem, acha a primeira outra viagem do mesmo dia usando o
+    mesmo condutor/veiculo em horario sobreposto -- calculado em memoria sobre
+    a lista do dia ja carregada, sem uma query por viagem.
+
+    Duas viagens do mesmo carro/condutor no mesmo dia sao normais (dois turnos)
+    desde que uma termine (ultimo atendimento) antes da outra comecar (horario
+    de saida) -- so sinaliza quando os intervalos se sobrepoem.
+    """
+    por_recurso: dict[int, list[models.ViagemDia]] = defaultdict(list)
+    for v in viagens:
+        recurso_id = getattr(v, campo)
+        if recurso_id is not None:
+            por_recurso[recurso_id].append(v)
+
+    resultado: dict[int, models.ViagemDia] = {}
+    for grupo in por_recurso.values():
+        for v in grupo:
+            fim_v = fim_viagem(v)
+            for outra in grupo:
+                if outra.id == v.id or outra.status == models.StatusViagemDia.CANCELADA:
+                    continue
+                if janelas_sobrepoem(v.horario_saida, fim_v, outra.horario_saida, fim_viagem(outra)):
+                    resultado[v.id] = outra
+                    break
+    return resultado
+
+
+def _intervalos_dos_condutores(
+    db: Session, condutor_ids: set[int], data: dt.date
+) -> dict[int, tuple[dt.time, dt.time] | None]:
+    if not condutor_ids:
+        return {}
+    frequencias = {
+        f.condutor_id: f
+        for f in db.query(models.Frequencia).filter(
+            models.Frequencia.condutor_id.in_(condutor_ids), models.Frequencia.data == data
         )
-        .first()
+    }
+    condutores = {c.id: c for c in db.query(models.Condutor).filter(models.Condutor.id.in_(condutor_ids))}
+    resultado: dict[int, tuple[dt.time, dt.time] | None] = {}
+    for condutor_id in condutor_ids:
+        freq = frequencias.get(condutor_id)
+        if freq is not None and freq.intervalo_inicio is not None and freq.intervalo_fim is not None:
+            resultado[condutor_id] = (freq.intervalo_inicio, freq.intervalo_fim)
+            continue
+        condutor = condutores.get(condutor_id)
+        resultado[condutor_id] = INTERVALO_PADRAO_POR_PERIODO.get(condutor.periodo) if condutor else None
+    return resultado
+
+
+def _construir_contexto_dia(
+    db: Session, data: dt.date, viagens_do_dia: list[models.ViagemDia] | None = None
+) -> _ContextoDia:
+    if viagens_do_dia is None:
+        viagens_do_dia = _query_viagens(db, data)
+
+    regioes_habilitadas = {
+        (empresa_id, regiao_id)
+        for empresa_id, regiao_id in db.query(
+            models.empresa_regiao.c.empresa_id, models.empresa_regiao.c.regiao_id
+        ).all()
+    }
+    nomes_regiao = dict(db.query(models.Regiao.id, models.Regiao.nome).all())
+    condutores_em_ferias = {
+        f.condutor_id
+        for f in db.query(models.CondutorFerias).filter(
+            models.CondutorFerias.data_inicio <= data, models.CondutorFerias.data_fim >= data
+        )
+    }
+    condutor_ids = {v.condutor_id for v in viagens_do_dia if v.condutor_id is not None}
+
+    return _ContextoDia(
+        regioes_habilitadas=regioes_habilitadas,
+        nomes_regiao=nomes_regiao,
+        condutores_em_ferias=condutores_em_ferias,
+        intervalos_condutor=_intervalos_dos_condutores(db, condutor_ids, data),
+        conflitos_condutor=_mapa_conflitos(viagens_do_dia, "condutor_id"),
+        conflitos_veiculo=_mapa_conflitos(viagens_do_dia, "veiculo_id"),
     )
-    if habilitada is not None:
+
+
+def _calcular_irregularidade(empresa_id: int | None, regiao_origem_id: int | None, contexto: _ContextoDia):
+    if empresa_id is None or regiao_origem_id is None:
         return False, None
-    regiao = db.get(models.Regiao, regiao_origem_id)
-    nome_regiao = regiao.nome if regiao else str(regiao_origem_id)
+    if (empresa_id, regiao_origem_id) in contexto.regioes_habilitadas:
+        return False, None
+    nome_regiao = contexto.nomes_regiao.get(regiao_origem_id, str(regiao_origem_id))
     return True, f"Empresa da viagem nao esta habilitada para a regiao {nome_regiao} do usuario"
 
 
-def _condutor_em_ferias(db: Session, condutor_id: int | None, data: dt.date) -> bool:
-    if condutor_id is None:
-        return False
-    return (
-        db.query(models.CondutorFerias)
-        .filter(
-            models.CondutorFerias.condutor_id == condutor_id,
-            models.CondutorFerias.data_inicio <= data,
-            models.CondutorFerias.data_fim >= data,
-        )
-        .first()
-        is not None
-    )
-
-
-def _detectar_conflito_recurso(
-    db: Session, viagem: models.ViagemDia, campo: str, resource_id: int | None
-) -> models.ViagemDia | None:
-    """Encontra outra viagem do mesmo dia usando o mesmo condutor/veiculo em horario sobreposto.
-
-    Duas viagens do mesmo carro/condutor no mesmo dia sao normais (dois turnos)
-    desde que uma termine (ultimo atendimento) antes da outra comecar (horario de
-    saida) -- so sinaliza quando os intervalos se sobrepoem.
-    """
-    if resource_id is None:
-        return None
-    outras = (
-        db.query(models.ViagemDia)
-        .options(joinedload(models.ViagemDia.passageiros))
-        .filter(
-            models.ViagemDia.data == viagem.data,
-            models.ViagemDia.id != viagem.id,
-            getattr(models.ViagemDia, campo) == resource_id,
-            models.ViagemDia.status != models.StatusViagemDia.CANCELADA,
-        )
-        .all()
-    )
-    fim = fim_viagem(viagem)
-    inicio = viagem.horario_saida
-    for outra in outras:
-        if janelas_sobrepoem(inicio, fim, outra.horario_saida, fim_viagem(outra)):
-            return outra
-    return None
-
-
-def _serializar_viagem(db: Session, viagem: models.ViagemDia) -> schemas.ViagemDiaRead:
+def _serializar_viagem(viagem: models.ViagemDia, contexto: _ContextoDia) -> schemas.ViagemDiaRead:
     base = schemas.ViagemDiaRead.model_validate(viagem)
     passageiros = []
     for passageiro, passageiro_read in zip(viagem.passageiros, base.passageiros):
-        irregular, motivo = _calcular_irregularidade(db, viagem, passageiro.regiao_origem_id)
+        irregular, motivo = _calcular_irregularidade(viagem.empresa_id, passageiro.regiao_origem_id, contexto)
         passageiros.append(passageiro_read.model_copy(update={"irregular": irregular, "motivo_irregular": motivo}))
-    condutor_em_ferias = _condutor_em_ferias(db, viagem.condutor_id, viagem.data)
+    condutor_em_ferias = viagem.condutor_id is not None and viagem.condutor_id in contexto.condutores_em_ferias
 
-    conflito_condutor = _detectar_conflito_recurso(db, viagem, "condutor_id", viagem.condutor_id)
-    conflito_veiculo = _detectar_conflito_recurso(db, viagem, "veiculo_id", viagem.veiculo_id)
+    conflito_condutor = contexto.conflitos_condutor.get(viagem.id)
+    conflito_veiculo = contexto.conflitos_veiculo.get(viagem.id)
     motivos_conflito = []
     if conflito_condutor is not None:
         motivos_conflito.append(f"Condutor tambem escalado no carro saindo {conflito_condutor.horario_saida.strftime('%H:%M')}")
     if conflito_veiculo is not None:
         motivos_conflito.append(f"Veiculo tambem escalado no carro saindo {conflito_veiculo.horario_saida.strftime('%H:%M')}")
 
-    intervalo = intervalo_do_condutor(db, viagem.condutor_id, viagem.data)
+    intervalo = contexto.intervalos_condutor.get(viagem.condutor_id) if viagem.condutor_id is not None else None
 
     return base.model_copy(
         update={
@@ -160,13 +204,17 @@ def _query_viagens(db: Session, data: dt.date):
 
 @router.get("", response_model=list[schemas.ViagemDiaRead])
 def listar_viagens(data: dt.date, db: Session = Depends(get_db)):
-    return [_serializar_viagem(db, v) for v in _query_viagens(db, data)]
+    viagens_do_dia = _query_viagens(db, data)
+    contexto = _construir_contexto_dia(db, data, viagens_do_dia)
+    return [_serializar_viagem(v, contexto) for v in viagens_do_dia]
 
 
 @router.post("/gerar", response_model=list[schemas.ViagemDiaRead], status_code=201)
 def gerar(data: dt.date, db: Session = Depends(get_db)):
     gerar_agendamento_dia(db, data)
-    return [_serializar_viagem(db, v) for v in _query_viagens(db, data)]
+    viagens_do_dia = _query_viagens(db, data)
+    contexto = _construir_contexto_dia(db, data, viagens_do_dia)
+    return [_serializar_viagem(v, contexto) for v in viagens_do_dia]
 
 
 @router.post("/abrir", response_model=schemas.ViagemDiaRead, status_code=201)
@@ -183,7 +231,7 @@ def abrir_viagem(payload: schemas.ViagemDiaAbrir, db: Session = Depends(get_db))
     db.add(viagem)
     db.commit()
     db.refresh(viagem)
-    return _serializar_viagem(db, viagem)
+    return _serializar_viagem(viagem, _construir_contexto_dia(db, viagem.data))
 
 
 @router.delete("/limpar", status_code=204)
@@ -221,7 +269,7 @@ def atribuir_condutor_veiculo(viagem_id: int, payload: schemas.ViagemDiaAtribuir
         viagem.observacoes = dados["observacoes"]
     db.commit()
     db.refresh(viagem)
-    return _serializar_viagem(db, viagem)
+    return _serializar_viagem(viagem, _construir_contexto_dia(db, viagem.data))
 
 
 @router.patch("/{viagem_id}/status", response_model=schemas.ViagemDiaRead)
@@ -230,7 +278,7 @@ def alterar_status_viagem(viagem_id: int, status: models.StatusViagemDia, db: Se
     viagem.status = status
     db.commit()
     db.refresh(viagem)
-    return _serializar_viagem(db, viagem)
+    return _serializar_viagem(viagem, _construir_contexto_dia(db, viagem.data))
 
 
 @router.delete("/{viagem_id}", status_code=204)
@@ -257,7 +305,7 @@ def adicionar_passageiro(viagem_id: int, payload: schemas.ViagemDiaPassageiroCre
     db.add(passageiro)
     db.commit()
     db.refresh(viagem)
-    return _serializar_viagem(db, viagem)
+    return _serializar_viagem(viagem, _construir_contexto_dia(db, viagem.data))
 
 
 @router.patch("/passageiros/{passageiro_id}", response_model=schemas.ViagemDiaRead | schemas.ViagemDiaPassageiroRead)
@@ -272,7 +320,7 @@ def atualizar_passageiro(passageiro_id: int, payload: schemas.ViagemDiaPassageir
     if passageiro.viagem_dia_id is None:
         return _serializar_passageiro_orfao(passageiro)  # orfao (sem vaga) -- nao ha viagem pra serializar
     viagem = _get_viagem_ou_404(db, passageiro.viagem_dia_id)
-    return _serializar_viagem(db, viagem)
+    return _serializar_viagem(viagem, _construir_contexto_dia(db, viagem.data))
 
 
 @router.patch("/passageiros/{passageiro_id}/mover", response_model=schemas.ViagemDiaRead)
@@ -316,7 +364,7 @@ def mover_passageiro(passageiro_id: int, payload: schemas.ViagemDiaPassageiroMov
 
     db.commit()
     viagem = _get_viagem_ou_404(db, payload.viagem_dia_destino_id)
-    return _serializar_viagem(db, viagem)
+    return _serializar_viagem(viagem, _construir_contexto_dia(db, viagem.data))
 
 
 @router.patch("/passageiros/{passageiro_id}/status", response_model=schemas.ViagemDiaRead | schemas.ViagemDiaPassageiroRead)
@@ -331,7 +379,7 @@ def alterar_status_passageiro(
     if passageiro.viagem_dia_id is None:
         return _serializar_passageiro_orfao(passageiro)  # orfao (sem vaga) -- nao ha viagem pra serializar
     viagem = _get_viagem_ou_404(db, passageiro.viagem_dia_id)
-    return _serializar_viagem(db, viagem)
+    return _serializar_viagem(viagem, _construir_contexto_dia(db, viagem.data))
 
 
 @router.delete("/passageiros/{passageiro_id}", response_model=schemas.ViagemDiaRead | schemas.ViagemDiaPassageiroRead)
@@ -344,7 +392,7 @@ def remover_passageiro(passageiro_id: int, db: Session = Depends(get_db)):
     if viagem_id is None:
         return dados_orfao  # orfao (sem vaga) -- nao ha viagem pra serializar
     viagem = _get_viagem_ou_404(db, viagem_id)
-    return _serializar_viagem(db, viagem)
+    return _serializar_viagem(viagem, _construir_contexto_dia(db, viagem.data))
 
 
 # --------------------------------------------------------------------------

@@ -20,7 +20,7 @@ from app.models import (
     ViagemDia,
     ViagemDiaPassageiro,
 )
-from app.services.frequencia import intervalo_do_condutor
+from app.services.frequencia import INTERVALO_PADRAO_POR_PERIODO, intervalo_do_condutor
 from app.services.geracao import CORTE_PERIODO_TARDE
 from app.services.recursos import fim_turno_condutor, fim_viagem
 
@@ -432,9 +432,9 @@ def _linhas_escala(db: Session, condutores: list, inicio: dt.date, fim: dt.date)
 
     viagens_por_condutor_dia: dict[tuple[int, dt.date], ViagemDia] = {
         (v.condutor_id, v.data): v
-        for v in db.query(ViagemDia).filter(
-            ViagemDia.condutor_id.in_(condutor_ids), ViagemDia.data >= inicio, ViagemDia.data <= fim
-        )
+        for v in db.query(ViagemDia)
+        .options(joinedload(ViagemDia.passageiros))
+        .filter(ViagemDia.condutor_id.in_(condutor_ids), ViagemDia.data >= inicio, ViagemDia.data <= fim)
     }
 
     linhas = []
@@ -469,7 +469,11 @@ def _linhas_escala(db: Session, condutores: list, inicio: dt.date, fim: dt.date)
                 )
             elif (condutor.id, d) in viagens_por_condutor_dia:
                 viagem = viagens_por_condutor_dia[(condutor.id, d)]
-                intervalo = intervalo_do_condutor(db, condutor.id, d)
+                # sem Frequencia lancada pra esse (condutor, dia) -- ja
+                # confirmado pelo "if frequencia is not None" acima -- entao
+                # intervalo_do_condutor so cairia no padrao do periodo mesmo;
+                # evita reconsultar Frequencia por condutor x dia no loop.
+                intervalo = INTERVALO_PADRAO_POR_PERIODO.get(condutor.periodo)
                 linhas.append(
                     {
                         "condutor": condutor_label,
