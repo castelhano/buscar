@@ -18,8 +18,41 @@ function hoje() {
   return new Date().toISOString().slice(0, 10);
 }
 
+const CORTE_TARDE_MINUTOS = 14 * 60;
+
+function minutosDaHora(hora: string): number {
+  const [h, m] = hora.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function primeiraHora(viagem: ViagemDia): string {
+  const horas = viagem.passageiros.map((p) => p.hora).sort();
+  return horas[0] ?? viagem.horario_saida;
+}
+
+function periodoDaViagem(viagem: ViagemDia): "Manha" | "Tarde" {
+  return minutosDaHora(primeiraHora(viagem)) >= CORTE_TARDE_MINUTOS ? "Tarde" : "Manha";
+}
+
+function agruparPorCondutor(viagens: ViagemDia[]): ViagemDia[][] {
+  const grupos = new Map<string, ViagemDia[]>();
+  for (const viagem of viagens) {
+    const chave = viagem.condutor_id !== null ? `c${viagem.condutor_id}` : `v${viagem.id}`;
+    const grupo = grupos.get(chave);
+    if (grupo) grupo.push(viagem);
+    else grupos.set(chave, [viagem]);
+  }
+  const lista = [...grupos.values()];
+  for (const grupo of lista) {
+    grupo.sort((a, b) => primeiraHora(a).localeCompare(primeiraHora(b)));
+  }
+  lista.sort((a, b) => primeiraHora(a[0]).localeCompare(primeiraHora(b[0])));
+  return lista;
+}
+
 export default function AgendamentoDiaPage() {
   const [data, setData] = useState(hoje());
+  const [periodo, setPeriodo] = useState<"Manha" | "Tarde">("Manha");
   const queryClient = useQueryClient();
 
   const { data: regioes } = useList<Regiao>("regioes", "/regioes");
@@ -136,6 +169,8 @@ export default function AgendamentoDiaPage() {
   }
 
   const viagens = viagensQuery.data ?? [];
+  const viagensDoPeriodo = viagens.filter((v) => periodoDaViagem(v) === periodo);
+  const gruposCondutor = agruparPorCondutor(viagensDoPeriodo);
 
   return (
     <div>
@@ -174,16 +209,31 @@ export default function AgendamentoDiaPage() {
         <button className="btn" onClick={() => setModalFerias(true)}>
           Ferias
         </button>
+
+        <div className="btn-group" style={{ marginLeft: "auto" }}>
+          <button
+            className={`btn btn-sm ${periodo === "Manha" ? "btn-group-ativo" : ""}`}
+            onClick={() => setPeriodo("Manha")}
+          >
+            Manha
+          </button>
+          <button
+            className={`btn btn-sm ${periodo === "Tarde" ? "btn-group-ativo" : ""}`}
+            onClick={() => setPeriodo("Tarde")}
+          >
+            Tarde
+          </button>
+        </div>
       </div>
 
       {viagensQuery.isLoading && <p>Carregando...</p>}
 
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <div className="board">
-          {viagens.map((viagem) => (
+          {gruposCondutor.map((grupo) => (
             <CarroCard
-              key={viagem.id}
-              viagem={viagem}
+              key={grupo[0].condutor_id !== null ? `c${grupo[0].condutor_id}` : `v${grupo[0].id}`}
+              viagens={grupo}
               empresas={empresas ?? []}
               veiculos={veiculos ?? []}
               condutores={condutores ?? []}

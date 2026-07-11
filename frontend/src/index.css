@@ -142,6 +142,31 @@ button {
   font-size: 0.75rem;
 }
 
+.btn-group {
+  display: flex;
+  border: 1px solid var(--cor-borda);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.btn-group .btn {
+  border: none;
+  border-radius: 0;
+}
+
+.btn-group .btn + .btn {
+  border-left: 1px solid var(--cor-borda);
+}
+
+.btn-group-ativo {
+  background: var(--cor-primaria);
+  color: white;
+}
+
+.btn-group-ativo:hover {
+  background: var(--cor-primaria-hover);
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -217,18 +242,12 @@ th {
   gap: 0.5rem;
 }
 
-.carro-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
+.carro-card > .titulo {
+  font-weight: 600;
   font-size: 0.85rem;
 }
 
-.carro-card-header .titulo {
-  font-weight: 600;
-}
-
-.carro-card-header .meta {
+.carro-card > .meta {
   color: var(--cor-texto-suave);
   font-size: 0.78rem;
 }
@@ -243,6 +262,26 @@ th {
   color: var(--cor-texto-suave);
   margin-bottom: 0.3rem;
   font-weight: 600;
+}
+
+.leg-block {
+  border-top: 1px dashed var(--cor-borda);
+  padding-top: 0.5rem;
+}
+
+.leg-block.leg-block-primeira {
+  border-top: none;
+  padding-top: 0;
+}
+
+.leg-block-header {
+  font-size: 0.85rem;
+  margin-bottom: 0.4rem;
+}
+
+.leg-block-header .meta {
+  color: var(--cor-texto-suave);
+  font-size: 0.78rem;
 }
 
 .passageiro-card {

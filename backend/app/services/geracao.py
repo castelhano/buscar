@@ -9,7 +9,9 @@ from app.models import (
     CondutorFerias,
     Empresa,
     Local,
+    PeriodoCondutor,
     Sentido,
+    StatusAtendimentoDia,
     StatusAtivoInativo,
     StatusCondutor,
     StatusVeiculo,
@@ -27,6 +29,18 @@ from app.services.dia import dia_semana_from_date
 from app.services.recursos import fim_viagem, janelas_sobrepoem
 
 TEMPO_SAIDA_GARAGEM_MINUTOS = 60
+CORTE_PERIODO_TARDE = dt.time(14, 0)
+
+
+def _periodo_da_hora(hora: dt.time) -> PeriodoCondutor:
+    """Ate 13:59 e Manha, a partir de 14:00 e Tarde."""
+    return PeriodoCondutor.TARDE if hora >= CORTE_PERIODO_TARDE else PeriodoCondutor.MANHA
+
+
+def _periodo_da_viagem(viagem: ViagemDia) -> PeriodoCondutor:
+    horas = [p.hora for p in viagem.passageiros if p.status != StatusAtendimentoDia.CANCELADO]
+    hora_referencia = min(horas) if horas else viagem.horario_saida
+    return _periodo_da_hora(hora_referencia)
 
 
 def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
@@ -268,7 +282,9 @@ def _atribuir_condutores(db: Session, viagens: list[ViagemDia], data: dt.date) -
     """Atribui condutor a cada viagem, priorizando quem foi usado ha mais tempo
     (rodizio entre dias), mas permitindo reaproveitar o mesmo condutor em
     carros do mesmo dia que nao se sobrepoem (ex: o mesmo condutor faz a
-    viagem das 06h00 e depois a das 07h00).
+    viagem das 06h00 e depois a das 07h00). So considera condutores do mesmo
+    periodo da viagem (`Condutor.periodo`, corte as 14h00) -- um condutor de
+    Manha nunca e escalado numa viagem de Tarde e vice-versa.
     """
     em_ferias = {
         f.condutor_id
@@ -295,13 +311,19 @@ def _proximo_condutor_livre(
     data: dt.date,
     viagem: ViagemDia,
 ) -> Condutor | None:
+    periodo = _periodo_da_viagem(viagem)
     candidatos = (
         db.query(Condutor)
-        .filter(Condutor.empresa_id.in_(empresa_ids), Condutor.status == StatusCondutor.ATIVO)
+        .filter(
+            Condutor.empresa_id.in_(empresa_ids),
+            Condutor.status == StatusCondutor.ATIVO,
+            Condutor.periodo == periodo,
+        )
         .all()
     )
     candidatos = [c for c in candidatos if c.id not in em_ferias]
     if not candidatos:
+        print(f"[geracao] viagem_id={viagem.id} regiao_id={viagem.regiao_id} periodo={periodo.value}: sem condutor {periodo.value} disponivel")
         return None
 
     inicio = viagem.horario_saida
@@ -315,8 +337,22 @@ def _proximo_condutor_livre(
                 return False
         return True
 
-    disponiveis = [c for c in candidatos if livre(c.id)]
+    def mesmo_veiculo_do_dia(condutor_id: int) -> bool:
+        """Um condutor so opera um unico veiculo por dia: se ja foi escalado
+        noutra viagem hoje, essa viagem precisa ser do mesmo veiculo."""
+        for outra in viagens:
+            if outra.id == viagem.id or outra.condutor_id != condutor_id:
+                continue
+            if outra.veiculo_id != viagem.veiculo_id:
+                return False
+        return True
+
+    disponiveis = [c for c in candidatos if livre(c.id) and mesmo_veiculo_do_dia(c.id)]
     if not disponiveis:
+        print(
+            f"[geracao] viagem_id={viagem.id} regiao_id={viagem.regiao_id} veiculo_id={viagem.veiculo_id}: "
+            "nenhum condutor livre com o mesmo veiculo do dia"
+        )
         return None
 
     if viagem.veiculo_id is not None:

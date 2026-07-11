@@ -42,11 +42,11 @@ export default function PassageiroCard({ viagemId, passageiro, onRemover, onCanc
       </button>
       <div className="linha-1">
         <span>{passageiro.usuario.abbr || passageiro.usuario.nome}</span>
-        <span>{passageiro.hora.slice(0, 5)}</span>
+        <span>
+          {passageiro.sentido} {passageiro.hora.slice(0, 5)}
+        </span>
       </div>
-      <div className="linha-2">
-        {passageiro.sentido} · {passageiro.destino_id ? "destino cadastrado" : passageiro.origem ?? "-"}
-      </div>
+      <div className="linha-2">{passageiro.destino_id ? "destino cadastrado" : passageiro.origem ?? "-"}</div>
       {passageiro.irregular && (
         <div className="linha-2" title={passageiro.motivo_irregular ?? ""} style={{ color: "var(--cor-alerta-borda)", fontWeight: 600 }}>
           ⚠ {passageiro.motivo_irregular}

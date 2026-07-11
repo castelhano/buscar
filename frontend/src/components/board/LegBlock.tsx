@@ -1,0 +1,88 @@
+import { useDroppable } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import type { ViagemDia, ViagemDiaPassageiro } from "../../api/types";
+import PassageiroCard from "./PassageiroCard";
+
+interface Props {
+  viagem: ViagemDia;
+  isPrimeira: boolean;
+  onAdicionarPassageiro: (viagemId: number) => void;
+  onRemoverPassageiro: (id: number) => void;
+  onCancelarPassageiro: (id: number) => void;
+  onEditarPassageiro: (passageiro: ViagemDiaPassageiro) => void;
+  onAtribuir: (viagemId: number) => void;
+  onRemoverCarro: (viagemId: number) => void;
+}
+
+export default function LegBlock({
+  viagem,
+  isPrimeira,
+  onAdicionarPassageiro,
+  onRemoverPassageiro,
+  onCancelarPassageiro,
+  onEditarPassageiro,
+  onAtribuir,
+  onRemoverCarro,
+}: Props) {
+  const { setNodeRef, isOver } = useDroppable({ id: `carro-${viagem.id}`, data: { viagemId: viagem.id } });
+
+  const passageirosOrdenados = [...viagem.passageiros].sort((a, b) => a.hora.localeCompare(b.hora) || a.ordem - b.ordem);
+  const primeiro = passageirosOrdenados[0];
+  const labelHorario = primeiro ? `${primeiro.sentido} · ${primeiro.hora.slice(0, 5)}` : viagem.horario_saida.slice(0, 5);
+
+  const avisos: string[] = [];
+  if (viagem.condutor_em_ferias) avisos.push("Condutor em ferias nessa data");
+  if (viagem.conflito_horario) avisos.push(viagem.motivo_conflito_horario ?? "Conflito de horario");
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`leg-block ${isPrimeira ? "leg-block-primeira" : ""}`}
+      style={{ outline: isOver ? "2px solid var(--cor-primaria)" : "none" }}
+    >
+      <div className="leg-block-header">
+        <div className="horario-grupo-label">{labelHorario}</div>
+        <div className="meta">
+          Saida {viagem.horario_saida.slice(0, 5)} · cap. {viagem.capacidade}
+          {viagem.status !== "Planejada" && <span className="tag" style={{ marginLeft: "0.4rem" }}>{viagem.status}</span>}
+        </div>
+        {avisos.map((aviso) => (
+          <div
+            key={aviso}
+            style={{ color: "var(--cor-alerta-borda)", fontWeight: 600, fontSize: "0.78rem", marginTop: "0.2rem" }}
+            title={aviso}
+          >
+            ⚠ {aviso}
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.3rem" }}>
+          <button className="btn btn-sm" onClick={() => onAtribuir(viagem.id)}>
+            Condutor/veiculo
+          </button>
+          {viagem.passageiros.length === 0 && (
+            <button className="btn btn-sm btn-perigo" onClick={() => onRemoverCarro(viagem.id)}>
+              Remover carro
+            </button>
+          )}
+        </div>
+      </div>
+
+      <SortableContext items={passageirosOrdenados.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+        {passageirosOrdenados.map((p) => (
+          <PassageiroCard
+            key={p.id}
+            viagemId={viagem.id}
+            passageiro={p}
+            onRemover={onRemoverPassageiro}
+            onCancelar={onCancelarPassageiro}
+            onEditar={onEditarPassageiro}
+          />
+        ))}
+      </SortableContext>
+
+      <button className="carro-card-add" onClick={() => onAdicionarPassageiro(viagem.id)}>
+        + adicionar passageiro
+      </button>
+    </div>
+  );
+}
