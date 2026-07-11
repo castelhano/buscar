@@ -314,7 +314,10 @@ class ViagemDia(Base):
     empresa: Mapped["Empresa | None"] = relationship()
     condutor: Mapped["Condutor | None"] = relationship()
     veiculo: Mapped["Veiculo | None"] = relationship()
-    passageiros: Mapped[list["ViagemDiaPassageiro"]] = relationship(back_populates="viagem_dia")
+    passageiros: Mapped[list["ViagemDiaPassageiro"]] = relationship(
+        back_populates="viagem_dia",
+        order_by="ViagemDiaPassageiro.hora, ViagemDiaPassageiro.ordem",
+    )
 
     __table_args__ = (
         CheckConstraint("capacidade > 0", name="ck_viagem_dia_capacidade"),

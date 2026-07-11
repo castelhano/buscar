@@ -151,14 +151,16 @@ export default function AgendamentoDiaPage() {
     const carroDestino = viagens.find((v) => v.id === destinoViagemId);
     if (!carroDestino) return;
 
-    let novaOrdem = carroDestino.passageiros.length;
-    if (overData?.passageiroId !== undefined) {
-      const idx = carroDestino.passageiros.findIndex((p) => p.id === overData.passageiroId);
-      if (idx >= 0) novaOrdem = idx;
-    }
+    if (activeData.passageiroId === overData?.passageiroId) return; // solto em cima de si mesmo
 
-    if (destinoViagemId === activeData.viagemId && novaOrdem === carroDestino.passageiros.findIndex((p) => p.id === activeData.passageiroId)) {
-      return; // sem mudanca real
+    // posicao alvo calculada sobre a lista SEM o passageiro ativo, pra bater
+    // certinho com o reindex que o backend faz (evita off-by-one quando
+    // reordena dentro da mesma leva, empurrando o ativo pra frente)
+    const semAtivo = carroDestino.passageiros.filter((p) => p.id !== activeData.passageiroId);
+    let novaOrdem = semAtivo.length;
+    if (overData?.passageiroId !== undefined) {
+      const idx = semAtivo.findIndex((p) => p.id === overData.passageiroId);
+      if (idx >= 0) novaOrdem = idx;
     }
 
     moverPassageiro.mutate(

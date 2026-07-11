@@ -240,12 +240,42 @@ def atualizar_passageiro(passageiro_id: int, payload: schemas.ViagemDiaPassageir
 
 @router.patch("/passageiros/{passageiro_id}/mover", response_model=schemas.ViagemDiaRead)
 def mover_passageiro(passageiro_id: int, payload: schemas.ViagemDiaPassageiroMover, db: Session = Depends(get_db)):
+    """Move um passageiro pra outra viagem (ou reordena dentro da mesma).
+
+    O grupo de horario (a viagem/leg de destino) e quem manda: se o destino ja
+    tem gente, o passageiro movido adota a hora/sentido de quem ja esta la
+    (nao o contrario -- arrastar alguem de 06h00 pro grupo das 07h00 deve
+    deixar esse alguem as 07h00, sem alterar o rotulo do grupo). Tambem
+    reindexa o `ordem` de todo mundo no destino na posicao alvo, pra
+    persistir a sequencia visual (drag dentro da mesma leva reordena so).
+    """
     passageiro = _get_passageiro_ou_404(db, passageiro_id)
     _get_viagem_ou_404(db, payload.viagem_dia_destino_id)
-    _verificar_conflito(db, payload.viagem_dia_destino_id, passageiro.usuario_id, passageiro.sentido, passageiro.id)
+
+    irmaos = (
+        db.query(models.ViagemDiaPassageiro)
+        .filter(
+            models.ViagemDiaPassageiro.viagem_dia_id == payload.viagem_dia_destino_id,
+            models.ViagemDiaPassageiro.id != passageiro_id,
+        )
+        .order_by(models.ViagemDiaPassageiro.hora, models.ViagemDiaPassageiro.ordem)
+        .all()
+    )
+    referencia = irmaos[0] if irmaos else None
+    sentido_destino = referencia.sentido if referencia else passageiro.sentido
+
+    _verificar_conflito(db, payload.viagem_dia_destino_id, passageiro.usuario_id, sentido_destino, passageiro.id)
+
+    if referencia is not None:
+        passageiro.hora = referencia.hora
+        passageiro.sentido = referencia.sentido
     passageiro.viagem_dia_id = payload.viagem_dia_destino_id
-    if payload.ordem is not None:
-        passageiro.ordem = payload.ordem
+
+    posicao = len(irmaos) if payload.ordem is None else max(0, min(payload.ordem, len(irmaos)))
+    irmaos.insert(posicao, passageiro)
+    for indice, p in enumerate(irmaos):
+        p.ordem = indice
+
     db.commit()
     viagem = _get_viagem_ou_404(db, payload.viagem_dia_destino_id)
     return _serializar_viagem(db, viagem)
