@@ -47,6 +47,9 @@ app.add_middleware(
     allow_origins=_origens,
     allow_methods=["*"],
     allow_headers=["*"],
+    # sem isso o fetch() do frontend nao consegue ler Content-Disposition
+    # (downloads autenticados precisam do header pra nomear o arquivo).
+    expose_headers=["Content-Disposition"],
 )
 
 app.include_router(auth.router)

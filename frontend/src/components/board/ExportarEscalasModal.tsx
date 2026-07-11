@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api } from "../../api/client";
+import { api, ApiError } from "../../api/client";
 import { useList } from "../../api/hooks";
 import type { Condutor } from "../../api/types";
 import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
@@ -15,22 +15,30 @@ export default function ExportarEscalasModal({ onFechar }: Props) {
   const [fim, setFim] = useState("");
   const [formato, setFormato] = useState<"pdf" | "csv">("csv");
   const [condutorId, setCondutorId] = useState<number | "">("");
+  const [erro, setErro] = useState<string | null>(null);
 
   function exportar() {
     if (!inicio || !fim) return;
-    const url = api.downloadUrl("/frequencia/escalas/exportar", {
-      inicio,
-      fim,
-      formato,
-      condutor_id: condutorId === "" ? undefined : condutorId,
-    });
-    window.open(url, "_blank");
+    setErro(null);
+    api
+      .download("/frequencia/escalas/exportar", {
+        inicio,
+        fim,
+        formato,
+        condutor_id: condutorId === "" ? undefined : condutorId,
+      })
+      .catch((e: unknown) => setErro(e instanceof ApiError ? String(e.detail) : "Erro ao exportar escalas"));
   }
 
   return (
     <div className="modal-fundo" onClick={onFechar}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>Exportar escalas</h3>
+        {erro && (
+          <div className="erro-box" onClick={() => setErro(null)} style={{ cursor: "pointer" }}>
+            {erro} (clique para fechar)
+          </div>
+        )}
         <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
           <div className="campo">
             <label>Periodo - inicio</label>

@@ -25,6 +25,20 @@ function buildUrl(path: string, params?: Record<string, string | number | boolea
   return url.toString();
 }
 
+async function lancarSeErro(response: Response, path: string): Promise<never> {
+  let detail: unknown = response.statusText;
+  try {
+    const data = await response.json();
+    detail = data.detail ?? data;
+  } catch {
+    // resposta sem corpo JSON (ex: 500 generico)
+  }
+  if (response.status === 401 && path !== "/auth/login") {
+    notifyUnauthorized();
+  }
+  throw new ApiError(response.status, detail);
+}
+
 async function request<T>(
   method: string,
   path: string,
@@ -42,23 +56,40 @@ async function request<T>(
   });
 
   if (!response.ok) {
-    let detail: unknown = response.statusText;
-    try {
-      const data = await response.json();
-      detail = data.detail ?? data;
-    } catch {
-      // resposta sem corpo JSON (ex: 500 generico)
-    }
-    if (response.status === 401 && path !== "/auth/login") {
-      notifyUnauthorized();
-    }
-    throw new ApiError(response.status, detail);
+    await lancarSeErro(response, path);
   }
 
   if (response.status === 204) {
     return undefined as T;
   }
   return (await response.json()) as T;
+}
+
+// Downloads (zip/pdf/csv) precisam do header Authorization, entao nao podem
+// ser um <a href> ou window.open puro -- baixa via fetch autenticado e
+// aciona o download do arquivo pelo navegador manualmente.
+async function download(path: string, params?: Record<string, string | number | boolean | undefined>): Promise<void> {
+  const token = getToken();
+  const response = await fetch(buildUrl(path, params), {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+
+  if (!response.ok) {
+    await lancarSeErro(response, path);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const nomeArquivo = /filename="?([^"]+)"?/.exec(disposition)?.[1] ?? "download";
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = nomeArquivo;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export const api = {
@@ -71,6 +102,5 @@ export const api = {
     request<T>("PATCH", path, { body, params }),
   delete: <T>(path: string, params?: Record<string, string | number | boolean | undefined>) =>
     request<T>("DELETE", path, { params }),
-  downloadUrl: (path: string, params?: Record<string, string | number | boolean | undefined>) =>
-    buildUrl(path, params),
+  download,
 };

@@ -258,30 +258,32 @@ export default function AgendamentoDiaPage() {
         <button className="btn" onClick={() => setModalAbrirCarro(true)}>
           + Abrir carro
         </button>
-        <a
+        <button
           className="btn"
-          href={api.downloadUrl("/viagens/agendamentos/zip", { data })}
-          target="_blank"
-          rel="noreferrer"
-          style={{ textDecoration: "none" }}
+          onClick={() =>
+            api
+              .download("/viagens/agendamentos/zip", { data })
+              .catch((e: unknown) => setErro(mensagemErro(e, "Erro ao baixar agendamentos")))
+          }
         >
           Agendamentos (zip)
-        </a>
+        </button>
         <button className="btn" onClick={() => setModalEscalas(true)}>
           Exportar escalas
         </button>
         <button className="btn" onClick={() => setModalFerias(true)}>
           Ferias
         </button>
-        <a
+        <button
           className="btn"
-          href={api.downloadUrl("/viagens/agendamentos/resumo", { data })}
-          target="_blank"
-          rel="noreferrer"
-          style={{ textDecoration: "none" }}
+          onClick={() =>
+            api
+              .download("/viagens/agendamentos/resumo", { data })
+              .catch((e: unknown) => setErro(mensagemErro(e, "Erro ao baixar resumo")))
+          }
         >
           Resumo
-        </a>
+        </button>
 
         <div className="btn-group" style={{ marginLeft: "auto" }}>
           <button
