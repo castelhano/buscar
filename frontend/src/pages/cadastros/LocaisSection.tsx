@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useCreate, useList, useRemove, useUpdate } from "../../api/hooks";
 import type { Local, Regiao, TipoLocal } from "../../api/types";
+import ConfirmarModal from "../../components/board/ConfirmarModal";
 
 const TIPOS: TipoLocal[] = ["Escola", "Fisioterapia", "Equoterapia", "Trabalho", "Hemodialise", "Outros"];
 
@@ -22,6 +23,8 @@ export default function LocaisSection() {
 
   const [form, setForm] = useState<FormState>(vazio);
   const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [removendoId, setRemovendoId] = useState<number | null>(null);
+  const [erroRemocao, setErroRemocao] = useState<string | null>(null);
 
   function payload() {
     return { nome: form.nome, tipo: form.tipo, regiao_id: form.regiao_id, observacao: form.observacao || null };
@@ -53,6 +56,11 @@ export default function LocaisSection() {
   return (
     <div>
       {error && <div className="erro-box">Erro ao carregar locais.</div>}
+      {erroRemocao && (
+        <div className="erro-box" onClick={() => setErroRemocao(null)} style={{ cursor: "pointer" }}>
+          {erroRemocao} (clique para fechar)
+        </div>
+      )}
       <div className="linha-toolbar">
         <div className="campo">
           <label>Nome</label>
@@ -116,7 +124,7 @@ export default function LocaisSection() {
                 <button className="btn btn-sm" onClick={() => editar(l)}>
                   Editar
                 </button>{" "}
-                <button className="btn btn-sm btn-perigo" onClick={() => remover.mutate(l.id)}>
+                <button className="btn btn-sm btn-perigo" onClick={() => setRemovendoId(l.id)}>
                   Remover
                 </button>
               </td>
@@ -124,6 +132,22 @@ export default function LocaisSection() {
           ))}
         </tbody>
       </table>
+      {removendoId !== null && (
+        <ConfirmarModal
+          titulo="Remover local"
+          mensagem="Remover este local? Essa acao nao pode ser desfeita."
+          onFechar={() => setRemovendoId(null)}
+          onConfirmar={() =>
+            remover.mutate(removendoId, {
+              onSuccess: () => setRemovendoId(null),
+              onError: (err: unknown) => {
+                setErroRemocao(err instanceof Error ? err.message : "Erro ao remover local");
+                setRemovendoId(null);
+              },
+            })
+          }
+        />
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useCreate, useList, useRemove, useUpdate } from "../../api/hooks";
 import type { Empresa, Regiao } from "../../api/types";
+import ConfirmarModal from "../../components/board/ConfirmarModal";
 
 interface FormState {
   nome: string;
@@ -18,6 +19,8 @@ export default function EmpresasSection() {
 
   const [form, setForm] = useState<FormState>(vazio);
   const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [removendoId, setRemovendoId] = useState<number | null>(null);
+  const [erroRemocao, setErroRemocao] = useState<string | null>(null);
 
   function alternarRegiao(id: number) {
     setForm((f) => ({
@@ -48,6 +51,11 @@ export default function EmpresasSection() {
   return (
     <div>
       {error && <div className="erro-box">Erro ao carregar empresas.</div>}
+      {erroRemocao && (
+        <div className="erro-box" onClick={() => setErroRemocao(null)} style={{ cursor: "pointer" }}>
+          {erroRemocao} (clique para fechar)
+        </div>
+      )}
       <div className="linha-toolbar" style={{ alignItems: "flex-start" }}>
         <div className="campo">
           <label>Nome</label>
@@ -90,7 +98,7 @@ export default function EmpresasSection() {
                 <button className="btn btn-sm" onClick={() => editar(e)}>
                   Editar
                 </button>{" "}
-                <button className="btn btn-sm btn-perigo" onClick={() => remover.mutate(e.id)}>
+                <button className="btn btn-sm btn-perigo" onClick={() => setRemovendoId(e.id)}>
                   Remover
                 </button>
               </td>
@@ -98,6 +106,22 @@ export default function EmpresasSection() {
           ))}
         </tbody>
       </table>
+      {removendoId !== null && (
+        <ConfirmarModal
+          titulo="Remover empresa"
+          mensagem="Remover esta empresa? Essa acao nao pode ser desfeita."
+          onFechar={() => setRemovendoId(null)}
+          onConfirmar={() =>
+            remover.mutate(removendoId, {
+              onSuccess: () => setRemovendoId(null),
+              onError: (err: unknown) => {
+                setErroRemocao(err instanceof Error ? err.message : "Erro ao remover empresa");
+                setRemovendoId(null);
+              },
+            })
+          }
+        />
+      )}
     </div>
   );
 }

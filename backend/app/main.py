@@ -1,7 +1,9 @@
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 
 from app.routers import frequencia, usuarios, viagens
 from app.routers.cadastros import (
@@ -15,6 +17,27 @@ from app.routers.cadastros import (
 )
 
 app = FastAPI(title="Buscar - Agendamento de Transporte")
+
+
+def _mensagem_integridade(exc: IntegrityError) -> str:
+    """Traduz a mensagem crua do sqlite3 (FK/UNIQUE/CHECK) numa mensagem
+    apresentavel, sem precisar de tratamento manual em cada endpoint.
+    """
+    origem = str(getattr(exc, "orig", exc))
+    if "FOREIGN KEY constraint failed" in origem or "NOT NULL constraint failed" in origem:
+        # SQLAlchemy tenta anular a FK do filho ao deletar o pai (sem cascade
+        # configurado); como a coluna e NOT NULL, o sqlite recusa a UPDATE.
+        return "Nao e possivel concluir a operacao: existem registros vinculados a este item."
+    if "UNIQUE constraint failed" in origem:
+        return "Ja existe um registro com esses mesmos valores."
+    if "CHECK constraint failed" in origem:
+        return "Os valores informados nao atendem as regras de validacao."
+    return "A operacao viola uma regra de integridade do banco de dados."
+
+
+@app.exception_handler(IntegrityError)
+def _handle_integrity_error(request: Request, exc: IntegrityError) -> JSONResponse:
+    return JSONResponse(status_code=409, content={"detail": _mensagem_integridade(exc)})
 
 _origens_padrao = "http://localhost:5173,http://127.0.0.1:5173"
 _origens = os.environ.get("BUSCAR_CORS_ORIGINS", _origens_padrao).split(",")

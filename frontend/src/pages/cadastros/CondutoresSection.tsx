@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useCreate, useList, useRemove, useUpdate } from "../../api/hooks";
 import type { Condutor, Empresa, PeriodoCondutor, StatusCondutor, Veiculo } from "../../api/types";
+import ConfirmarModal from "../../components/board/ConfirmarModal";
 
 const STATUS: StatusCondutor[] = ["Ativo", "Desligado", "Afastado"];
 const PERIODOS: PeriodoCondutor[] = ["Manha", "Tarde"];
@@ -35,6 +36,8 @@ export default function CondutoresSection() {
 
   const [form, setForm] = useState<FormState>(vazio);
   const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [removendoId, setRemovendoId] = useState<number | null>(null);
+  const [erroRemocao, setErroRemocao] = useState<string | null>(null);
 
   function payload(f: FormState) {
     return {
@@ -84,6 +87,11 @@ export default function CondutoresSection() {
   return (
     <div>
       {error && <div className="erro-box">Erro ao carregar condutores.</div>}
+      {erroRemocao && (
+        <div className="erro-box" onClick={() => setErroRemocao(null)} style={{ cursor: "pointer" }}>
+          {erroRemocao} (clique para fechar)
+        </div>
+      )}
       <div className="linha-toolbar">
         <div className="campo">
           <label>Empresa</label>
@@ -181,7 +189,7 @@ export default function CondutoresSection() {
                 <button className="btn btn-sm" onClick={() => editar(c)}>
                   Editar
                 </button>{" "}
-                <button className="btn btn-sm btn-perigo" onClick={() => remover.mutate(c.id)}>
+                <button className="btn btn-sm btn-perigo" onClick={() => setRemovendoId(c.id)}>
                   Remover
                 </button>
               </td>
@@ -189,6 +197,22 @@ export default function CondutoresSection() {
           ))}
         </tbody>
       </table>
+      {removendoId !== null && (
+        <ConfirmarModal
+          titulo="Remover condutor"
+          mensagem="Remover este condutor? Essa acao nao pode ser desfeita."
+          onFechar={() => setRemovendoId(null)}
+          onConfirmar={() =>
+            remover.mutate(removendoId, {
+              onSuccess: () => setRemovendoId(null),
+              onError: (err: unknown) => {
+                setErroRemocao(err instanceof Error ? err.message : "Erro ao remover condutor");
+                setRemovendoId(null);
+              },
+            })
+          }
+        />
+      )}
     </div>
   );
 }

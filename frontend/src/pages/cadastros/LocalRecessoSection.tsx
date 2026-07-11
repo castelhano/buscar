@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useCreate, useList, useRemove, useUpdate } from "../../api/hooks";
 import type { Local, LocalRecesso } from "../../api/types";
+import ConfirmarModal from "../../components/board/ConfirmarModal";
 
 interface FormState {
   local_id: number | "";
@@ -20,6 +21,8 @@ export default function LocalRecessoSection() {
 
   const [form, setForm] = useState<FormState>(vazio);
   const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [removendoId, setRemovendoId] = useState<number | null>(null);
+  const [erroRemocao, setErroRemocao] = useState<string | null>(null);
 
   function payload() {
     return { local_id: form.local_id, data_inicio: form.data_inicio, data_fim: form.data_fim, observacao: form.observacao || null };
@@ -55,6 +58,11 @@ export default function LocalRecessoSection() {
         agendados nesse intervalo.
       </p>
       {error && <div className="erro-box">Erro ao carregar recessos.</div>}
+      {erroRemocao && (
+        <div className="erro-box" onClick={() => setErroRemocao(null)} style={{ cursor: "pointer" }}>
+          {erroRemocao} (clique para fechar)
+        </div>
+      )}
       <div className="linha-toolbar">
         <div className="campo">
           <label>Local</label>
@@ -109,7 +117,7 @@ export default function LocalRecessoSection() {
                 <button className="btn btn-sm" onClick={() => editar(r)}>
                   Editar
                 </button>{" "}
-                <button className="btn btn-sm btn-perigo" onClick={() => remover.mutate(r.id)}>
+                <button className="btn btn-sm btn-perigo" onClick={() => setRemovendoId(r.id)}>
                   Remover
                 </button>
               </td>
@@ -117,6 +125,22 @@ export default function LocalRecessoSection() {
           ))}
         </tbody>
       </table>
+      {removendoId !== null && (
+        <ConfirmarModal
+          titulo="Remover recesso"
+          mensagem="Remover este periodo de recesso? Essa acao nao pode ser desfeita."
+          onFechar={() => setRemovendoId(null)}
+          onConfirmar={() =>
+            remover.mutate(removendoId, {
+              onSuccess: () => setRemovendoId(null),
+              onError: (err: unknown) => {
+                setErroRemocao(err instanceof Error ? err.message : "Erro ao remover recesso");
+                setRemovendoId(null);
+              },
+            })
+          }
+        />
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useCreate, useList, useUpdate } from "../api/hooks";
 import type { Local, Regiao, StatusAtivoInativo, Usuario, UsuarioComAgenda } from "../api/types";
@@ -41,9 +41,15 @@ export default function UsuariosPage() {
   });
 
   const [basico, setBasico] = useState<FormState>(vazio);
+  const queryClient = useQueryClient();
 
+  // So resincroniza o formulario quando o usuario selecionado MUDA, nao a
+  // cada refetch de ["usuario", id] -- salvar a agenda semanal ou uma
+  // excecao invalida essa mesma query e sobrescrevia edicoes pendentes aqui.
+  const usuarioSincronizadoRef = useRef<number | null>(null);
   useEffect(() => {
-    if (detalhe.data) {
+    if (detalhe.data && usuarioSincronizadoRef.current !== detalhe.data.id) {
+      usuarioSincronizadoRef.current = detalhe.data.id;
       setBasico({
         nome: detalhe.data.nome,
         abbr: detalhe.data.abbr,
@@ -79,10 +85,13 @@ export default function UsuariosPage() {
 
   function salvarEdicaoBasica() {
     if (!detalhe.data) return;
-    atualizar.mutate({
-      id: detalhe.data.id,
-      body: { nome: basico.nome, abbr: basico.abbr, status: basico.status, detalhe: basico.detalhe || null },
-    });
+    atualizar.mutate(
+      {
+        id: detalhe.data.id,
+        body: { nome: basico.nome, abbr: basico.abbr, status: basico.status, detalhe: basico.detalhe || null },
+      },
+      { onSuccess: () => queryClient.invalidateQueries({ queryKey: ["usuario", detalhe.data!.id] }) },
+    );
   }
 
   return (

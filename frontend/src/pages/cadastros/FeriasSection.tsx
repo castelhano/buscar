@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useCreate, useList, useRemove, useUpdate } from "../../api/hooks";
 import type { Condutor, CondutorFerias } from "../../api/types";
+import ConfirmarModal from "../../components/board/ConfirmarModal";
 
 interface FormState {
   condutor_id: number | "";
@@ -20,6 +21,8 @@ export default function FeriasSection() {
 
   const [form, setForm] = useState<FormState>(vazio);
   const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [removendoId, setRemovendoId] = useState<number | null>(null);
+  const [erroRemocao, setErroRemocao] = useState<string | null>(null);
 
   function payload() {
     return { condutor_id: form.condutor_id, data_inicio: form.data_inicio, data_fim: form.data_fim, observacao: form.observacao || null };
@@ -51,6 +54,11 @@ export default function FeriasSection() {
   return (
     <div>
       {error && <div className="erro-box">Erro ao carregar ferias.</div>}
+      {erroRemocao && (
+        <div className="erro-box" onClick={() => setErroRemocao(null)} style={{ cursor: "pointer" }}>
+          {erroRemocao} (clique para fechar)
+        </div>
+      )}
       <div className="linha-toolbar">
         <div className="campo">
           <label>Condutor</label>
@@ -105,7 +113,7 @@ export default function FeriasSection() {
                 <button className="btn btn-sm" onClick={() => editar(f)}>
                   Editar
                 </button>{" "}
-                <button className="btn btn-sm btn-perigo" onClick={() => remover.mutate(f.id)}>
+                <button className="btn btn-sm btn-perigo" onClick={() => setRemovendoId(f.id)}>
                   Remover
                 </button>
               </td>
@@ -113,6 +121,22 @@ export default function FeriasSection() {
           ))}
         </tbody>
       </table>
+      {removendoId !== null && (
+        <ConfirmarModal
+          titulo="Remover ferias"
+          mensagem="Remover este periodo de ferias? Essa acao nao pode ser desfeita."
+          onFechar={() => setRemovendoId(null)}
+          onConfirmar={() =>
+            remover.mutate(removendoId, {
+              onSuccess: () => setRemovendoId(null),
+              onError: (err: unknown) => {
+                setErroRemocao(err instanceof Error ? err.message : "Erro ao remover ferias");
+                setRemovendoId(null);
+              },
+            })
+          }
+        />
+      )}
     </div>
   );
 }

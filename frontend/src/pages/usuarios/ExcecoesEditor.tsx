@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import type { Local, Regiao, UsuarioExcecao } from "../../api/types";
 
@@ -35,28 +35,46 @@ const vazio: FormState = {
 export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais }: Props) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<FormState>(vazio);
+  const [erro, setErro] = useState<string | null>(null);
   const chaveDetalhe = ["usuario", usuarioId];
 
-  async function adicionar() {
-    if (!form.data) return;
-    await api.post(`/usuarios/${usuarioId}/excecoes`, {
-      data: form.data,
-      suspenso: form.suspenso,
-      saida: form.suspenso ? null : form.saida || null,
-      retorno: form.suspenso ? null : form.retorno || null,
-      origem: form.suspenso ? null : form.origem || null,
-      regiao_origem_id: form.suspenso || form.regiao_origem_id === "" ? null : form.regiao_origem_id,
-      destino_id: form.suspenso || form.destino_id === "" ? null : form.destino_id,
-      motivo: form.motivo || null,
-    });
-    await queryClient.invalidateQueries({ queryKey: chaveDetalhe });
-    setForm(vazio);
+  function mensagemErro(e: unknown, fallback: string): string {
+    return e instanceof Error ? e.message : fallback;
   }
 
-  async function remover(id: number) {
-    await api.delete(`/usuarios/${usuarioId}/excecoes/${id}`);
-    await queryClient.invalidateQueries({ queryKey: chaveDetalhe });
+  const adicionarMutation = useMutation({
+    mutationFn: () =>
+      api.post(`/usuarios/${usuarioId}/excecoes`, {
+        data: form.data,
+        suspenso: form.suspenso,
+        saida: form.suspenso ? null : form.saida || null,
+        retorno: form.suspenso ? null : form.retorno || null,
+        origem: form.suspenso ? null : form.origem || null,
+        regiao_origem_id: form.suspenso || form.regiao_origem_id === "" ? null : form.regiao_origem_id,
+        destino_id: form.suspenso || form.destino_id === "" ? null : form.destino_id,
+        motivo: form.motivo || null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chaveDetalhe });
+      setForm(vazio);
+      setErro(null);
+    },
+    onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao adicionar excecao")),
+  });
+
+  function adicionar() {
+    if (!form.data) return;
+    adicionarMutation.mutate();
   }
+
+  const removerMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/usuarios/${usuarioId}/excecoes/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chaveDetalhe });
+      setErro(null);
+    },
+    onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao remover excecao")),
+  });
 
   return (
     <div>
@@ -100,10 +118,15 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais }:
           </>
         )}
         <input placeholder="Motivo" value={form.motivo} onChange={(e) => setForm({ ...form, motivo: e.target.value })} />
-        <button className="btn btn-primario" onClick={adicionar}>
+        <button className="btn btn-primario" onClick={adicionar} disabled={adicionarMutation.isPending}>
           Adicionar
         </button>
       </div>
+      {erro && (
+        <div className="erro-box" onClick={() => setErro(null)} style={{ cursor: "pointer" }}>
+          {erro} (clique para fechar)
+        </div>
+      )}
       <table>
         <thead>
           <tr>
@@ -120,7 +143,7 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais }:
               <td>{e.suspenso ? <span className="tag tag-inativo">Suspenso</span> : `${e.saida ?? "-"} / ${e.retorno ?? "-"}`}</td>
               <td>{e.motivo ?? "-"}</td>
               <td>
-                <button className="btn btn-sm btn-perigo" onClick={() => remover(e.id)}>
+                <button className="btn btn-sm btn-perigo" onClick={() => removerMutation.mutate(e.id)} disabled={removerMutation.isPending}>
                   Remover
                 </button>
               </td>

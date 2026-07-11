@@ -138,6 +138,16 @@ def _serializar_viagem(db: Session, viagem: models.ViagemDia) -> schemas.ViagemD
     )
 
 
+def _serializar_passageiro_orfao(passageiro: models.ViagemDiaPassageiro) -> schemas.ViagemDiaPassageiroRead:
+    """Serializa um passageiro sem viagem_dia_id (orfao/sem vaga), mesmo formato
+    usado em /sem-vaga, em vez de devolver null (200 com corpo vazio confundia
+    o cliente, que esperava sempre o mesmo formato de objeto).
+    """
+    return schemas.ViagemDiaPassageiroRead.model_validate(passageiro).model_copy(
+        update={"irregular": False, "motivo_irregular": None}
+    )
+
+
 def _query_viagens(db: Session, data: dt.date):
     return (
         db.query(models.ViagemDia)
@@ -250,7 +260,7 @@ def adicionar_passageiro(viagem_id: int, payload: schemas.ViagemDiaPassageiroCre
     return _serializar_viagem(db, viagem)
 
 
-@router.patch("/passageiros/{passageiro_id}", response_model=schemas.ViagemDiaRead | None)
+@router.patch("/passageiros/{passageiro_id}", response_model=schemas.ViagemDiaRead | schemas.ViagemDiaPassageiroRead)
 def atualizar_passageiro(passageiro_id: int, payload: schemas.ViagemDiaPassageiroAtualizar, db: Session = Depends(get_db)):
     passageiro = _get_passageiro_ou_404(db, passageiro_id)
     dados = payload.model_dump(exclude_unset=True)
@@ -260,7 +270,7 @@ def atualizar_passageiro(passageiro_id: int, payload: schemas.ViagemDiaPassageir
         setattr(passageiro, campo, valor)
     db.commit()
     if passageiro.viagem_dia_id is None:
-        return None  # orfao (sem vaga) -- nao ha viagem pra serializar
+        return _serializar_passageiro_orfao(passageiro)  # orfao (sem vaga) -- nao ha viagem pra serializar
     viagem = _get_viagem_ou_404(db, passageiro.viagem_dia_id)
     return _serializar_viagem(db, viagem)
 
@@ -309,7 +319,7 @@ def mover_passageiro(passageiro_id: int, payload: schemas.ViagemDiaPassageiroMov
     return _serializar_viagem(db, viagem)
 
 
-@router.patch("/passageiros/{passageiro_id}/status", response_model=schemas.ViagemDiaRead | None)
+@router.patch("/passageiros/{passageiro_id}/status", response_model=schemas.ViagemDiaRead | schemas.ViagemDiaPassageiroRead)
 def alterar_status_passageiro(
     passageiro_id: int, status: models.StatusAtendimentoDia, observacoes: str | None = None, db: Session = Depends(get_db)
 ):
@@ -319,19 +329,20 @@ def alterar_status_passageiro(
         passageiro.observacoes = observacoes
     db.commit()
     if passageiro.viagem_dia_id is None:
-        return None  # orfao (sem vaga) -- nao ha viagem pra serializar
+        return _serializar_passageiro_orfao(passageiro)  # orfao (sem vaga) -- nao ha viagem pra serializar
     viagem = _get_viagem_ou_404(db, passageiro.viagem_dia_id)
     return _serializar_viagem(db, viagem)
 
 
-@router.delete("/passageiros/{passageiro_id}", response_model=schemas.ViagemDiaRead | None)
+@router.delete("/passageiros/{passageiro_id}", response_model=schemas.ViagemDiaRead | schemas.ViagemDiaPassageiroRead)
 def remover_passageiro(passageiro_id: int, db: Session = Depends(get_db)):
     passageiro = _get_passageiro_ou_404(db, passageiro_id)
     viagem_id = passageiro.viagem_dia_id
+    dados_orfao = _serializar_passageiro_orfao(passageiro) if viagem_id is None else None
     db.delete(passageiro)
     db.commit()
     if viagem_id is None:
-        return None  # orfao (sem vaga) -- nao ha viagem pra serializar
+        return dados_orfao  # orfao (sem vaga) -- nao ha viagem pra serializar
     viagem = _get_viagem_ou_404(db, viagem_id)
     return _serializar_viagem(db, viagem)
 

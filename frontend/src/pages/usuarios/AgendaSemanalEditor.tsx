@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { api } from "../../api/client";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { DIAS_SEMANA, DIAS_SEMANA_LABEL } from "../../api/types";
 import type { DiaSemana, Local, Modalidade, Regiao, TipoAtendimento, UsuarioAgendaSemanal } from "../../api/types";
 
@@ -50,8 +50,13 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
   const queryClient = useQueryClient();
   const [edicao, setEdicao] = useState<Edicao | null>(null);
   const [form, setForm] = useState<FormState>(formVazio);
+  const [erro, setErro] = useState<string | null>(null);
 
   const chaveDetalhe = ["usuario", usuarioId];
+
+  function mensagemErro(e: unknown, fallback: string): string {
+    return e instanceof Error ? e.message : fallback;
+  }
 
   const porDia = new Map<DiaSemana, UsuarioAgendaSemanal[]>();
   for (const dia of DIAS_SEMANA) porDia.set(dia, []);
@@ -93,21 +98,31 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
     };
   }
 
-  async function salvar() {
-    if (!edicao) return;
-    if (edicao.entradaId !== null) {
-      await api.put(`/usuarios/${usuarioId}/agenda-semanal/${edicao.entradaId}`, payload(edicao.dia));
-    } else {
-      await api.post(`/usuarios/${usuarioId}/agenda-semanal`, payload(edicao.dia));
-    }
-    await queryClient.invalidateQueries({ queryKey: chaveDetalhe });
-    setEdicao(null);
-  }
+  const salvarMutation = useMutation({
+    mutationFn: () => {
+      if (!edicao) return Promise.resolve();
+      return edicao.entradaId !== null
+        ? api.put(`/usuarios/${usuarioId}/agenda-semanal/${edicao.entradaId}`, payload(edicao.dia))
+        : api.post(`/usuarios/${usuarioId}/agenda-semanal`, payload(edicao.dia));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chaveDetalhe });
+      queryClient.invalidateQueries({ queryKey: ["usuarios"] });
+      setEdicao(null);
+      setErro(null);
+    },
+    onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao salvar atendimento")),
+  });
 
-  async function remover(entradaId: number) {
-    await api.delete(`/usuarios/${usuarioId}/agenda-semanal/${entradaId}`);
-    await queryClient.invalidateQueries({ queryKey: chaveDetalhe });
-  }
+  const removerMutation = useMutation({
+    mutationFn: (entradaId: number) => api.delete(`/usuarios/${usuarioId}/agenda-semanal/${entradaId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chaveDetalhe });
+      queryClient.invalidateQueries({ queryKey: ["usuarios"] });
+      setErro(null);
+    },
+    onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao remover atendimento")),
+  });
 
   function linhaFormulario(dia: DiaSemana, key: string) {
     return (
@@ -177,7 +192,7 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
                 <input type="checkbox" checked={form.ativo} onChange={(e) => setForm({ ...form, ativo: e.target.checked })} />
                 Ativo
               </label>
-              <button className="btn btn-primario btn-sm" onClick={salvar}>
+              <button className="btn btn-primario btn-sm" onClick={() => salvarMutation.mutate()} disabled={salvarMutation.isPending}>
                 Salvar
               </button>
               <button className="btn btn-sm" onClick={() => setEdicao(null)}>
@@ -193,6 +208,11 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
   return (
     <div>
       <h4>Agenda semanal</h4>
+      {erro && (
+        <div className="erro-box" onClick={() => setErro(null)} style={{ cursor: "pointer" }}>
+          {erro} (clique para fechar)
+        </div>
+      )}
       <table>
         <thead>
           <tr>
@@ -237,7 +257,11 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
                     <button className="btn btn-sm" onClick={() => abrirEdicao(dia, existente)}>
                       Editar
                     </button>{" "}
-                    <button className="btn btn-sm btn-perigo" onClick={() => remover(existente.id)}>
+                    <button
+                      className="btn btn-sm btn-perigo"
+                      onClick={() => removerMutation.mutate(existente.id)}
+                      disabled={removerMutation.isPending}
+                    >
                       Remover
                     </button>
                     {ehUltima && !criandoNestedia && (

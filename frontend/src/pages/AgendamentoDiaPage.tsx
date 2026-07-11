@@ -155,6 +155,10 @@ export default function AgendamentoDiaPage() {
     onSuccess: invalidarDia,
   });
 
+  function mensagemErro(e: unknown, fallback: string): string {
+    return e instanceof Error ? e.message : fallback;
+  }
+
   const [modalAdicionar, setModalAdicionar] = useState<number | null>(null);
   const [modalAtribuir, setModalAtribuir] = useState<{
     viagemIds: number[];
@@ -202,7 +206,7 @@ export default function AgendamentoDiaPage() {
     moverPassageiro.mutate(
       { id: activeData.passageiroId, viagem_dia_destino_id: destinoViagemId, ordem: novaOrdem },
       {
-        onError: (e: unknown) => setErro(e instanceof Error ? e.message : "Erro ao mover passageiro"),
+        onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao mover passageiro")),
       },
     );
   }
@@ -221,6 +225,16 @@ export default function AgendamentoDiaPage() {
         </div>
       )}
 
+      {(viagensQuery.error || sobrasQuery.error || desconsideradosQuery.error || semVagaQuery.error) && (
+        <div className="erro-box">
+          Erro ao carregar dados do dia:{" "}
+          {mensagemErro(
+            viagensQuery.error ?? sobrasQuery.error ?? desconsideradosQuery.error ?? semVagaQuery.error,
+            "erro desconhecido",
+          )}
+        </div>
+      )}
+
       <div className="linha-toolbar">
         <div className="campo">
           <input type="date" value={data} onChange={(e) => setData(e.target.value)} />
@@ -231,7 +245,13 @@ export default function AgendamentoDiaPage() {
           </button>
         )}
         {viagens.length === 0 && !viagensQuery.isLoading && (
-          <button className="btn btn-primario" onClick={() => gerar.mutate()} disabled={gerar.isPending}>
+          <button
+            className="btn btn-primario"
+            onClick={() =>
+              gerar.mutate(undefined, { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao gerar agendamento do dia")) })
+            }
+            disabled={gerar.isPending}
+          >
             Gerar agendamento do dia
           </button>
         )}
@@ -299,7 +319,7 @@ export default function AgendamentoDiaPage() {
                 onAtribuir={setModalAtribuir}
                 onRemoverCarro={(id) =>
                   removerCarro.mutate(id, {
-                    onError: (e: unknown) => setErro(e instanceof Error ? e.message : "Nao foi possivel remover o carro"),
+                    onError: (e: unknown) => setErro(mensagemErro(e, "Nao foi possivel remover o carro")),
                   })
                 }
               />
@@ -318,7 +338,13 @@ export default function AgendamentoDiaPage() {
         </div>
 
         {sobrasQuery.data && (
-          <SobrasPanel sobras={sobrasQuery.data} onMarcarFolga={(ids) => marcarFolga.mutate(ids)} aplicando={marcarFolga.isPending} />
+          <SobrasPanel
+            sobras={sobrasQuery.data}
+            onMarcarFolga={(ids) =>
+              marcarFolga.mutate(ids, { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao marcar folga")) })
+            }
+            aplicando={marcarFolga.isPending}
+          />
         )}
 
         {desconsideradosQuery.data && <DesconsideradosPanel desconsiderados={desconsideradosQuery.data} />}
@@ -330,7 +356,10 @@ export default function AgendamentoDiaPage() {
           onConfirmar={(dados) => {
             adicionarPassageiro.mutate(
               { viagemId: modalAdicionar, body: { ...dados, sentido: dados.sentido as Sentido } },
-              { onSuccess: () => setModalAdicionar(null) },
+              {
+                onSuccess: () => setModalAdicionar(null),
+                onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao adicionar passageiro")),
+              },
             );
           }}
         />
@@ -344,7 +373,13 @@ export default function AgendamentoDiaPage() {
           veiculoAtualId={modalAtribuir.veiculoAtualId}
           onFechar={() => setModalAtribuir(null)}
           onConfirmar={(dados) =>
-            atribuir.mutate({ viagemIds: modalAtribuir.viagemIds, body: dados }, { onSuccess: () => setModalAtribuir(null) })
+            atribuir.mutate(
+              { viagemIds: modalAtribuir.viagemIds, body: dados },
+              {
+                onSuccess: () => setModalAtribuir(null),
+                onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao atribuir condutor/veiculo")),
+              },
+            )
           }
         />
       )}
@@ -353,7 +388,12 @@ export default function AgendamentoDiaPage() {
         <AbrirCarroModal
           regioes={regioes ?? []}
           onFechar={() => setModalAbrirCarro(false)}
-          onConfirmar={(dados) => abrirCarro.mutate(dados, { onSuccess: () => setModalAbrirCarro(false) })}
+          onConfirmar={(dados) =>
+            abrirCarro.mutate(dados, {
+              onSuccess: () => setModalAbrirCarro(false),
+              onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao abrir carro")),
+            })
+          }
         />
       )}
 
@@ -364,7 +404,13 @@ export default function AgendamentoDiaPage() {
         <CancelarPassageiroModal
           onFechar={() => setModalCancelar(null)}
           onConfirmar={(motivo) =>
-            cancelarPassageiro.mutate({ id: modalCancelar, motivo }, { onSuccess: () => setModalCancelar(null) })
+            cancelarPassageiro.mutate(
+              { id: modalCancelar, motivo },
+              {
+                onSuccess: () => setModalCancelar(null),
+                onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao cancelar passageiro")),
+              },
+            )
           }
         />
       )}
@@ -374,7 +420,12 @@ export default function AgendamentoDiaPage() {
           titulo="Limpar agendamento do dia"
           mensagem="Apagar TODO o agendamento desse dia (todos os carros e passageiros gerados/lancados)? Essa acao nao pode ser desfeita."
           onFechar={() => setModalLimparDia(false)}
-          onConfirmar={() => limparDia.mutate(undefined, { onSuccess: () => setModalLimparDia(false) })}
+          onConfirmar={() =>
+            limparDia.mutate(undefined, {
+              onSuccess: () => setModalLimparDia(false),
+              onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao limpar o dia")),
+            })
+          }
         />
       )}
 
@@ -384,7 +435,10 @@ export default function AgendamentoDiaPage() {
           mensagem="Remover esse atendimento do carro? Ao contrario de Cancelar, isso apaga o registro sem deixar historico."
           onFechar={() => setModalRemoverPassageiro(null)}
           onConfirmar={() =>
-            removerPassageiro.mutate(modalRemoverPassageiro, { onSuccess: () => setModalRemoverPassageiro(null) })
+            removerPassageiro.mutate(modalRemoverPassageiro, {
+              onSuccess: () => setModalRemoverPassageiro(null),
+              onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao remover passageiro")),
+            })
           }
         />
       )}
@@ -419,7 +473,10 @@ export default function AgendamentoDiaPage() {
                   observacoes: dados.observacoes,
                 },
               },
-              { onSuccess: () => setModalEditarPassageiro(null) },
+              {
+                onSuccess: () => setModalEditarPassageiro(null),
+                onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao editar passageiro")),
+              },
             )
           }
         />
