@@ -18,6 +18,7 @@ import type {
 import CarroCard from "../components/board/CarroCard";
 import SobrasPanel from "../components/board/SobrasPanel";
 import DesconsideradosPanel from "../components/board/DesconsideradosPanel";
+import SemVagaPanel from "../components/board/SemVagaPanel";
 import AdicionarPassageiroModal from "../components/board/AdicionarPassageiroModal";
 import AtribuirModal from "../components/board/AtribuirModal";
 import AbrirCarroModal from "../components/board/AbrirCarroModal";
@@ -85,11 +86,16 @@ export default function AgendamentoDiaPage() {
     queryKey: ["desconsiderados", data],
     queryFn: () => api.get<UsuarioDesconsiderado[]>("/viagens/desconsiderados", { data }),
   });
+  const semVagaQuery = useQuery({
+    queryKey: ["sem-vaga", data],
+    queryFn: () => api.get<ViagemDiaPassageiro[]>("/viagens/sem-vaga", { data }),
+  });
 
   function invalidarDia() {
     queryClient.invalidateQueries({ queryKey: ["viagens", data] });
     queryClient.invalidateQueries({ queryKey: ["sobras", data] });
     queryClient.invalidateQueries({ queryKey: ["desconsiderados", data] });
+    queryClient.invalidateQueries({ queryKey: ["sem-vaga", data] });
   }
 
   const gerar = useMutation({
@@ -289,13 +295,23 @@ export default function AgendamentoDiaPage() {
             />
           ))}
         </div>
+
+        {sobrasQuery.data && (
+          <SobrasPanel sobras={sobrasQuery.data} onMarcarFolga={(ids) => marcarFolga.mutate(ids)} aplicando={marcarFolga.isPending} />
+        )}
+
+        {desconsideradosQuery.data && <DesconsideradosPanel desconsiderados={desconsideradosQuery.data} />}
+
+        {semVagaQuery.data && (
+          <SemVagaPanel
+            passageiros={semVagaQuery.data}
+            locais={locais ?? []}
+            onRemover={setModalRemoverPassageiro}
+            onCancelar={setModalCancelar}
+            onEditar={setModalEditarPassageiro}
+          />
+        )}
       </DndContext>
-
-      {sobrasQuery.data && (
-        <SobrasPanel sobras={sobrasQuery.data} onMarcarFolga={(ids) => marcarFolga.mutate(ids)} aplicando={marcarFolga.isPending} />
-      )}
-
-      {desconsideradosQuery.data && <DesconsideradosPanel desconsiderados={desconsideradosQuery.data} />}
 
       {modalAdicionar !== null && (
         <AdicionarPassageiroModal

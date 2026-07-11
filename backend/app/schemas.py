@@ -222,7 +222,7 @@ class UsuarioComAgendaRead(UsuarioRead):
 
 class ViagemDiaPassageiroRead(ORMModel):
     id: int
-    viagem_dia_id: int
+    viagem_dia_id: int | None
     usuario_id: int
     usuario: UsuarioRead
     sentido: Sentido

@@ -399,6 +399,12 @@ th {
   font-size: 0.85rem;
 }
 
+.sem-vaga-lista {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.6rem;
+}
+
 .modal-fundo {
   position: fixed;
   inset: 0;

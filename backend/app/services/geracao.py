@@ -224,7 +224,23 @@ def _preencher_regiao(
         if viagem is None:
             viagem = _abrir_carro(db, regiao_id, perna["hora"], data, todas_viagens, janelas, avisos_emitidos)
             if viagem is None:
-                continue  # sem veiculo disponivel na regiao/horario -- fica de fora para alocacao manual
+                # sem veiculo disponivel na regiao/horario -- fica "orfao" (sem
+                # carro) no container "Sem vaga" da tela do dia, pra alocacao manual
+                db.add(
+                    ViagemDiaPassageiro(
+                        viagem_dia_id=None,
+                        data=data,
+                        usuario_id=perna["usuario_id"],
+                        sentido=perna["sentido"],
+                        hora=perna["hora"],
+                        origem=perna["origem"],
+                        regiao_origem_id=perna["regiao_origem_id"],
+                        destino_id=perna["destino_id"],
+                        regiao_destino_id=perna["regiao_destino_id"],
+                        acompanhante=perna["acompanhante"],
+                    )
+                )
+                continue
             abertos_por_perna[perna_chave].append(viagem)
             todas_viagens.append(viagem)
 

@@ -124,7 +124,7 @@ export interface UsuarioComAgenda extends Usuario {
 
 export interface ViagemDiaPassageiro {
   id: number;
-  viagem_dia_id: number;
+  viagem_dia_id: number | null;
   usuario_id: number;
   usuario: Usuario;
   sentido: Sentido;

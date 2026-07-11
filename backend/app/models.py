@@ -350,12 +350,18 @@ class ViagemDiaPassageiro(Base):
 
     Campos de origem/destino/regiao sao uma copia (snapshot) do cadastro do
     usuario no momento da geracao, editavel independentemente do cadastro base.
+
+    `viagem_dia_id` pode ser nulo: e o caso de quem ficou sem vaga na geracao
+    (frota esgotada) -- fica "orfao" (sem carro), com `data` preenchida pra
+    aparecer no container "Sem vaga" da tela do dia e poder ser arrastado
+    manualmente pra um carro depois.
     """
 
     __tablename__ = "viagem_dia_passageiro"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    viagem_dia_id: Mapped[int] = mapped_column(ForeignKey("viagem_dia.id"))
+    viagem_dia_id: Mapped[int | None] = mapped_column(ForeignKey("viagem_dia.id"), nullable=True)
+    data: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     usuario_id: Mapped[int] = mapped_column(ForeignKey("usuario.id"))
     sentido: Mapped[Sentido] = mapped_column(_enum(Sentido))
     hora: Mapped[dt.time] = mapped_column(Time)
@@ -368,7 +374,7 @@ class ViagemDiaPassageiro(Base):
     status: Mapped[StatusAtendimentoDia] = mapped_column(_enum(StatusAtendimentoDia), default=StatusAtendimentoDia.AGENDADO)
     observacoes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    viagem_dia: Mapped["ViagemDia"] = relationship(back_populates="passageiros")
+    viagem_dia: Mapped["ViagemDia | None"] = relationship(back_populates="passageiros")
     usuario: Mapped["Usuario"] = relationship()
     regiao_origem: Mapped["Regiao | None"] = relationship(foreign_keys=[regiao_origem_id])
     destino: Mapped["Local | None"] = relationship()

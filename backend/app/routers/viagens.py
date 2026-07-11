@@ -250,15 +250,17 @@ def adicionar_passageiro(viagem_id: int, payload: schemas.ViagemDiaPassageiroCre
     return _serializar_viagem(db, viagem)
 
 
-@router.patch("/passageiros/{passageiro_id}", response_model=schemas.ViagemDiaRead)
+@router.patch("/passageiros/{passageiro_id}", response_model=schemas.ViagemDiaRead | None)
 def atualizar_passageiro(passageiro_id: int, payload: schemas.ViagemDiaPassageiroAtualizar, db: Session = Depends(get_db)):
     passageiro = _get_passageiro_ou_404(db, passageiro_id)
     dados = payload.model_dump(exclude_unset=True)
-    if "sentido" in dados:
+    if "sentido" in dados and passageiro.viagem_dia_id is not None:
         _verificar_conflito(db, passageiro.viagem_dia_id, passageiro.usuario_id, dados["sentido"], passageiro.id)
     for campo, valor in dados.items():
         setattr(passageiro, campo, valor)
     db.commit()
+    if passageiro.viagem_dia_id is None:
+        return None  # orfao (sem vaga) -- nao ha viagem pra serializar
     viagem = _get_viagem_ou_404(db, passageiro.viagem_dia_id)
     return _serializar_viagem(db, viagem)
 
@@ -295,6 +297,7 @@ def mover_passageiro(passageiro_id: int, payload: schemas.ViagemDiaPassageiroMov
         passageiro.hora = referencia.hora
         passageiro.sentido = referencia.sentido
     passageiro.viagem_dia_id = payload.viagem_dia_destino_id
+    passageiro.data = None  # saiu do container "Sem vaga" (se estava la)
 
     posicao = len(irmaos) if payload.ordem is None else max(0, min(payload.ordem, len(irmaos)))
     irmaos.insert(posicao, passageiro)
@@ -306,7 +309,7 @@ def mover_passageiro(passageiro_id: int, payload: schemas.ViagemDiaPassageiroMov
     return _serializar_viagem(db, viagem)
 
 
-@router.patch("/passageiros/{passageiro_id}/status", response_model=schemas.ViagemDiaRead)
+@router.patch("/passageiros/{passageiro_id}/status", response_model=schemas.ViagemDiaRead | None)
 def alterar_status_passageiro(
     passageiro_id: int, status: models.StatusAtendimentoDia, observacoes: str | None = None, db: Session = Depends(get_db)
 ):
@@ -315,16 +318,20 @@ def alterar_status_passageiro(
     if observacoes is not None:
         passageiro.observacoes = observacoes
     db.commit()
+    if passageiro.viagem_dia_id is None:
+        return None  # orfao (sem vaga) -- nao ha viagem pra serializar
     viagem = _get_viagem_ou_404(db, passageiro.viagem_dia_id)
     return _serializar_viagem(db, viagem)
 
 
-@router.delete("/passageiros/{passageiro_id}", response_model=schemas.ViagemDiaRead)
+@router.delete("/passageiros/{passageiro_id}", response_model=schemas.ViagemDiaRead | None)
 def remover_passageiro(passageiro_id: int, db: Session = Depends(get_db)):
     passageiro = _get_passageiro_ou_404(db, passageiro_id)
     viagem_id = passageiro.viagem_dia_id
     db.delete(passageiro)
     db.commit()
+    if viagem_id is None:
+        return None  # orfao (sem vaga) -- nao ha viagem pra serializar
     viagem = _get_viagem_ou_404(db, viagem_id)
     return _serializar_viagem(db, viagem)
 
@@ -365,6 +372,25 @@ def sobras(data: dt.date, db: Session = Depends(get_db)):
 @router.get("/desconsiderados", response_model=list[schemas.UsuarioDesconsideradoRead])
 def desconsiderados(data: dt.date, db: Session = Depends(get_db)):
     return listar_desconsiderados_dia(db, data)
+
+
+@router.get("/sem-vaga", response_model=list[schemas.ViagemDiaPassageiroRead])
+def listar_sem_vaga(data: dt.date, db: Session = Depends(get_db)):
+    """Usuarios que ficaram sem carro na geracao (frota esgotada) -- ficam
+    "orfaos" (viagem_dia_id nulo) pra alocacao manual, arrastando pra um carro
+    na tela do dia.
+    """
+    passageiros = (
+        db.query(models.ViagemDiaPassageiro)
+        .options(joinedload(models.ViagemDiaPassageiro.usuario))
+        .filter(models.ViagemDiaPassageiro.viagem_dia_id.is_(None), models.ViagemDiaPassageiro.data == data)
+        .order_by(models.ViagemDiaPassageiro.hora)
+        .all()
+    )
+    return [
+        schemas.ViagemDiaPassageiroRead.model_validate(p).model_copy(update={"irregular": False, "motivo_irregular": None})
+        for p in passageiros
+    ]
 
 
 @router.get("/agendamentos/zip")
