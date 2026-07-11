@@ -5,16 +5,14 @@ import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
 interface Props {
   condutores: Condutor[];
   veiculos: Veiculo[];
-  observacoesIniciais?: string | null;
   onFechar: () => void;
-  onConfirmar: (dados: { condutor_id: number | null; veiculo_id: number | null; observacoes: string | null }) => void;
+  onConfirmar: (dados: { condutor_id: number | null; veiculo_id: number | null }) => void;
 }
 
-export default function AtribuirModal({ condutores, veiculos, observacoesIniciais, onFechar, onConfirmar }: Props) {
+export default function AtribuirModal({ condutores, veiculos, onFechar, onConfirmar }: Props) {
   useLockBodyScroll();
   const [condutorId, setCondutorId] = useState<number | "">("");
   const [veiculoId, setVeiculoId] = useState<number | "">("");
-  const [observacoes, setObservacoes] = useState(observacoesIniciais ?? "");
 
   return (
     <div className="modal-fundo" onClick={onFechar}>
@@ -43,10 +41,6 @@ export default function AtribuirModal({ condutores, veiculos, observacoesIniciai
               ))}
             </select>
           </div>
-          <div className="campo">
-            <label>Observacoes</label>
-            <textarea rows={3} value={observacoes} onChange={(e) => setObservacoes(e.target.value)} />
-          </div>
         </div>
         <div className="linha-toolbar" style={{ marginTop: "1rem" }}>
           <button
@@ -55,7 +49,6 @@ export default function AtribuirModal({ condutores, veiculos, observacoesIniciai
               onConfirmar({
                 condutor_id: condutorId === "" ? null : condutorId,
                 veiculo_id: veiculoId === "" ? null : veiculoId,
-                observacoes: observacoes.trim() === "" ? null : observacoes,
               })
             }
           >
