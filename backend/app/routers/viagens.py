@@ -174,16 +174,19 @@ def abrir_viagem(payload: schemas.ViagemDiaAbrir, db: Session = Depends(get_db))
 @router.patch("/{viagem_id}/atribuir", response_model=schemas.ViagemDiaRead)
 def atribuir_condutor_veiculo(viagem_id: int, payload: schemas.ViagemDiaAtribuir, db: Session = Depends(get_db)):
     viagem = _get_viagem_ou_404(db, viagem_id)
-    if payload.veiculo_id is not None:
-        veiculo = db.get(models.Veiculo, payload.veiculo_id)
+    dados = payload.model_dump(exclude_unset=True)
+    if dados.get("veiculo_id") is not None:
+        veiculo = db.get(models.Veiculo, dados["veiculo_id"])
         if veiculo is None:
-            raise HTTPException(status_code=404, detail=f"Veiculo {payload.veiculo_id} nao encontrado")
+            raise HTTPException(status_code=404, detail=f"Veiculo {dados['veiculo_id']} nao encontrado")
         viagem.veiculo_id = veiculo.id
         viagem.empresa_id = veiculo.empresa_id
-    if payload.condutor_id is not None:
-        if db.get(models.Condutor, payload.condutor_id) is None:
-            raise HTTPException(status_code=404, detail=f"Condutor {payload.condutor_id} nao encontrado")
-        viagem.condutor_id = payload.condutor_id
+    if dados.get("condutor_id") is not None:
+        if db.get(models.Condutor, dados["condutor_id"]) is None:
+            raise HTTPException(status_code=404, detail=f"Condutor {dados['condutor_id']} nao encontrado")
+        viagem.condutor_id = dados["condutor_id"]
+    if "observacoes" in dados:
+        viagem.observacoes = dados["observacoes"]
     db.commit()
     db.refresh(viagem)
     return _serializar_viagem(db, viagem)

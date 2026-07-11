@@ -269,6 +269,7 @@ class ViagemDiaPassageiroMover(BaseModel):
 class ViagemDiaAtribuir(BaseModel):
     condutor_id: int | None = None
     veiculo_id: int | None = None
+    observacoes: str | None = None
 
 
 class ViagemDiaAbrir(BaseModel):

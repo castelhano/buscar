@@ -27,22 +27,30 @@ def _nome_arquivo_seguro(nome: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "_", nome).strip("_") or "sem_nome"
 
 
-def _pdf_viagem(viagem: ViagemDia) -> bytes:
+def _hora_referencia(viagem: ViagemDia) -> dt.time:
+    horas = [p.hora for p in viagem.passageiros if p.status != StatusAtendimentoDia.CANCELADO]
+    return min(horas) if horas else viagem.horario_saida
+
+
+def _pdf_condutor_dia(viagens: list[ViagemDia]) -> bytes:
+    """Um PDF por condutor/dia, com todas as viagens (legs) dele agrupadas
+    em secoes, na ordem cronologica -- reflete o mesmo agrupamento por
+    condutor usado na tela de agendamento do dia."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1.5 * cm, bottomMargin=1.5 * cm)
     elementos = []
 
-    condutor = viagem.condutor
-    veiculo = viagem.veiculo
-    empresa = viagem.empresa
+    pernas = sorted(viagens, key=_hora_referencia)
+    primeira = pernas[0]
+    condutor = primeira.condutor
+    veiculo = primeira.veiculo
+    empresa = primeira.empresa
 
-    elementos.append(Paragraph(f"Agendamento do dia {viagem.data.strftime('%d/%m/%Y')}", _ESTILOS["Title"]))
+    elementos.append(Paragraph(f"Agendamento do dia {primeira.data.strftime('%d/%m/%Y')}", _ESTILOS["Title"]))
     dados_carro = [
         ["Empresa", empresa.nome if empresa else "-"],
         ["Veiculo", f"{veiculo.prefixo} ({veiculo.placa})" if veiculo else "-"],
         ["Condutor", condutor.nome if condutor else "-"],
-        ["Regiao", viagem.regiao.nome if viagem.regiao else "-"],
-        ["Saida da garagem", viagem.horario_saida.strftime("%H:%M")],
     ]
     tabela_carro = Table(dados_carro, colWidths=[4 * cm, 10 * cm])
     tabela_carro.setStyle(
@@ -55,43 +63,56 @@ def _pdf_viagem(viagem: ViagemDia) -> bytes:
         )
     )
     elementos.append(tabela_carro)
-    elementos.append(Spacer(1, 0.8 * cm))
+    elementos.append(Spacer(1, 0.6 * cm))
 
-    linhas = [["Hora", "Sentido", "Origem", "Destino", "Observacoes"]]
-    linhas.append([viagem.horario_saida.strftime("%H:%M"), "-", "Garagem", "-", ""])
-    passageiros = sorted(
-        (p for p in viagem.passageiros if p.status != StatusAtendimentoDia.CANCELADO),
-        key=lambda p: (p.hora, p.usuario.nome),
-    )
-    for passageiro in passageiros:
-        observacoes = passageiro.observacoes or ""
-        if passageiro.status == StatusAtendimentoDia.EM_ANALISE:
-            observacoes = (f"[EM ANALISE] {observacoes}").strip()
-        linhas.append(
-            [
-                passageiro.hora.strftime("%H:%M"),
-                passageiro.sentido.value,
-                passageiro.origem or "-",
-                passageiro.destino.nome if passageiro.destino else "-",
-                observacoes,
-            ]
+    for viagem in pernas:
+        sentido_ref = next(
+            (p.sentido.value for p in viagem.passageiros if p.status != StatusAtendimentoDia.CANCELADO), "-"
+        )
+        elementos.append(
+            Paragraph(
+                f"{sentido_ref} · {_hora_referencia(viagem).strftime('%H:%M')} "
+                f"(regiao {viagem.regiao.nome if viagem.regiao else '-'}, "
+                f"saida da garagem {viagem.horario_saida.strftime('%H:%M')})",
+                _ESTILOS["Heading3"],
+            )
         )
 
-    tabela = Table(linhas, colWidths=[2 * cm, 2.3 * cm, 4.5 * cm, 4.5 * cm, 4.5 * cm], repeatRows=1)
-    tabela.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2d3748")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f4f4")]),
-            ]
+        linhas = [["Hora", "Sentido", "Origem", "Destino", "Observacoes"]]
+        passageiros = sorted(
+            (p for p in viagem.passageiros if p.status != StatusAtendimentoDia.CANCELADO),
+            key=lambda p: (p.hora, p.usuario.nome),
         )
-    )
-    elementos.append(tabela)
+        for passageiro in passageiros:
+            observacoes = passageiro.observacoes or ""
+            if passageiro.status == StatusAtendimentoDia.EM_ANALISE:
+                observacoes = (f"[EM ANALISE] {observacoes}").strip()
+            linhas.append(
+                [
+                    passageiro.hora.strftime("%H:%M"),
+                    passageiro.sentido.value,
+                    passageiro.origem or "-",
+                    passageiro.destino.nome if passageiro.destino else "-",
+                    observacoes,
+                ]
+            )
+
+        tabela = Table(linhas, colWidths=[2 * cm, 2.3 * cm, 4.5 * cm, 4.5 * cm, 4.5 * cm], repeatRows=1)
+        tabela.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2d3748")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                    ("FONTSIZE", (0, 0), (-1, -1), 9),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f4f4")]),
+                ]
+            )
+        )
+        elementos.append(tabela)
+        elementos.append(Spacer(1, 0.6 * cm))
 
     doc.build(elementos)
     return buffer.getvalue()
@@ -114,14 +135,16 @@ def gerar_zip_agendamentos(db: Session, data: dt.date) -> bytes | None:
     if not viagens:
         return None
 
+    viagens_por_condutor: dict[int, list[ViagemDia]] = {}
+    for viagem in viagens:
+        viagens_por_condutor.setdefault(viagem.condutor_id, []).append(viagem)
+
     buffer = io.BytesIO()
-    nomes_usados: dict[str, int] = {}
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        for viagem in viagens:
-            base_nome = _nome_arquivo_seguro(f"{viagem.condutor.nome}_{viagem.veiculo.prefixo if viagem.veiculo else viagem.id}")
-            nomes_usados[base_nome] = nomes_usados.get(base_nome, 0) + 1
-            sufixo = "" if nomes_usados[base_nome] == 1 else f"_{nomes_usados[base_nome]}"
-            zip_file.writestr(f"{base_nome}{sufixo}.pdf", _pdf_viagem(viagem))
+        for pernas in viagens_por_condutor.values():
+            condutor = pernas[0].condutor
+            nome_arquivo = _nome_arquivo_seguro(f"{condutor.matricula}_{condutor.apelido or condutor.nome}")
+            zip_file.writestr(f"{nome_arquivo}.pdf", _pdf_condutor_dia(pernas))
     return buffer.getvalue()
 
 

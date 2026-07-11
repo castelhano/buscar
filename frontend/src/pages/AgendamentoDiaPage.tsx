@@ -276,6 +276,7 @@ export default function AgendamentoDiaPage() {
         <AtribuirModal
           condutores={(condutores ?? []).filter((c) => c.status === "Ativo")}
           veiculos={(veiculos ?? []).filter((v) => v.status === "Ativo")}
+          observacoesIniciais={viagens.find((v) => v.id === modalAtribuir)?.observacoes}
           onFechar={() => setModalAtribuir(null)}
           onConfirmar={(dados) => atribuir.mutate({ viagemId: modalAtribuir, body: dados }, { onSuccess: () => setModalAtribuir(null) })}
         />
