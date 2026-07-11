@@ -342,6 +342,7 @@ class ViagemDiaPassageiro(Base):
     regiao_origem_id: Mapped[int | None] = mapped_column(ForeignKey("regiao.id"), nullable=True)
     destino_id: Mapped[int | None] = mapped_column(ForeignKey("local.id"), nullable=True)
     regiao_destino_id: Mapped[int | None] = mapped_column(ForeignKey("regiao.id"), nullable=True)
+    acompanhante: Mapped[bool] = mapped_column(default=False)
     ordem: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[StatusAtendimentoDia] = mapped_column(_enum(StatusAtendimentoDia), default=StatusAtendimentoDia.AGENDADO)
     observacoes: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -305,6 +305,22 @@ th {
   text-decoration: line-through;
 }
 
+.passageiro-card.com-acompanhante {
+  padding: 0.55rem 0.55rem 0.6rem;
+  border-left: 3px solid var(--cor-primaria);
+}
+
+.tag-acompanhante {
+  display: inline-block;
+  margin: 0.2rem 0;
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--cor-primaria);
+  background: color-mix(in srgb, var(--cor-primaria) 15%, transparent);
+}
+
 .passageiro-card .linha-1 {
   display: flex;
   justify-content: space-between;

@@ -216,6 +216,7 @@ class ViagemDiaPassageiroRead(ORMModel):
     regiao_origem_id: int | None
     destino_id: int | None
     regiao_destino_id: int | None
+    acompanhante: bool
     ordem: int
     status: StatusAtendimentoDia
     observacoes: str | None
@@ -250,6 +251,7 @@ class ViagemDiaPassageiroCreate(BaseModel):
     regiao_origem_id: int | None = None
     destino_id: int | None = None
     regiao_destino_id: int | None = None
+    acompanhante: bool = False
     observacoes: str | None = None
 
 
@@ -260,6 +262,7 @@ class ViagemDiaPassageiroAtualizar(BaseModel):
     regiao_origem_id: int | None = None
     destino_id: int | None = None
     regiao_destino_id: int | None = None
+    acompanhante: bool | None = None
     observacoes: str | None = None
 
 

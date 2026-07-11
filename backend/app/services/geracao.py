@@ -118,6 +118,7 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
                     "regiao_origem_id": regiao_origem_id,
                     "destino_id": destino_id,
                     "regiao_destino_id": regiao_destino_id,
+                    "acompanhante": agenda.acompanhante,
                 }
             )
 
@@ -151,14 +152,21 @@ def _preencher_regiao(
     """Preenche os carros de uma regiao, na ordem de `ordem`, abrindo um novo
     carro (leg) sempre que o sentido/horario atual estoura a capacidade dos
     carros ja abertos para esse mesmo sentido/horario.
+
+    Um usuario com acompanhante ocupa 2 lugares no veiculo em vez de 1.
     """
     ocupacao: dict[tuple[int, Sentido, dt.time], int] = defaultdict(int)
     abertos_por_perna: dict[tuple[Sentido, dt.time], list[ViagemDia]] = defaultdict(list)
 
     for perna in pernas:
         perna_chave = (perna["sentido"], perna["hora"])
+        lugares = 2 if perna["acompanhante"] else 1
         viagem = next(
-            (v for v in abertos_por_perna[perna_chave] if ocupacao[(v.id, *perna_chave)] < v.capacidade),
+            (
+                v
+                for v in abertos_por_perna[perna_chave]
+                if ocupacao[(v.id, *perna_chave)] + lugares <= v.capacidade
+            ),
             None,
         )
         if viagem is None:
@@ -178,9 +186,10 @@ def _preencher_regiao(
                 regiao_origem_id=perna["regiao_origem_id"],
                 destino_id=perna["destino_id"],
                 regiao_destino_id=perna["regiao_destino_id"],
+                acompanhante=perna["acompanhante"],
             )
         )
-        ocupacao[(viagem.id, *perna_chave)] += 1
+        ocupacao[(viagem.id, *perna_chave)] += lugares
 
 
 def _horario_garagem(hora: dt.time) -> dt.time:

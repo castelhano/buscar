@@ -324,6 +324,7 @@ export default function AgendamentoDiaPage() {
             origem: modalEditarPassageiro.origem ?? "",
             regiao_origem_id: modalEditarPassageiro.regiao_origem_id ?? "",
             destino_id: modalEditarPassageiro.destino_id ?? "",
+            acompanhante: modalEditarPassageiro.acompanhante,
             observacoes: modalEditarPassageiro.observacoes ?? "",
           }}
           onFechar={() => setModalEditarPassageiro(null)}
@@ -338,6 +339,7 @@ export default function AgendamentoDiaPage() {
                   regiao_origem_id: dados.regiao_origem_id,
                   destino_id: dados.destino_id,
                   regiao_destino_id: dados.regiao_destino_id,
+                  acompanhante: dados.acompanhante,
                   observacoes: dados.observacoes,
                 },
               },

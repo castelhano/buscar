@@ -27,6 +27,7 @@ export default function PassageiroCard({ viagemId, passageiro, destinoNome, onRe
   const classes = ["passageiro-card"];
   if (passageiro.irregular) classes.push("irregular");
   if (cancelado) classes.push("cancelado");
+  if (passageiro.acompanhante) classes.push("com-acompanhante");
 
   return (
     <div ref={setNodeRef} style={style} className={classes.join(" ")} {...attributes} {...listeners}>
@@ -47,6 +48,11 @@ export default function PassageiroCard({ viagemId, passageiro, destinoNome, onRe
           {passageiro.sentido} {passageiro.hora.slice(0, 5)}
         </span>
       </div>
+      {passageiro.acompanhante && (
+        <div className="tag-acompanhante" title="Usuario leva acompanhante: ocupa 2 lugares no veiculo">
+          Com acompanhante · 2 lugares
+        </div>
+      )}
       <div className="linha-2 linha-origem-destino">
         <span title={passageiro.origem ?? undefined}>{passageiro.origem ?? "-"}</span>
         <span title={destinoNome} className="destino">

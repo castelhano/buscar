@@ -125,6 +125,7 @@ export interface ViagemDiaPassageiro {
   regiao_origem_id: number | null;
   destino_id: number | null;
   regiao_destino_id: number | null;
+  acompanhante: boolean;
   ordem: number;
   status: StatusAtendimentoDia;
   observacoes: string | null;

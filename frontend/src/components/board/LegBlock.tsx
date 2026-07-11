@@ -32,9 +32,14 @@ export default function LegBlock({
   const primeiro = passageirosOrdenados[0];
   const labelHorario = primeiro ? `${primeiro.sentido} · ${primeiro.hora.slice(0, 5)}` : viagem.horario_saida.slice(0, 5);
 
+  const lugaresOcupados = viagem.passageiros
+    .filter((p) => p.status !== "Cancelado")
+    .reduce((soma, p) => soma + (p.acompanhante ? 2 : 1), 0);
+
   const avisos: string[] = [];
   if (viagem.condutor_em_ferias) avisos.push("Condutor em ferias nessa data");
   if (viagem.conflito_horario) avisos.push(viagem.motivo_conflito_horario ?? "Conflito de horario");
+  if (lugaresOcupados > viagem.capacidade) avisos.push("Lugares ocupados acima da capacidade do veiculo");
 
   return (
     <div
@@ -45,7 +50,7 @@ export default function LegBlock({
       <div className="leg-block-header">
         <div className="horario-grupo-label">{labelHorario}</div>
         <div className="meta">
-          Saida {viagem.horario_saida.slice(0, 5)} · cap. {viagem.capacidade}
+          Saida {viagem.horario_saida.slice(0, 5)} · {lugaresOcupados}/{viagem.capacidade} lugares
           {viagem.status !== "Planejada" && <span className="tag" style={{ marginLeft: "0.4rem" }}>{viagem.status}</span>}
         </div>
         {avisos.map((aviso) => (

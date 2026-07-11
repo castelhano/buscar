@@ -9,6 +9,7 @@ export interface PassageiroFormValores {
   origem: string;
   regiao_origem_id: number | "";
   destino_id: number | "";
+  acompanhante: boolean;
   observacoes: string;
 }
 
@@ -22,6 +23,7 @@ interface Props {
     regiao_origem_id: number | null;
     destino_id: number | null;
     regiao_destino_id: number | null;
+    acompanhante: boolean;
     observacoes: string | null;
   }) => void;
   titulo?: string;
@@ -50,6 +52,7 @@ export default function AdicionarPassageiroModal({
   const [origem, setOrigem] = useState(valoresIniciais?.origem ?? "");
   const [regiaoOrigemId, setRegiaoOrigemId] = useState<number | "">(valoresIniciais?.regiao_origem_id ?? "");
   const [destinoId, setDestinoId] = useState<number | "">(valoresIniciais?.destino_id ?? "");
+  const [acompanhante, setAcompanhante] = useState(valoresIniciais?.acompanhante ?? false);
   const [observacoes, setObservacoes] = useState(valoresIniciais?.observacoes ?? "");
 
   function confirmar() {
@@ -63,6 +66,7 @@ export default function AdicionarPassageiroModal({
       regiao_origem_id: regiaoOrigemId === "" ? null : regiaoOrigemId,
       destino_id: destinoId === "" ? null : destinoId,
       regiao_destino_id: destino ? destino.regiao_id : null,
+      acompanhante,
       observacoes: observacoes.trim() === "" ? null : observacoes,
     });
   }
@@ -124,6 +128,10 @@ export default function AdicionarPassageiroModal({
               ))}
             </select>
           </div>
+          <label style={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
+            <input type="checkbox" checked={acompanhante} onChange={(e) => setAcompanhante(e.target.checked)} />
+            Acompanhante (ocupa 2 lugares no veiculo)
+          </label>
           <div className="campo">
             <label>Observacoes</label>
             <textarea rows={3} value={observacoes} onChange={(e) => setObservacoes(e.target.value)} />
