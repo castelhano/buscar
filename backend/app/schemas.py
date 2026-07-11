@@ -238,6 +238,8 @@ class ViagemDiaRead(ORMModel):
     condutor_em_ferias: bool = False
     conflito_horario: bool = False
     motivo_conflito_horario: str | None = None
+    intervalo_inicio: dt.time | None = None
+    intervalo_fim: dt.time | None = None
 
 
 class ViagemDiaPassageiroCreate(BaseModel):

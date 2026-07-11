@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import models, schemas
 from app.database import get_db
 from app.services.exportacao import gerar_zip_agendamentos
+from app.services.frequencia import intervalo_do_condutor
 from app.services.geracao import gerar_agendamento_dia
 from app.services.recursos import fim_viagem, janelas_sobrepoem
 
@@ -123,12 +124,16 @@ def _serializar_viagem(db: Session, viagem: models.ViagemDia) -> schemas.ViagemD
     if conflito_veiculo is not None:
         motivos_conflito.append(f"Veiculo tambem escalado no carro saindo {conflito_veiculo.horario_saida.strftime('%H:%M')}")
 
+    intervalo = intervalo_do_condutor(db, viagem.condutor_id, viagem.data)
+
     return base.model_copy(
         update={
             "passageiros": passageiros,
             "condutor_em_ferias": condutor_em_ferias,
             "conflito_horario": bool(motivos_conflito),
             "motivo_conflito_horario": "; ".join(motivos_conflito) or None,
+            "intervalo_inicio": intervalo[0] if intervalo else None,
+            "intervalo_fim": intervalo[1] if intervalo else None,
         }
     )
 

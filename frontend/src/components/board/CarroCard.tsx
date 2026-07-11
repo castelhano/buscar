@@ -45,6 +45,11 @@ export default function CarroCard({
       <div className="meta">
         {empresa?.nome ?? "Sem empresa"} · {condutor?.nome ?? "Sem condutor"}
       </div>
+      {primeira.intervalo_inicio && primeira.intervalo_fim && (
+        <div className="meta">
+          Intervalo {primeira.intervalo_inicio.slice(0, 5)} - {primeira.intervalo_fim.slice(0, 5)}
+        </div>
+      )}
 
       {pernas.map((viagem, indice) => (
         <LegBlock

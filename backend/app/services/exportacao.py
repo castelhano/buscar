@@ -19,6 +19,7 @@ from app.models import (
     ViagemDia,
     ViagemDiaPassageiro,
 )
+from app.services.frequencia import intervalo_do_condutor
 
 _ESTILOS = getSampleStyleSheet()
 
@@ -32,10 +33,15 @@ def _hora_referencia(viagem: ViagemDia) -> dt.time:
     return min(horas) if horas else viagem.horario_saida
 
 
-def _pdf_condutor_dia(viagens: list[ViagemDia]) -> bytes:
+def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.time] | None = None) -> bytes:
     """Um PDF por condutor/dia, com todas as viagens (legs) dele agrupadas
     em secoes, na ordem cronologica -- reflete o mesmo agrupamento por
-    condutor usado na tela de agendamento do dia."""
+    condutor usado na tela de agendamento do dia.
+
+    So a primeira leg mostra "saida da garagem": o condutor sai da garagem
+    uma unica vez no dia (no inicio da primeira viagem), as legs seguintes
+    sao o mesmo veiculo/condutor emendando atendimentos, sem nova saida.
+    """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1.5 * cm, bottomMargin=1.5 * cm)
     elementos = []
@@ -52,6 +58,8 @@ def _pdf_condutor_dia(viagens: list[ViagemDia]) -> bytes:
         ["Veiculo", f"{veiculo.prefixo} ({veiculo.placa})" if veiculo else "-"],
         ["Condutor", condutor.nome if condutor else "-"],
     ]
+    if intervalo is not None:
+        dados_carro.append(["Intervalo", f"{intervalo[0].strftime('%H:%M')} - {intervalo[1].strftime('%H:%M')}"])
     tabela_carro = Table(dados_carro, colWidths=[4 * cm, 10 * cm])
     tabela_carro.setStyle(
         TableStyle(
@@ -65,18 +73,28 @@ def _pdf_condutor_dia(viagens: list[ViagemDia]) -> bytes:
     elementos.append(tabela_carro)
     elementos.append(Spacer(1, 0.6 * cm))
 
-    for viagem in pernas:
+    for indice, viagem in enumerate(pernas):
         sentido_ref = next(
             (p.sentido.value for p in viagem.passageiros if p.status != StatusAtendimentoDia.CANCELADO), "-"
         )
-        elementos.append(
-            Paragraph(
-                f"{sentido_ref} · {_hora_referencia(viagem).strftime('%H:%M')} "
-                f"(regiao {viagem.regiao.nome if viagem.regiao else '-'}, "
-                f"saida da garagem {viagem.horario_saida.strftime('%H:%M')})",
-                _ESTILOS["Heading3"],
+        if indice == 0:
+            elementos.append(
+                Paragraph(
+                    f"{sentido_ref} · {_hora_referencia(viagem).strftime('%H:%M')} "
+                    f"(regiao {viagem.regiao.nome if viagem.regiao else '-'}, "
+                    f"saida da garagem {viagem.horario_saida.strftime('%H:%M')})",
+                    _ESTILOS["Heading3"],
+                )
             )
-        )
+        else:
+            elementos.append(Spacer(1, 0.6 * cm))
+            elementos.append(
+                Paragraph(
+                    f"{sentido_ref} · {_hora_referencia(viagem).strftime('%H:%M')} "
+                    f"(regiao {viagem.regiao.nome if viagem.regiao else '-'})",
+                    _ESTILOS["Heading3"],
+                )
+            )
 
         linhas = [["Hora", "Sentido", "Origem", "Destino", "Observacoes"]]
         passageiros = sorted(
@@ -143,8 +161,9 @@ def gerar_zip_agendamentos(db: Session, data: dt.date) -> bytes | None:
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         for pernas in viagens_por_condutor.values():
             condutor = pernas[0].condutor
+            intervalo = intervalo_do_condutor(db, condutor.id, data)
             nome_arquivo = _nome_arquivo_seguro(f"{condutor.matricula}_{condutor.apelido or condutor.nome}")
-            zip_file.writestr(f"{nome_arquivo}.pdf", _pdf_condutor_dia(pernas))
+            zip_file.writestr(f"{nome_arquivo}.pdf", _pdf_condutor_dia(pernas, intervalo))
     return buffer.getvalue()
 
 

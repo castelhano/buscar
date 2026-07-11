@@ -147,6 +147,8 @@ export interface ViagemDia {
   condutor_em_ferias: boolean;
   conflito_horario: boolean;
   motivo_conflito_horario: string | null;
+  intervalo_inicio: string | null;
+  intervalo_fim: string | null;
 }
 
 export interface Frequencia {

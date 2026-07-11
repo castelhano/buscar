@@ -8,6 +8,7 @@ export interface PassageiroFormValores {
   origem: string;
   regiao_origem_id: number | "";
   destino_id: number | "";
+  observacoes: string;
 }
 
 interface Props {
@@ -20,6 +21,7 @@ interface Props {
     regiao_origem_id: number | null;
     destino_id: number | null;
     regiao_destino_id: number | null;
+    observacoes: string | null;
   }) => void;
   titulo?: string;
   textoConfirmar?: string;
@@ -46,6 +48,7 @@ export default function AdicionarPassageiroModal({
   const [origem, setOrigem] = useState(valoresIniciais?.origem ?? "");
   const [regiaoOrigemId, setRegiaoOrigemId] = useState<number | "">(valoresIniciais?.regiao_origem_id ?? "");
   const [destinoId, setDestinoId] = useState<number | "">(valoresIniciais?.destino_id ?? "");
+  const [observacoes, setObservacoes] = useState(valoresIniciais?.observacoes ?? "");
 
   function confirmar() {
     if (usuarioId === "" || !hora) return;
@@ -58,6 +61,7 @@ export default function AdicionarPassageiroModal({
       regiao_origem_id: regiaoOrigemId === "" ? null : regiaoOrigemId,
       destino_id: destinoId === "" ? null : destinoId,
       regiao_destino_id: destino ? destino.regiao_id : null,
+      observacoes: observacoes.trim() === "" ? null : observacoes,
     });
   }
 
@@ -117,6 +121,10 @@ export default function AdicionarPassageiroModal({
                 </option>
               ))}
             </select>
+          </div>
+          <div className="campo">
+            <label>Observacoes</label>
+            <textarea rows={3} value={observacoes} onChange={(e) => setObservacoes(e.target.value)} />
           </div>
         </div>
         <div className="linha-toolbar" style={{ marginTop: "1rem" }}>
