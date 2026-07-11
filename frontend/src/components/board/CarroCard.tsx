@@ -11,7 +11,7 @@ interface Props {
   onRemoverPassageiro: (id: number) => void;
   onCancelarPassageiro: (id: number) => void;
   onEditarPassageiro: (passageiro: ViagemDiaPassageiro) => void;
-  onAtribuir: (viagemIds: number[]) => void;
+  onAtribuir: (dados: { viagemIds: number[]; condutorAtualId: number | null; veiculoAtualId: number | null }) => void;
   onRemoverCarro: (viagemId: number) => void;
 }
 
@@ -51,7 +51,16 @@ export default function CarroCard({
         </div>
       )}
       <div style={{ marginTop: "0.3rem" }}>
-        <button className="btn btn-sm" onClick={() => onAtribuir(pernas.map((v) => v.id))}>
+        <button
+          className="btn btn-sm"
+          onClick={() =>
+            onAtribuir({
+              viagemIds: pernas.map((v) => v.id),
+              condutorAtualId: primeira.condutor_id,
+              veiculoAtualId: primeira.veiculo_id,
+            })
+          }
+        >
           Condutor/veiculo
         </button>
       </div>

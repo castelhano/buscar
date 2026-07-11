@@ -129,7 +129,11 @@ export default function AgendamentoDiaPage() {
   });
 
   const [modalAdicionar, setModalAdicionar] = useState<number | null>(null);
-  const [modalAtribuir, setModalAtribuir] = useState<number[] | null>(null);
+  const [modalAtribuir, setModalAtribuir] = useState<{
+    viagemIds: number[];
+    condutorAtualId: number | null;
+    veiculoAtualId: number | null;
+  } | null>(null);
   const [modalAbrirCarro, setModalAbrirCarro] = useState(false);
   const [modalEscalas, setModalEscalas] = useState(false);
   const [modalFerias, setModalFerias] = useState(false);
@@ -280,8 +284,12 @@ export default function AgendamentoDiaPage() {
         <AtribuirModal
           condutores={(condutores ?? []).filter((c) => c.status === "Ativo")}
           veiculos={(veiculos ?? []).filter((v) => v.status === "Ativo")}
+          condutorAtualId={modalAtribuir.condutorAtualId}
+          veiculoAtualId={modalAtribuir.veiculoAtualId}
           onFechar={() => setModalAtribuir(null)}
-          onConfirmar={(dados) => atribuir.mutate({ viagemIds: modalAtribuir, body: dados }, { onSuccess: () => setModalAtribuir(null) })}
+          onConfirmar={(dados) =>
+            atribuir.mutate({ viagemIds: modalAtribuir.viagemIds, body: dados }, { onSuccess: () => setModalAtribuir(null) })
+          }
         />
       )}
 

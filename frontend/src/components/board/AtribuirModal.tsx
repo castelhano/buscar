@@ -5,14 +5,16 @@ import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
 interface Props {
   condutores: Condutor[];
   veiculos: Veiculo[];
+  condutorAtualId?: number | null;
+  veiculoAtualId?: number | null;
   onFechar: () => void;
   onConfirmar: (dados: { condutor_id: number | null; veiculo_id: number | null }) => void;
 }
 
-export default function AtribuirModal({ condutores, veiculos, onFechar, onConfirmar }: Props) {
+export default function AtribuirModal({ condutores, veiculos, condutorAtualId, veiculoAtualId, onFechar, onConfirmar }: Props) {
   useLockBodyScroll();
-  const [condutorId, setCondutorId] = useState<number | "">("");
-  const [veiculoId, setVeiculoId] = useState<number | "">("");
+  const [condutorId, setCondutorId] = useState<number | "">(condutorAtualId ?? "");
+  const [veiculoId, setVeiculoId] = useState<number | "">(veiculoAtualId ?? "");
 
   return (
     <div className="modal-fundo" onClick={onFechar}>
