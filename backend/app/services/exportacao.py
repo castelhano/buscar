@@ -5,8 +5,8 @@ import re
 import zipfile
 
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.orm import Session, joinedload
@@ -20,8 +20,21 @@ from app.models import (
     ViagemDiaPassageiro,
 )
 from app.services.frequencia import intervalo_do_condutor
+from app.services.recursos import fim_turno_condutor, fim_viagem
 
 _ESTILOS = getSampleStyleSheet()
+_ESTILO_CABECALHO_DIA = ParagraphStyle("CabecalhoDia", parent=_ESTILOS["Normal"], fontName="Helvetica-Bold", fontSize=13, leading=16)
+_ESTILO_CABECALHO_CONDUTOR = ParagraphStyle("CabecalhoCondutor", parent=_ESTILOS["Normal"], fontName="Helvetica-Bold", fontSize=10.5, leading=13)
+
+_DIAS_SEMANA_PT = {
+    0: "segunda-feira",
+    1: "terça-feira",
+    2: "quarta-feira",
+    3: "quinta-feira",
+    4: "sexta-feira",
+    5: "sábado",
+    6: "domingo",
+}
 
 
 def _nome_arquivo_seguro(nome: str) -> str:
@@ -34,62 +47,63 @@ def _hora_referencia(viagem: ViagemDia) -> dt.time:
 
 
 def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.time] | None = None) -> bytes:
-    """Um PDF por condutor/dia, com todas as viagens (legs) dele agrupadas
-    em secoes, na ordem cronologica -- reflete o mesmo agrupamento por
+    """Um PDF por condutor/dia, com todas as viagens (legs) dele numa unica
+    tabela continua, na ordem cronologica -- reflete o mesmo agrupamento por
     condutor usado na tela de agendamento do dia.
 
-    So a primeira leg mostra "saida da garagem": o condutor sai da garagem
-    uma unica vez no dia (no inicio da primeira viagem), as legs seguintes
-    sao o mesmo veiculo/condutor emendando atendimentos, sem nova saida.
+    A primeira linha da tabela e o "Acesso" (saida da garagem, uma unica vez
+    no dia); as legs seguintes emendam direto, sem nova saida de garagem --
+    uma borda mais grossa so marca a troca de horario/leg. O intervalo do
+    condutor entra como uma linha mesclada na posicao cronologica correta.
     """
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1.5 * cm, bottomMargin=1.5 * cm)
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        topMargin=1.2 * cm,
+        bottomMargin=1.2 * cm,
+        leftMargin=1.5 * cm,
+        rightMargin=1.5 * cm,
+    )
     elementos = []
 
     pernas = sorted(viagens, key=_hora_referencia)
     primeira = pernas[0]
+    ultima = pernas[-1]
     condutor = primeira.condutor
     veiculo = primeira.veiculo
-    empresa = primeira.empresa
+    regiao = primeira.regiao
 
-    elementos.append(Paragraph(f"Agendamento do dia {primeira.data.strftime('%d/%m/%Y')}", _ESTILOS["Title"]))
-    dados_carro = [
-        ["Empresa", empresa.nome if empresa else "-"],
-        ["Veiculo", f"{veiculo.prefixo} ({veiculo.placa})" if veiculo else "-"],
-        ["Condutor", condutor.nome if condutor else "-"],
-    ]
-    if intervalo is not None:
-        dados_carro.append(["Intervalo", f"{intervalo[0].strftime('%H:%M')} - {intervalo[1].strftime('%H:%M')}"])
-    tabela_carro = Table(dados_carro, colWidths=[4 * cm, 10 * cm])
-    tabela_carro.setStyle(
-        TableStyle(
-            [
-                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ]
+    hora_inicio = primeira.horario_saida.strftime("%H:%M")
+    hora_fim = fim_turno_condutor(ultima).strftime("%H:%M")
+    dia_semana_nome = _DIAS_SEMANA_PT[primeira.data.weekday()]
+
+    elementos.append(
+        Paragraph(
+            f"{primeira.data.strftime('%d/%m/%Y')} ({dia_semana_nome}) - {regiao.nome if regiao else '-'}",
+            _ESTILO_CABECALHO_DIA,
         )
     )
-    elementos.append(tabela_carro)
-    elementos.append(Spacer(1, 0.6 * cm))
+    elementos.append(
+        Paragraph(
+            f"{condutor.matricula if condutor else '-'} {condutor.nome if condutor else '-'} "
+            f"{hora_inicio} - {hora_fim} | {veiculo.prefixo if veiculo else '-'}",
+            _ESTILO_CABECALHO_CONDUTOR,
+        )
+    )
+    elementos.append(Spacer(1, 0.4 * cm))
+
+    empresa_garagem = veiculo.empresa.nome if veiculo and veiculo.empresa else (primeira.empresa.nome if primeira.empresa else "-")
+
+    linhas: list[list[str]] = [["Hora", "Usuario", "Sentido", "Origem", "Destino", "Observacoes"]]
+    linhas.append([hora_inicio, "--", "Acesso", empresa_garagem, "-", ""])
+
+    limites_leg: list[int] = []
+    linha_intervalo: int | None = None
+    intervalo_inserido = intervalo is None
 
     for indice, viagem in enumerate(pernas):
-        if indice == 0:
-            sentido_ref = next(
-                (p.sentido.value for p in viagem.passageiros if p.status != StatusAtendimentoDia.CANCELADO), "-"
-            )
-            elementos.append(
-                Paragraph(
-                    f"{sentido_ref} · {_hora_referencia(viagem).strftime('%H:%M')} "
-                    f"(regiao {viagem.regiao.nome if viagem.regiao else '-'}, "
-                    f"saida da garagem {viagem.horario_saida.strftime('%H:%M')})",
-                    _ESTILOS["Heading3"],
-                )
-            )
-        else:
-            elementos.append(Spacer(1, 0.3 * cm))
-
-        linhas = [["Hora", "Sentido", "Origem", "Destino", "Observacoes"]]
+        limites_leg.append(len(linhas))
         passageiros = sorted(
             (p for p in viagem.passageiros if p.status != StatusAtendimentoDia.CANCELADO),
             key=lambda p: (p.hora, p.usuario.nome),
@@ -98,9 +112,13 @@ def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.tim
             observacoes = passageiro.observacoes or ""
             if passageiro.status == StatusAtendimentoDia.EM_ANALISE:
                 observacoes = (f"[EM ANALISE] {observacoes}").strip()
+            nome = passageiro.usuario.nome
+            if passageiro.acompanhante:
+                nome = f"+ ACOMP {nome}"
             linhas.append(
                 [
                     passageiro.hora.strftime("%H:%M"),
+                    nome,
                     passageiro.sentido.value,
                     passageiro.origem or "-",
                     passageiro.destino.nome if passageiro.destino else "-",
@@ -108,21 +126,39 @@ def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.tim
                 ]
             )
 
-        tabela = Table(linhas, colWidths=[2 * cm, 2.3 * cm, 4.5 * cm, 4.5 * cm, 4.5 * cm], repeatRows=1)
-        tabela.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2d3748")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                    ("FONTSIZE", (0, 0), (-1, -1), 9),
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f4f4")]),
-                ]
-            )
-        )
-        elementos.append(tabela)
+        if not intervalo_inserido:
+            proxima = pernas[indice + 1] if indice + 1 < len(pernas) else None
+            cabe_antes_da_proxima = proxima is None or intervalo[1] <= proxima.horario_saida
+            if intervalo[0] >= fim_viagem(viagem) and cabe_antes_da_proxima:
+                linha_intervalo = len(linhas)
+                linhas.append(
+                    [f"INTERVALO {intervalo[0].strftime('%H:%M')} as {intervalo[1].strftime('%H:%M')}", "", "", "", "", ""]
+                )
+                intervalo_inserido = True
+
+    if not intervalo_inserido:
+        linha_intervalo = len(linhas)
+        linhas.append([f"INTERVALO {intervalo[0].strftime('%H:%M')} as {intervalo[1].strftime('%H:%M')}", "", "", "", "", ""])
+
+    tabela = Table(linhas, colWidths=[2 * cm, 6.5 * cm, 2.3 * cm, 5.4 * cm, 5.4 * cm, 5.1 * cm], repeatRows=1)
+    estilos = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2d3748")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f4f4")]),
+    ]
+    for linha_idx in limites_leg[1:]:
+        estilos.append(("LINEABOVE", (0, linha_idx), (-1, linha_idx), 1.5, colors.HexColor("#2d3748")))
+    if linha_intervalo is not None:
+        estilos.append(("SPAN", (0, linha_intervalo), (-1, linha_intervalo)))
+        estilos.append(("BACKGROUND", (0, linha_intervalo), (-1, linha_intervalo), colors.HexColor("#e2e8f0")))
+        estilos.append(("FONTNAME", (0, linha_intervalo), (-1, linha_intervalo), "Helvetica-Bold"))
+        estilos.append(("ALIGN", (0, linha_intervalo), (-1, linha_intervalo), "CENTER"))
+    tabela.setStyle(TableStyle(estilos))
+    elementos.append(tabela)
 
     doc.build(elementos)
     return buffer.getvalue()
@@ -235,7 +271,7 @@ def _linhas_escala(db: Session, condutores: list, inicio: dt.date, fim: dt.date)
                         "hora_entrada": viagem.horario_saida,
                         "intervalo_inicio": None,
                         "intervalo_fim": None,
-                        "hora_saida": None,
+                        "hora_saida": fim_turno_condutor(viagem),
                         "observacao": "",
                     }
                 )
