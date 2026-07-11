@@ -7,6 +7,7 @@ from app.services.ferias import limpar_frequencia_ferias, materializar_frequenci
 
 router_regioes = APIRouter(prefix="/regioes", tags=["regioes"])
 router_locais = APIRouter(prefix="/locais", tags=["locais"])
+router_locais_recesso = APIRouter(prefix="/locais-recesso", tags=["locais"])
 router_empresas = APIRouter(prefix="/empresas", tags=["empresas"])
 router_veiculos = APIRouter(prefix="/veiculos", tags=["veiculos"])
 router_condutores = APIRouter(prefix="/condutores", tags=["condutores"])
@@ -91,6 +92,46 @@ def atualizar_local(local_id: int, payload: schemas.LocalCreate, db: Session = D
 def remover_local(local_id: int, db: Session = Depends(get_db)):
     local = _get_or_404(db, models.Local, local_id)
     db.delete(local)
+    db.commit()
+
+
+# --------------------------------------------------------------------------
+# Local - recesso (periodo em que o local fica fechado, ex: recesso escolar)
+# --------------------------------------------------------------------------
+
+@router_locais_recesso.get("", response_model=list[schemas.LocalRecessoRead])
+def listar_recessos(local_id: int | None = None, db: Session = Depends(get_db)):
+    query = db.query(models.LocalRecesso)
+    if local_id is not None:
+        query = query.filter(models.LocalRecesso.local_id == local_id)
+    return query.order_by(models.LocalRecesso.data_inicio).all()
+
+
+@router_locais_recesso.post("", response_model=schemas.LocalRecessoRead, status_code=201)
+def criar_recesso(payload: schemas.LocalRecessoCreate, db: Session = Depends(get_db)):
+    _get_or_404(db, models.Local, payload.local_id)
+    recesso = models.LocalRecesso(**payload.model_dump())
+    db.add(recesso)
+    db.commit()
+    db.refresh(recesso)
+    return recesso
+
+
+@router_locais_recesso.put("/{recesso_id}", response_model=schemas.LocalRecessoRead)
+def atualizar_recesso(recesso_id: int, payload: schemas.LocalRecessoCreate, db: Session = Depends(get_db)):
+    recesso = _get_or_404(db, models.LocalRecesso, recesso_id)
+    _get_or_404(db, models.Local, payload.local_id)
+    for campo, valor in payload.model_dump().items():
+        setattr(recesso, campo, valor)
+    db.commit()
+    db.refresh(recesso)
+    return recesso
+
+
+@router_locais_recesso.delete("/{recesso_id}", status_code=204)
+def remover_recesso(recesso_id: int, db: Session = Depends(get_db)):
+    recesso = _get_or_404(db, models.LocalRecesso, recesso_id)
+    db.delete(recesso)
     db.commit()
 
 

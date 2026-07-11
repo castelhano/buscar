@@ -35,6 +35,14 @@ export interface Local {
   observacao: string | null;
 }
 
+export interface LocalRecesso {
+  id: number;
+  local_id: number;
+  data_inicio: string;
+  data_fim: string;
+  observacao: string | null;
+}
+
 export interface Empresa {
   id: number;
   nome: string;

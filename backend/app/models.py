@@ -126,6 +126,27 @@ class Local(Base):
     regiao: Mapped["Regiao"] = relationship()
 
 
+class LocalRecesso(Base):
+    """Periodo em que um Local fica fechado (ex: recesso escolar): usuarios
+    com destino nesse local nesse intervalo ficam de fora da geracao do dia,
+    sem precisar de uma UsuarioExcecao por usuario.
+    """
+
+    __tablename__ = "local_recesso"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    local_id: Mapped[int] = mapped_column(ForeignKey("local.id"))
+    data_inicio: Mapped[dt.date] = mapped_column(Date)
+    data_fim: Mapped[dt.date] = mapped_column(Date)
+    observacao: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    local: Mapped["Local"] = relationship()
+
+    __table_args__ = (
+        CheckConstraint("data_fim >= data_inicio", name="ck_local_recesso_periodo"),
+    )
+
+
 class Empresa(Base):
     __tablename__ = "empresa"
 

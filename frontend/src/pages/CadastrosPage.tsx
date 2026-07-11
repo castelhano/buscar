@@ -1,6 +1,7 @@
 import { useState } from "react";
 import RegioesSection from "./cadastros/RegioesSection";
 import LocaisSection from "./cadastros/LocaisSection";
+import LocalRecessoSection from "./cadastros/LocalRecessoSection";
 import EmpresasSection from "./cadastros/EmpresasSection";
 import VeiculosSection from "./cadastros/VeiculosSection";
 import CondutoresSection from "./cadastros/CondutoresSection";
@@ -9,6 +10,7 @@ import FeriasSection from "./cadastros/FeriasSection";
 const ABAS = [
   { chave: "regioes", label: "Regioes", Componente: RegioesSection },
   { chave: "locais", label: "Locais", Componente: LocaisSection },
+  { chave: "recesso", label: "Recesso", Componente: LocalRecessoSection },
   { chave: "empresas", label: "Empresas", Componente: EmpresasSection },
   { chave: "veiculos", label: "Frota", Componente: VeiculosSection },
   { chave: "condutores", label: "Condutores", Componente: CondutoresSection },

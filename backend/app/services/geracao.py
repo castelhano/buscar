@@ -9,6 +9,7 @@ from app.models import (
     CondutorFerias,
     Empresa,
     Local,
+    LocalRecesso,
     PeriodoCondutor,
     Sentido,
     StatusAtendimentoDia,
@@ -82,6 +83,12 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
         )
     }
     locais_regiao = dict(db.query(Local.id, Local.regiao_id).all())
+    locais_em_recesso = {
+        row[0]
+        for row in db.query(LocalRecesso.local_id).filter(
+            LocalRecesso.data_inicio <= data, LocalRecesso.data_fim >= data
+        )
+    }
 
     pernas_por_regiao: dict[int, list[dict]] = defaultdict(list)
     for agenda in agendas:
@@ -95,6 +102,10 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
         )
         destino_id = excecao.destino_id if excecao and excecao.destino_id else agenda.destino_id
         regiao_destino_id = locais_regiao.get(destino_id) if destino_id else None
+
+        if destino_id is not None and destino_id in locais_em_recesso:
+            print(f"[geracao] usuario_id={agenda.usuario_id}: destino_id={destino_id} em recesso nessa data, ficou de fora")
+            continue  # local de destino fechado (recesso) nessa data -- sem atendimento nesse dia
 
         if regiao_origem_id is None:
             print(f"[geracao] usuario_id={agenda.usuario_id}: sem regiao_origem_id, ficou de fora")

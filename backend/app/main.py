@@ -9,6 +9,7 @@ from app.routers.cadastros import (
     router_empresas,
     router_ferias,
     router_locais,
+    router_locais_recesso,
     router_regioes,
     router_veiculos,
 )
@@ -27,6 +28,7 @@ app.add_middleware(
 
 app.include_router(router_regioes)
 app.include_router(router_locais)
+app.include_router(router_locais_recesso)
 app.include_router(router_empresas)
 app.include_router(router_veiculos)
 app.include_router(router_condutores)

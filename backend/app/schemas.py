@@ -50,6 +50,21 @@ class LocalRead(ORMModel):
     observacao: str | None
 
 
+class LocalRecessoCreate(BaseModel):
+    local_id: int
+    data_inicio: dt.date
+    data_fim: dt.date
+    observacao: str | None = None
+
+
+class LocalRecessoRead(ORMModel):
+    id: int
+    local_id: int
+    data_inicio: dt.date
+    data_fim: dt.date
+    observacao: str | None
+
+
 class EmpresaCreate(BaseModel):
     nome: str
     regiao_ids: list[int] = []
