@@ -1,8 +1,10 @@
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import IntegrityError
 
 from app.routers import auth, contas, frequencia, usuarios, viagens
@@ -69,3 +71,23 @@ app.include_router(frequencia.router)
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# Serve o build de producao do frontend (frontend/dist) no mesmo processo,
+# assim a maquina do cliente so precisa rodar o backend numa unica porta.
+# So e montado se o build existir: em desenvolvimento (npm run dev) essa
+# pasta nao existe e o frontend continua servido separadamente pelo Vite.
+_frontend_dist = Path(
+    os.environ.get("BUSCAR_FRONTEND_DIST")
+    or Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+)
+
+if _frontend_dist.is_dir():
+    app.mount("/assets", StaticFiles(directory=_frontend_dist / "assets"), name="assets")
+
+    @app.get("/{full_path:path}")
+    def spa(full_path: str):
+        candidato = _frontend_dist / full_path
+        if candidato.is_file():
+            return FileResponse(candidato)
+        return FileResponse(_frontend_dist / "index.html")
