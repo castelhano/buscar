@@ -8,6 +8,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.orm import Session, joinedload
 
@@ -224,6 +225,26 @@ def _agrupar_por_condutor(viagens: list[ViagemDia]) -> list[list[ViagemDia]]:
     return grupos_ordenados
 
 
+_RESUMO_COL_NOME_CM = 3.3
+_RESUMO_COL_HORA_CM = 0.9
+_RESUMO_CARD_PADDING_PT = 3  # left/right de cada celula do mini-quadro
+_RESUMO_GRID_GUTTER_CM = 0.3  # espaco entre um card e o proximo no grid
+
+
+def _truncar_texto(texto: str, largura_max_pt: float, fonte: str = "Helvetica", tamanho: float = 8) -> str:
+    """Corta o texto e acrescenta "..." se ele estourar `largura_max_pt`,
+    pra nunca vazar pra celula vizinha do grid do resumo.
+    """
+    if stringWidth(texto, fonte, tamanho) <= largura_max_pt:
+        return texto
+    reticencias = "..."
+    largura_reticencias = stringWidth(reticencias, fonte, tamanho)
+    cortado = texto
+    while cortado and stringWidth(cortado, fonte, tamanho) + largura_reticencias > largura_max_pt:
+        cortado = cortado[:-1]
+    return f"{cortado}{reticencias}" if cortado else reticencias
+
+
 def _primeiro_atendimento_por_usuario(grupo: list[ViagemDia]) -> dict[int, ViagemDiaPassageiro]:
     """Um usuario pode aparecer em mais de uma leg do mesmo periodo (ex: ida e
     volta ambas de manha) -- pro resumo (enxuto) so mostra o primeiro horario.
@@ -240,18 +261,25 @@ def _primeiro_atendimento_por_usuario(grupo: list[ViagemDia]) -> dict[int, Viage
 
 
 def _card_grupo_resumo(grupo: list[ViagemDia]) -> Table:
+    # largura util de cada celula = largura da coluna menos padding dos dois lados
+    largura_nome_pt = _RESUMO_COL_NOME_CM * cm - 2 * _RESUMO_CARD_PADDING_PT
+    largura_cabecalho_pt = (_RESUMO_COL_NOME_CM + _RESUMO_COL_HORA_CM) * cm - 2 * _RESUMO_CARD_PADDING_PT
+
     primeira = grupo[0]
     condutor = primeira.condutor
     veiculo = primeira.veiculo
     apelido_condutor = (condutor.apelido or condutor.nome) if condutor else "Sem condutor"
-    cabecalho = f"{veiculo.prefixo if veiculo else '-'} - {apelido_condutor}"
+    cabecalho = _truncar_texto(
+        f"{veiculo.prefixo if veiculo else '-'} - {apelido_condutor}", largura_cabecalho_pt, "Helvetica-Bold"
+    )
 
     atendimentos = sorted(_primeiro_atendimento_por_usuario(grupo).values(), key=lambda p: p.hora)
     linhas = [[cabecalho, ""]]
     for passageiro in atendimentos:
-        linhas.append([passageiro.usuario.abbr or passageiro.usuario.nome, passageiro.hora.strftime("%H:%M")])
+        nome = _truncar_texto(passageiro.usuario.abbr or passageiro.usuario.nome, largura_nome_pt)
+        linhas.append([nome, passageiro.hora.strftime("%H:%M")])
 
-    tabela = Table(linhas, colWidths=[4 * cm, 1.6 * cm])
+    tabela = Table(linhas, colWidths=[_RESUMO_COL_NOME_CM * cm, _RESUMO_COL_HORA_CM * cm])
     tabela.setStyle(
         TableStyle(
             [
@@ -262,6 +290,8 @@ def _card_grupo_resumo(grupo: list[ViagemDia]) -> Table:
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
                 ("ALIGN", (1, 1), (1, -1), "RIGHT"),
+                ("LEFTPADDING", (0, 0), (-1, -1), _RESUMO_CARD_PADDING_PT),
+                ("RIGHTPADDING", (0, 0), (-1, -1), _RESUMO_CARD_PADDING_PT),
                 ("TOPPADDING", (0, 0), (-1, -1), 2),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
             ]
@@ -284,13 +314,18 @@ def _secao_periodo(elementos: list, titulo: str, grupos: list[list[ViagemDia]]) 
         while len(linha) < colunas:
             linha.append("")
 
-    grid = Table(linhas_grid, colWidths=[4.4 * cm] * colunas)
+    # largura da coluna = largura do card + gutter -- com LEFTPADDING 0 e
+    # RIGHTPADDING = gutter, o card cabe exatamente sem invadir a proxima
+    # coluna (a causa do "um em cima do outro" era o card ficar mais largo
+    # que a coluna que o continha)
+    largura_coluna_cm = _RESUMO_COL_NOME_CM + _RESUMO_COL_HORA_CM + _RESUMO_GRID_GUTTER_CM
+    grid = Table(linhas_grid, colWidths=[largura_coluna_cm * cm] * colunas)
     grid.setStyle(
         TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 2),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), _RESUMO_GRID_GUTTER_CM * cm),
                 ("TOPPADDING", (0, 0), (-1, -1), 0),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
             ]
