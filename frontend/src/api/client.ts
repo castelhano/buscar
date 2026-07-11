@@ -59,7 +59,8 @@ export const api = {
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, { body }),
   patch: <T>(path: string, body?: unknown, params?: Record<string, string | number | boolean | undefined>) =>
     request<T>("PATCH", path, { body, params }),
-  delete: <T>(path: string) => request<T>("DELETE", path),
+  delete: <T>(path: string, params?: Record<string, string | number | boolean | undefined>) =>
+    request<T>("DELETE", path, { params }),
   downloadUrl: (path: string, params?: Record<string, string | number | boolean | undefined>) =>
     buildUrl(path, params),
 };

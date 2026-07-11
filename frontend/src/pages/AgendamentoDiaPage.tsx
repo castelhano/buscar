@@ -127,6 +127,10 @@ export default function AgendamentoDiaPage() {
     },
     onSuccess: invalidarDia,
   });
+  const limparDia = useMutation({
+    mutationFn: () => api.delete("/viagens/limpar", { data }),
+    onSuccess: invalidarDia,
+  });
 
   const [modalAdicionar, setModalAdicionar] = useState<number | null>(null);
   const [modalAtribuir, setModalAtribuir] = useState<{
@@ -140,6 +144,7 @@ export default function AgendamentoDiaPage() {
   const [modalCancelar, setModalCancelar] = useState<number | null>(null);
   const [modalRemoverPassageiro, setModalRemoverPassageiro] = useState<number | null>(null);
   const [modalEditarPassageiro, setModalEditarPassageiro] = useState<ViagemDiaPassageiro | null>(null);
+  const [modalLimparDia, setModalLimparDia] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -197,6 +202,11 @@ export default function AgendamentoDiaPage() {
         <div className="campo">
           <input type="date" value={data} onChange={(e) => setData(e.target.value)} />
         </div>
+        {viagens.length > 0 && (
+          <button className="btn btn-perigo" onClick={() => setModalLimparDia(true)} disabled={limparDia.isPending}>
+            Limpar
+          </button>
+        )}
         {viagens.length === 0 && !viagensQuery.isLoading && (
           <button className="btn btn-primario" onClick={() => gerar.mutate()} disabled={gerar.isPending}>
             Gerar agendamento do dia
@@ -310,6 +320,15 @@ export default function AgendamentoDiaPage() {
           onConfirmar={(motivo) =>
             cancelarPassageiro.mutate({ id: modalCancelar, motivo }, { onSuccess: () => setModalCancelar(null) })
           }
+        />
+      )}
+
+      {modalLimparDia && (
+        <ConfirmarModal
+          titulo="Limpar agendamento do dia"
+          mensagem="Apagar TODO o agendamento desse dia (todos os carros e passageiros gerados/lancados)? Essa acao nao pode ser desfeita."
+          onFechar={() => setModalLimparDia(false)}
+          onConfirmar={() => limparDia.mutate(undefined, { onSuccess: () => setModalLimparDia(false) })}
         />
       )}
 

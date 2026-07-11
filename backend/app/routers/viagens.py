@@ -176,6 +176,23 @@ def abrir_viagem(payload: schemas.ViagemDiaAbrir, db: Session = Depends(get_db))
     return _serializar_viagem(db, viagem)
 
 
+@router.delete("/limpar", status_code=204)
+def limpar_dia(data: dt.date, db: Session = Depends(get_db)):
+    """Apaga todas as ViagemDia (e seus passageiros) de uma data -- destrutivo,
+    usado pra descartar a geracao/escala do dia e recomecar do zero. Precisa
+    vir antes de "/{viagem_id}" nas rotas pra nao ser capturado por ela.
+    """
+    viagem_ids = [
+        row[0] for row in db.query(models.ViagemDia.id).filter(models.ViagemDia.data == data).all()
+    ]
+    if viagem_ids:
+        db.query(models.ViagemDiaPassageiro).filter(
+            models.ViagemDiaPassageiro.viagem_dia_id.in_(viagem_ids)
+        ).delete(synchronize_session=False)
+        db.query(models.ViagemDia).filter(models.ViagemDia.id.in_(viagem_ids)).delete(synchronize_session=False)
+    db.commit()
+
+
 @router.patch("/{viagem_id}/atribuir", response_model=schemas.ViagemDiaRead)
 def atribuir_condutor_veiculo(viagem_id: int, payload: schemas.ViagemDiaAtribuir, db: Session = Depends(get_db)):
     viagem = _get_viagem_ou_404(db, viagem_id)
