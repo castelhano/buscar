@@ -8,6 +8,7 @@ interface Props {
   excecoes: UsuarioExcecao[];
   regioes: Regiao[];
   locais: Local[];
+  somenteLeitura?: boolean;
 }
 
 interface FormState {
@@ -32,7 +33,7 @@ const vazio: FormState = {
   motivo: "",
 };
 
-export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais }: Props) {
+export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, somenteLeitura = false }: Props) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<FormState>(vazio);
   const [erro, setErro] = useState<string | null>(null);
@@ -82,46 +83,48 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais }:
       <p style={{ fontSize: "0.8rem", color: "var(--cor-texto-suave)", marginTop: 0 }}>
         Para um dia especifico: suspender o atendimento ou trocar horario/local so naquela data.
       </p>
-      <div className="linha-toolbar">
-        <div className="campo">
-          <label>Data</label>
-          <input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
+      {!somenteLeitura && (
+        <div className="linha-toolbar">
+          <div className="campo">
+            <label>Data</label>
+            <input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
+          </div>
+          <label style={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
+            <input type="checkbox" checked={form.suspenso} onChange={(e) => setForm({ ...form, suspenso: e.target.checked })} />
+            Suspender atendimento nesse dia
+          </label>
+          {!form.suspenso && (
+            <>
+              <input type="time" value={form.saida} onChange={(e) => setForm({ ...form, saida: e.target.value })} title="Saida" />
+              <input type="time" value={form.retorno} onChange={(e) => setForm({ ...form, retorno: e.target.value })} title="Retorno" />
+              <input placeholder="Origem" value={form.origem} onChange={(e) => setForm({ ...form, origem: e.target.value })} />
+              <select
+                value={form.regiao_origem_id}
+                onChange={(e) => setForm({ ...form, regiao_origem_id: e.target.value ? Number(e.target.value) : "" })}
+              >
+                <option value="">Regiao origem</option>
+                {regioes.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.nome}
+                  </option>
+                ))}
+              </select>
+              <select value={form.destino_id} onChange={(e) => setForm({ ...form, destino_id: e.target.value ? Number(e.target.value) : "" })}>
+                <option value="">Destino</option>
+                {locais.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.nome}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+          <input placeholder="Motivo" value={form.motivo} onChange={(e) => setForm({ ...form, motivo: e.target.value })} />
+          <button className="btn btn-primario" onClick={adicionar} disabled={adicionarMutation.isPending}>
+            Adicionar
+          </button>
         </div>
-        <label style={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
-          <input type="checkbox" checked={form.suspenso} onChange={(e) => setForm({ ...form, suspenso: e.target.checked })} />
-          Suspender atendimento nesse dia
-        </label>
-        {!form.suspenso && (
-          <>
-            <input type="time" value={form.saida} onChange={(e) => setForm({ ...form, saida: e.target.value })} title="Saida" />
-            <input type="time" value={form.retorno} onChange={(e) => setForm({ ...form, retorno: e.target.value })} title="Retorno" />
-            <input placeholder="Origem" value={form.origem} onChange={(e) => setForm({ ...form, origem: e.target.value })} />
-            <select
-              value={form.regiao_origem_id}
-              onChange={(e) => setForm({ ...form, regiao_origem_id: e.target.value ? Number(e.target.value) : "" })}
-            >
-              <option value="">Regiao origem</option>
-              {regioes.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.nome}
-                </option>
-              ))}
-            </select>
-            <select value={form.destino_id} onChange={(e) => setForm({ ...form, destino_id: e.target.value ? Number(e.target.value) : "" })}>
-              <option value="">Destino</option>
-              {locais.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.nome}
-                </option>
-              ))}
-            </select>
-          </>
-        )}
-        <input placeholder="Motivo" value={form.motivo} onChange={(e) => setForm({ ...form, motivo: e.target.value })} />
-        <button className="btn btn-primario" onClick={adicionar} disabled={adicionarMutation.isPending}>
-          Adicionar
-        </button>
-      </div>
+      )}
       {erro && (
         <div className="erro-box" onClick={() => setErro(null)} style={{ cursor: "pointer" }}>
           {erro} (clique para fechar)
@@ -143,9 +146,11 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais }:
               <td>{e.suspenso ? <span className="tag tag-inativo">Suspenso</span> : `${e.saida ?? "-"} / ${e.retorno ?? "-"}`}</td>
               <td>{e.motivo ?? "-"}</td>
               <td>
-                <button className="btn btn-sm btn-perigo" onClick={() => removerMutation.mutate(e.id)} disabled={removerMutation.isPending}>
-                  Remover
-                </button>
+                {!somenteLeitura && (
+                  <button className="btn btn-sm btn-perigo" onClick={() => removerMutation.mutate(e.id)} disabled={removerMutation.isPending}>
+                    Remover
+                  </button>
+                )}
               </td>
             </tr>
           ))}

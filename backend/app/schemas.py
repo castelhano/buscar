@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 from app.models import (
     DiaSemana,
     Modalidade,
+    PapelConta,
     PeriodoCondutor,
     Sentido,
     StatusAtivoInativo,
@@ -347,3 +348,43 @@ class UsuarioDesconsideradoRead(BaseModel):
     usuario_id: int
     usuario_nome: str
     motivo: str
+
+
+# --------------------------------------------------------------------------
+# Conta (login do sistema) + autenticacao
+# --------------------------------------------------------------------------
+
+class ContaCreate(BaseModel):
+    nome: str
+    login: str
+    senha: str
+    papel: PapelConta = PapelConta.OPERADOR
+    status: StatusAtivoInativo = StatusAtivoInativo.ATIVO
+
+
+class ContaAtualizar(BaseModel):
+    nome: str
+    login: str
+    papel: PapelConta
+    status: StatusAtivoInativo
+    senha: str | None = None
+
+
+class ContaRead(ORMModel):
+    id: int
+    nome: str
+    login: str
+    papel: PapelConta
+    status: StatusAtivoInativo
+    criado_em: dt.date
+
+
+class LoginRequest(BaseModel):
+    login: str
+    senha: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    conta: ContaRead

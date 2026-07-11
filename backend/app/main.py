@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
-from app.routers import frequencia, usuarios, viagens
+from app.routers import auth, contas, frequencia, usuarios, viagens
 from app.routers.cadastros import (
     router_condutores,
     router_empresas,
@@ -49,6 +49,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
+app.include_router(contas.router)
 app.include_router(router_regioes)
 app.include_router(router_locais)
 app.include_router(router_locais_recesso)

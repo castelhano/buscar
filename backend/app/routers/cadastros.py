@@ -2,16 +2,19 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app import models, schemas
+from app.auth import obter_conta_atual
 from app.database import get_db
 from app.services.ferias import limpar_frequencia_ferias, materializar_frequencia_ferias
 
-router_regioes = APIRouter(prefix="/regioes", tags=["regioes"])
-router_locais = APIRouter(prefix="/locais", tags=["locais"])
-router_locais_recesso = APIRouter(prefix="/locais-recesso", tags=["locais"])
-router_empresas = APIRouter(prefix="/empresas", tags=["empresas"])
-router_veiculos = APIRouter(prefix="/veiculos", tags=["veiculos"])
-router_condutores = APIRouter(prefix="/condutores", tags=["condutores"])
-router_ferias = APIRouter(prefix="/ferias", tags=["ferias"])
+_autenticado = [Depends(obter_conta_atual)]
+
+router_regioes = APIRouter(prefix="/regioes", tags=["regioes"], dependencies=_autenticado)
+router_locais = APIRouter(prefix="/locais", tags=["locais"], dependencies=_autenticado)
+router_locais_recesso = APIRouter(prefix="/locais-recesso", tags=["locais"], dependencies=_autenticado)
+router_empresas = APIRouter(prefix="/empresas", tags=["empresas"], dependencies=_autenticado)
+router_veiculos = APIRouter(prefix="/veiculos", tags=["veiculos"], dependencies=_autenticado)
+router_condutores = APIRouter(prefix="/condutores", tags=["condutores"], dependencies=_autenticado)
+router_ferias = APIRouter(prefix="/ferias", tags=["ferias"], dependencies=_autenticado)
 
 
 def _get_or_404(db: Session, model, id_: int):

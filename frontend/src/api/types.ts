@@ -10,6 +10,7 @@ export type Sentido = "Ida" | "Retorno";
 export type StatusViagemDia = "Planejada" | "Confirmada" | "Cancelada";
 export type StatusAtendimentoDia = "Agendado" | "Cancelado" | "Em analise";
 export type StatusFrequencia = "Trabalhado" | "Folga" | "Ferias" | "Falta" | "Pendente";
+export type PapelConta = "Admin" | "Operador";
 
 export const DIAS_SEMANA: DiaSemana[] = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
 export const DIAS_SEMANA_LABEL: Record<DiaSemana, string> = {
@@ -185,4 +186,19 @@ export interface UsuarioDesconsiderado {
   usuario_id: number;
   usuario_nome: string;
   motivo: string;
+}
+
+export interface Conta {
+  id: number;
+  nome: string;
+  login: string;
+  papel: PapelConta;
+  status: StatusAtivoInativo;
+  criado_em: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
+  conta: Conta;
 }

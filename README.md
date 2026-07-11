@@ -53,6 +53,9 @@ sensato caso não sejam definidas):
 |------------------------|------------------------------------------------------|----------------------------------------------|
 | `BUSCAR_DB_PATH`       | `backend/buscar.db`                                  | Caminho do arquivo SQLite                     |
 | `BUSCAR_CORS_ORIGINS`  | `http://localhost:5173,http://127.0.0.1:5173`        | Origens permitidas no CORS (separadas por vírgula) |
+| `BUSCAR_JWT_SECRET`    | valor de desenvolvimento (troque em produção)        | Chave usada para assinar os tokens de login   |
+| `BUSCAR_ADMIN_LOGIN`   | `admin`                                              | Login da conta admin criada pelo seed (só na 1ª execução) |
+| `BUSCAR_ADMIN_SENHA`   | `admin123`                                           | Senha da conta admin criada pelo seed (troque após o 1º login) |
 
 ### Migrações do banco
 

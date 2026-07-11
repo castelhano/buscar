@@ -1,3 +1,5 @@
+import { getToken, notifyUnauthorized } from "../auth/token";
+
 const BASE_URL = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8123";
 
 export class ApiError extends Error {
@@ -28,9 +30,14 @@ async function request<T>(
   path: string,
   options: { body?: unknown; params?: Record<string, string | number | boolean | undefined> } = {},
 ): Promise<T> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (options.body !== undefined) headers["Content-Type"] = "application/json";
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
   const response = await fetch(buildUrl(path, options.params), {
     method,
-    headers: options.body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    headers,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
@@ -41,6 +48,9 @@ async function request<T>(
       detail = data.detail ?? data;
     } catch {
       // resposta sem corpo JSON (ex: 500 generico)
+    }
+    if (response.status === 401 && path !== "/auth/login") {
+      notifyUnauthorized();
     }
     throw new ApiError(response.status, detail);
   }

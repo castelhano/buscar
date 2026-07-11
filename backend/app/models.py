@@ -104,6 +104,11 @@ class StatusFrequencia(str, enum.Enum):
     PENDENTE = "Pendente"
 
 
+class PapelConta(str, enum.Enum):
+    ADMIN = "Admin"
+    OPERADOR = "Operador"
+
+
 # --------------------------------------------------------------------------
 # Regiao / Local / Empresa
 # --------------------------------------------------------------------------
@@ -409,3 +414,19 @@ class Frequencia(Base):
     __table_args__ = (
         UniqueConstraint("condutor_id", "data", name="uq_frequencia_condutor_data"),
     )
+
+
+# --------------------------------------------------------------------------
+# Conta (login do sistema -- nao confundir com Usuario, que e o passageiro)
+# --------------------------------------------------------------------------
+
+class Conta(Base):
+    __tablename__ = "conta"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nome: Mapped[str] = mapped_column(String(150))
+    login: Mapped[str] = mapped_column(String(50), unique=True)
+    senha_hash: Mapped[str] = mapped_column(String(100))
+    papel: Mapped[PapelConta] = mapped_column(_enum(PapelConta), default=PapelConta.OPERADOR)
+    status: Mapped[StatusAtivoInativo] = mapped_column(_enum(StatusAtivoInativo), default=StatusAtivoInativo.ATIVO)
+    criado_em: Mapped[dt.date] = mapped_column(Date, default=dt.date.today)

@@ -7,13 +7,14 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas
+from app.auth import obter_conta_atual
 from app.database import get_db
 from app.services.exportacao import gerar_pdf_resumo_dia, gerar_zip_agendamentos
 from app.services.frequencia import INTERVALO_PADRAO_POR_PERIODO
 from app.services.geracao import gerar_agendamento_dia, listar_desconsiderados_dia
 from app.services.recursos import fim_viagem, janelas_sobrepoem
 
-router = APIRouter(prefix="/viagens", tags=["viagens"])
+router = APIRouter(prefix="/viagens", tags=["viagens"], dependencies=[Depends(obter_conta_atual)])
 
 
 def _get_viagem_ou_404(db: Session, viagem_id: int) -> models.ViagemDia:

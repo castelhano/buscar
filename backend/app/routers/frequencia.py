@@ -5,10 +5,11 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app import models, schemas
+from app.auth import obter_conta_atual
 from app.database import get_db
 from app.services.exportacao import gerar_csv_escalas, gerar_pdf_escalas
 
-router = APIRouter(prefix="/frequencia", tags=["frequencia"])
+router = APIRouter(prefix="/frequencia", tags=["frequencia"], dependencies=[Depends(obter_conta_atual)])
 
 
 @router.get("", response_model=list[schemas.FrequenciaRead])

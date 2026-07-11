@@ -10,6 +10,7 @@ interface Props {
   agenda: UsuarioAgendaSemanal[];
   regioes: Regiao[];
   locais: Local[];
+  somenteLeitura?: boolean;
 }
 
 interface FormState {
@@ -46,7 +47,7 @@ interface Edicao {
   entradaId: number | null;
 }
 
-export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais }: Props) {
+export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais, somenteLeitura = false }: Props) {
   const queryClient = useQueryClient();
   const [edicao, setEdicao] = useState<Edicao | null>(null);
   const [form, setForm] = useState<FormState>(formVazio);
@@ -254,26 +255,30 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
                   </td>
                   <td>{existente.acompanhante ? "Sim" : "Nao"}</td>
                   <td>
-                    <button className="btn btn-sm" onClick={() => abrirEdicao(dia, existente)}>
-                      Editar
-                    </button>{" "}
-                    <button
-                      className="btn btn-sm btn-perigo"
-                      onClick={() => removerMutation.mutate(existente.id)}
-                      disabled={removerMutation.isPending}
-                    >
-                      Remover
-                    </button>
-                    {ehUltima && !criandoNestedia && (
+                    {!somenteLeitura && (
                       <>
-                        {" "}
+                        <button className="btn btn-sm" onClick={() => abrirEdicao(dia, existente)}>
+                          Editar
+                        </button>{" "}
                         <button
-                          className="btn btn-sm"
-                          title="Adicionar outro horario nesse dia"
-                          onClick={() => abrirEdicao(dia, null)}
+                          className="btn btn-sm btn-perigo"
+                          onClick={() => removerMutation.mutate(existente.id)}
+                          disabled={removerMutation.isPending}
                         >
-                          +
+                          Remover
                         </button>
+                        {ehUltima && !criandoNestedia && (
+                          <>
+                            {" "}
+                            <button
+                              className="btn btn-sm"
+                              title="Adicionar outro horario nesse dia"
+                              onClick={() => abrirEdicao(dia, null)}
+                            >
+                              +
+                            </button>
+                          </>
+                        )}
                       </>
                     )}
                   </td>
@@ -289,9 +294,11 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
                   <td>{DIAS_SEMANA_LABEL[dia]}</td>
                   <td colSpan={7}>-</td>
                   <td>
-                    <button className="btn btn-sm" onClick={() => abrirEdicao(dia, null)}>
-                      Adicionar
-                    </button>
+                    {!somenteLeitura && (
+                      <button className="btn btn-sm" onClick={() => abrirEdicao(dia, null)}>
+                        Adicionar
+                      </button>
+                    )}
                   </td>
                 </tr>,
               );

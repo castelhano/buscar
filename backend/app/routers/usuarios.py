@@ -3,9 +3,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas
+from app.auth import exigir_admin, obter_conta_atual
 from app.database import get_db
 
-router = APIRouter(prefix="/usuarios", tags=["usuarios"])
+router = APIRouter(prefix="/usuarios", tags=["usuarios"], dependencies=[Depends(obter_conta_atual)])
 
 
 def _get_usuario_ou_404(db: Session, usuario_id: int) -> models.Usuario:
@@ -39,7 +40,7 @@ def listar_usuarios(
     return query.order_by(models.Usuario.nome).all()
 
 
-@router.post("", response_model=schemas.UsuarioRead, status_code=201)
+@router.post("", response_model=schemas.UsuarioRead, status_code=201, dependencies=[Depends(exigir_admin)])
 def criar_usuario(payload: schemas.UsuarioCreate, db: Session = Depends(get_db)):
     usuario = models.Usuario(**payload.model_dump())
     db.add(usuario)
@@ -61,7 +62,7 @@ def obter_usuario(usuario_id: int, db: Session = Depends(get_db)):
     return usuario
 
 
-@router.put("/{usuario_id}", response_model=schemas.UsuarioRead)
+@router.put("/{usuario_id}", response_model=schemas.UsuarioRead, dependencies=[Depends(exigir_admin)])
 def atualizar_usuario(usuario_id: int, payload: schemas.UsuarioCreate, db: Session = Depends(get_db)):
     usuario = _get_usuario_ou_404(db, usuario_id)
     for campo, valor in payload.model_dump().items():
@@ -71,7 +72,7 @@ def atualizar_usuario(usuario_id: int, payload: schemas.UsuarioCreate, db: Sessi
     return usuario
 
 
-@router.delete("/{usuario_id}", status_code=204)
+@router.delete("/{usuario_id}", status_code=204, dependencies=[Depends(exigir_admin)])
 def remover_usuario(usuario_id: int, db: Session = Depends(get_db)):
     usuario = _get_usuario_ou_404(db, usuario_id)
     db.delete(usuario)
@@ -92,7 +93,12 @@ def listar_agenda_semanal(usuario_id: int, db: Session = Depends(get_db)):
     )
 
 
-@router.post("/{usuario_id}/agenda-semanal", response_model=schemas.UsuarioAgendaSemanalRead, status_code=201)
+@router.post(
+    "/{usuario_id}/agenda-semanal",
+    response_model=schemas.UsuarioAgendaSemanalRead,
+    status_code=201,
+    dependencies=[Depends(exigir_admin)],
+)
 def criar_agenda_semanal(usuario_id: int, payload: schemas.UsuarioAgendaSemanalCreate, db: Session = Depends(get_db)):
     _get_usuario_ou_404(db, usuario_id)
     existente = (
@@ -117,7 +123,11 @@ def criar_agenda_semanal(usuario_id: int, payload: schemas.UsuarioAgendaSemanalC
     return agenda
 
 
-@router.put("/{usuario_id}/agenda-semanal/{agenda_id}", response_model=schemas.UsuarioAgendaSemanalRead)
+@router.put(
+    "/{usuario_id}/agenda-semanal/{agenda_id}",
+    response_model=schemas.UsuarioAgendaSemanalRead,
+    dependencies=[Depends(exigir_admin)],
+)
 def atualizar_agenda_semanal(
     usuario_id: int, agenda_id: int, payload: schemas.UsuarioAgendaSemanalCreate, db: Session = Depends(get_db)
 ):
@@ -131,7 +141,7 @@ def atualizar_agenda_semanal(
     return agenda
 
 
-@router.delete("/{usuario_id}/agenda-semanal/{agenda_id}", status_code=204)
+@router.delete("/{usuario_id}/agenda-semanal/{agenda_id}", status_code=204, dependencies=[Depends(exigir_admin)])
 def remover_agenda_semanal(usuario_id: int, agenda_id: int, db: Session = Depends(get_db)):
     agenda = db.get(models.UsuarioAgendaSemanal, agenda_id)
     if agenda is None or agenda.usuario_id != usuario_id:
@@ -150,7 +160,12 @@ def listar_excecoes(usuario_id: int, db: Session = Depends(get_db)):
     return db.query(models.UsuarioExcecao).filter(models.UsuarioExcecao.usuario_id == usuario_id).all()
 
 
-@router.post("/{usuario_id}/excecoes", response_model=schemas.UsuarioExcecaoRead, status_code=201)
+@router.post(
+    "/{usuario_id}/excecoes",
+    response_model=schemas.UsuarioExcecaoRead,
+    status_code=201,
+    dependencies=[Depends(exigir_admin)],
+)
 def criar_excecao(usuario_id: int, payload: schemas.UsuarioExcecaoCreate, db: Session = Depends(get_db)):
     _get_usuario_ou_404(db, usuario_id)
     existente = (
@@ -167,7 +182,9 @@ def criar_excecao(usuario_id: int, payload: schemas.UsuarioExcecaoCreate, db: Se
     return excecao
 
 
-@router.put("/{usuario_id}/excecoes/{excecao_id}", response_model=schemas.UsuarioExcecaoRead)
+@router.put(
+    "/{usuario_id}/excecoes/{excecao_id}", response_model=schemas.UsuarioExcecaoRead, dependencies=[Depends(exigir_admin)]
+)
 def atualizar_excecao(
     usuario_id: int, excecao_id: int, payload: schemas.UsuarioExcecaoCreate, db: Session = Depends(get_db)
 ):
@@ -181,7 +198,7 @@ def atualizar_excecao(
     return excecao
 
 
-@router.delete("/{usuario_id}/excecoes/{excecao_id}", status_code=204)
+@router.delete("/{usuario_id}/excecoes/{excecao_id}", status_code=204, dependencies=[Depends(exigir_admin)])
 def remover_excecao(usuario_id: int, excecao_id: int, db: Session = Depends(get_db)):
     excecao = db.get(models.UsuarioExcecao, excecao_id)
     if excecao is None or excecao.usuario_id != usuario_id:

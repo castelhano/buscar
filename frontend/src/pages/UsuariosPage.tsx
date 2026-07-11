@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useCreate, useList, useUpdate } from "../api/hooks";
 import type { Local, Regiao, StatusAtivoInativo, Usuario, UsuarioComAgenda } from "../api/types";
+import { useAuth } from "../auth/AuthContext";
 import AgendaSemanalEditor from "./usuarios/AgendaSemanalEditor";
 import ExcecoesEditor from "./usuarios/ExcecoesEditor";
 
@@ -16,6 +17,7 @@ interface FormState {
 const vazio: FormState = { nome: "", abbr: "", status: "Ativo", detalhe: "" };
 
 export default function UsuariosPage() {
+  const { isAdmin } = useAuth();
   const [filtroNome, setFiltroNome] = useState("");
   const [filtroFixo, setFiltroFixo] = useState(false);
   const [filtroStatus, setFiltroStatus] = useState<StatusAtivoInativo | "">("");
@@ -97,11 +99,13 @@ export default function UsuariosPage() {
   return (
     <div style={{ display: "flex", gap: "1.5rem", alignItems: "flex-start" }}>
       <div className="painel" style={{ width: 280, flexShrink: 0 }}>
-        <div className="linha-toolbar">
-          <button className="btn btn-primario" onClick={iniciarNovo}>
-            Novo usuario
-          </button>
-        </div>
+        {isAdmin && (
+          <div className="linha-toolbar">
+            <button className="btn btn-primario" onClick={iniciarNovo}>
+              Novo usuario
+            </button>
+          </div>
+        )}
         <div className="campo" style={{ marginBottom: "0.5rem" }}>
           <input placeholder="Buscar por nome..." value={filtroNome} onChange={(e) => setFiltroNome(e.target.value)} />
         </div>
@@ -177,26 +181,44 @@ export default function UsuariosPage() {
               <div className="linha-toolbar">
                 <div className="campo">
                   <label>Nome</label>
-                  <input value={basico.nome} onChange={(e) => setBasico({ ...basico, nome: e.target.value })} />
+                  <input
+                    value={basico.nome}
+                    onChange={(e) => setBasico({ ...basico, nome: e.target.value })}
+                    disabled={!isAdmin}
+                  />
                 </div>
                 <div className="campo">
                   <label>Abreviacao</label>
-                  <input value={basico.abbr} onChange={(e) => setBasico({ ...basico, abbr: e.target.value })} />
+                  <input
+                    value={basico.abbr}
+                    onChange={(e) => setBasico({ ...basico, abbr: e.target.value })}
+                    disabled={!isAdmin}
+                  />
                 </div>
                 <div className="campo">
                   <label>Status</label>
-                  <select value={basico.status} onChange={(e) => setBasico({ ...basico, status: e.target.value as StatusAtivoInativo })}>
+                  <select
+                    value={basico.status}
+                    onChange={(e) => setBasico({ ...basico, status: e.target.value as StatusAtivoInativo })}
+                    disabled={!isAdmin}
+                  >
                     <option value="Ativo">Ativo</option>
                     <option value="Inativo">Inativo</option>
                   </select>
                 </div>
                 <div className="campo" style={{ flex: 1 }}>
                   <label>Detalhe</label>
-                  <input value={basico.detalhe} onChange={(e) => setBasico({ ...basico, detalhe: e.target.value })} />
+                  <input
+                    value={basico.detalhe}
+                    onChange={(e) => setBasico({ ...basico, detalhe: e.target.value })}
+                    disabled={!isAdmin}
+                  />
                 </div>
-                <button className="btn btn-sm btn-primario" onClick={salvarEdicaoBasica} disabled={atualizar.isPending}>
-                  Salvar dados basicos
-                </button>
+                {isAdmin && (
+                  <button className="btn btn-sm btn-primario" onClick={salvarEdicaoBasica} disabled={atualizar.isPending}>
+                    Salvar dados basicos
+                  </button>
+                )}
               </div>
               <p style={{ fontSize: "0.8rem", color: "var(--cor-texto-suave)" }}>Cadastrado em {detalhe.data.data_cadastro}</p>
             </div>
@@ -207,6 +229,7 @@ export default function UsuariosPage() {
                 agenda={detalhe.data.agenda_semanal}
                 regioes={regioes ?? []}
                 locais={locais ?? []}
+                somenteLeitura={!isAdmin}
               />
             </div>
 
@@ -216,6 +239,7 @@ export default function UsuariosPage() {
                 excecoes={detalhe.data.excecoes}
                 regioes={regioes ?? []}
                 locais={locais ?? []}
+                somenteLeitura={!isAdmin}
               />
             </div>
           </div>
