@@ -20,6 +20,7 @@ from app.models import (
     ViagemDiaPassageiro,
 )
 from app.services.frequencia import intervalo_do_condutor
+from app.services.geracao import CORTE_PERIODO_TARDE
 from app.services.recursos import fim_turno_condutor, fim_viagem
 
 _ESTILOS = getSampleStyleSheet()
@@ -192,6 +193,177 @@ def gerar_zip_agendamentos(db: Session, data: dt.date) -> bytes | None:
             intervalo = intervalo_do_condutor(db, condutor.id, data)
             nome_arquivo = _nome_arquivo_seguro(f"{condutor.matricula}_{condutor.apelido or condutor.nome}")
             zip_file.writestr(f"{nome_arquivo}.pdf", _pdf_condutor_dia(pernas, intervalo))
+    return buffer.getvalue()
+
+
+# --------------------------------------------------------------------------
+# Resumo do dia (visao geral compacta, uma folha, Manha/Tarde)
+# --------------------------------------------------------------------------
+
+def _periodo_da_leg(viagem: ViagemDia) -> str:
+    return "Tarde" if _hora_referencia(viagem) >= CORTE_PERIODO_TARDE else "Manha"
+
+
+def _agrupar_por_condutor(viagens: list[ViagemDia]) -> list[list[ViagemDia]]:
+    """Agrupa legs do mesmo condutor (ou, se sem condutor, cada carro isolado),
+    na ordem cronologica -- mesmo agrupamento usado na tela de agendamento do dia.
+    """
+    grupos: dict[str, list[ViagemDia]] = {}
+    ordem: list[str] = []
+    for viagem in viagens:
+        chave = f"c{viagem.condutor_id}" if viagem.condutor_id is not None else f"v{viagem.id}"
+        if chave not in grupos:
+            grupos[chave] = []
+            ordem.append(chave)
+        grupos[chave].append(viagem)
+
+    grupos_ordenados = [grupos[chave] for chave in ordem]
+    for grupo in grupos_ordenados:
+        grupo.sort(key=_hora_referencia)
+    grupos_ordenados.sort(key=lambda g: _hora_referencia(g[0]))
+    return grupos_ordenados
+
+
+def _primeiro_atendimento_por_usuario(grupo: list[ViagemDia]) -> dict[int, ViagemDiaPassageiro]:
+    """Um usuario pode aparecer em mais de uma leg do mesmo periodo (ex: ida e
+    volta ambas de manha) -- pro resumo (enxuto) so mostra o primeiro horario.
+    """
+    primeiro: dict[int, ViagemDiaPassageiro] = {}
+    for viagem in grupo:
+        for passageiro in viagem.passageiros:
+            if passageiro.status == StatusAtendimentoDia.CANCELADO:
+                continue
+            atual = primeiro.get(passageiro.usuario_id)
+            if atual is None or passageiro.hora < atual.hora:
+                primeiro[passageiro.usuario_id] = passageiro
+    return primeiro
+
+
+def _card_grupo_resumo(grupo: list[ViagemDia]) -> Table:
+    primeira = grupo[0]
+    condutor = primeira.condutor
+    veiculo = primeira.veiculo
+    apelido_condutor = (condutor.apelido or condutor.nome) if condutor else "Sem condutor"
+    cabecalho = f"{veiculo.prefixo if veiculo else '-'} - {apelido_condutor}"
+
+    atendimentos = sorted(_primeiro_atendimento_por_usuario(grupo).values(), key=lambda p: p.hora)
+    linhas = [[cabecalho, ""]]
+    for passageiro in atendimentos:
+        linhas.append([passageiro.usuario.abbr or passageiro.usuario.nome, passageiro.hora.strftime("%H:%M")])
+
+    tabela = Table(linhas, colWidths=[4 * cm, 1.6 * cm])
+    tabela.setStyle(
+        TableStyle(
+            [
+                ("SPAN", (0, 0), (-1, 0)),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2d3748")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+                ("ALIGN", (1, 1), (1, -1), "RIGHT"),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]
+        )
+    )
+    return tabela
+
+
+def _secao_periodo(elementos: list, titulo: str, grupos: list[list[ViagemDia]]) -> None:
+    elementos.append(Paragraph(f"{titulo} ({len(grupos)} carro{'s' if len(grupos) != 1 else ''})", _ESTILOS["Heading3"]))
+    if not grupos:
+        elementos.append(Paragraph("Nenhum carro nesse periodo.", _ESTILOS["Normal"]))
+        elementos.append(Spacer(1, 0.3 * cm))
+        return
+
+    colunas = 4
+    cards = [_card_grupo_resumo(grupo) for grupo in grupos]
+    linhas_grid = [cards[i : i + colunas] for i in range(0, len(cards), colunas)]
+    for linha in linhas_grid:
+        while len(linha) < colunas:
+            linha.append("")
+
+    grid = Table(linhas_grid, colWidths=[4.4 * cm] * colunas)
+    grid.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ]
+        )
+    )
+    elementos.append(grid)
+
+
+def gerar_pdf_resumo_dia(db: Session, data: dt.date) -> bytes | None:
+    """PDF enxuto (uma folha) com todo o atendimento do dia: um mini-quadro por
+    carro/condutor (prefixo + apelido no cabecalho, usuario abbr + hora nas
+    linhas), separado em secoes Manha/Tarde, com um resumo de contagem no final.
+    """
+    viagens = (
+        db.query(ViagemDia)
+        .options(
+            joinedload(ViagemDia.condutor),
+            joinedload(ViagemDia.veiculo),
+            joinedload(ViagemDia.passageiros).joinedload(ViagemDiaPassageiro.usuario),
+        )
+        .filter(ViagemDia.data == data)
+        .all()
+    )
+    if not viagens:
+        return None
+
+    grupos = _agrupar_por_condutor(viagens)
+    grupos_manha = [g for g in grupos if _periodo_da_leg(g[0]) == "Manha"]
+    grupos_tarde = [g for g in grupos if _periodo_da_leg(g[0]) == "Tarde"]
+
+    atendimentos_manha = sum(len(_primeiro_atendimento_por_usuario(g)) for g in grupos_manha)
+    atendimentos_tarde = sum(len(_primeiro_atendimento_por_usuario(g)) for g in grupos_tarde)
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4, topMargin=1 * cm, bottomMargin=1 * cm, leftMargin=1 * cm, rightMargin=1 * cm
+    )
+    dia_semana_nome = _DIAS_SEMANA_PT[data.weekday()]
+    elementos: list = [
+        Paragraph(f"Resumo do dia {data.strftime('%d/%m/%Y')} ({dia_semana_nome})", _ESTILOS["Title"]),
+        Spacer(1, 0.3 * cm),
+    ]
+
+    _secao_periodo(elementos, "Manha", grupos_manha)
+    elementos.append(Spacer(1, 0.4 * cm))
+    _secao_periodo(elementos, "Tarde", grupos_tarde)
+    elementos.append(Spacer(1, 0.5 * cm))
+
+    elementos.append(Paragraph("Resumo", _ESTILOS["Heading3"]))
+    tabela_resumo = Table(
+        [
+            ["", "Manha", "Tarde"],
+            ["Carros utilizados", str(len(grupos_manha)), str(len(grupos_tarde))],
+            ["Atendimentos", str(atendimentos_manha), str(atendimentos_tarde)],
+        ],
+        colWidths=[4 * cm, 3 * cm, 3 * cm],
+    )
+    tabela_resumo.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2d3748")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, 1), (0, -1), "Helvetica-Bold"),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+            ]
+        )
+    )
+    elementos.append(tabela_resumo)
+
+    doc.build(elementos)
     return buffer.getvalue()
 
 

@@ -253,6 +253,15 @@ export default function AgendamentoDiaPage() {
         <button className="btn" onClick={() => setModalFerias(true)}>
           Ferias
         </button>
+        <a
+          className="btn"
+          href={api.downloadUrl("/viagens/agendamentos/resumo", { data })}
+          target="_blank"
+          rel="noreferrer"
+          style={{ textDecoration: "none" }}
+        >
+          Resumo
+        </a>
 
         <div className="btn-group" style={{ marginLeft: "auto" }}>
           <button

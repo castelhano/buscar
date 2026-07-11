@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas
 from app.database import get_db
-from app.services.exportacao import gerar_zip_agendamentos
+from app.services.exportacao import gerar_pdf_resumo_dia, gerar_zip_agendamentos
 from app.services.frequencia import intervalo_do_condutor
 from app.services.geracao import gerar_agendamento_dia, listar_desconsiderados_dia
 from app.services.recursos import fim_viagem, janelas_sobrepoem
@@ -402,6 +402,19 @@ def baixar_agendamentos(data: dt.date, db: Session = Depends(get_db)):
     return Response(
         content=conteudo,
         media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{nome_arquivo}"'},
+    )
+
+
+@router.get("/agendamentos/resumo")
+def baixar_resumo_dia(data: dt.date, db: Session = Depends(get_db)):
+    conteudo = gerar_pdf_resumo_dia(db, data)
+    if conteudo is None:
+        raise HTTPException(status_code=404, detail="Nenhuma viagem gerada para essa data")
+    nome_arquivo = f"resumo_{data.isoformat()}.pdf"
+    return Response(
+        content=conteudo,
+        media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{nome_arquivo}"'},
     )
 
