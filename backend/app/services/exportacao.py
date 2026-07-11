@@ -232,60 +232,58 @@ def _linhas_escala(db: Session, condutores: list, inicio: dt.date, fim: dt.date)
 
     linhas = []
     for condutor in condutores:
+        condutor_label = f"{condutor.matricula} - {condutor.apelido or condutor.nome}"
         d = inicio
         while d <= fim:
             frequencia = frequencias.get((condutor.id, d))
             if frequencia is not None:
                 linhas.append(
                     {
-                        "condutor": condutor.nome,
+                        "condutor": condutor_label,
                         "data": d,
                         "tipo": frequencia.tipo.value,
                         "hora_entrada": frequencia.hora_entrada,
                         "intervalo_inicio": frequencia.intervalo_inicio,
                         "intervalo_fim": frequencia.intervalo_fim,
                         "hora_saida": frequencia.hora_saida,
-                        "observacao": frequencia.observacao or "",
                     }
                 )
             elif d in dias_ferias.get(condutor.id, set()):
                 linhas.append(
                     {
-                        "condutor": condutor.nome,
+                        "condutor": condutor_label,
                         "data": d,
                         "tipo": "Ferias",
                         "hora_entrada": None,
                         "intervalo_inicio": None,
                         "intervalo_fim": None,
                         "hora_saida": None,
-                        "observacao": "",
                     }
                 )
             elif (condutor.id, d) in viagens_por_condutor_dia:
                 viagem = viagens_por_condutor_dia[(condutor.id, d)]
+                intervalo = intervalo_do_condutor(db, condutor.id, d)
                 linhas.append(
                     {
-                        "condutor": condutor.nome,
+                        "condutor": condutor_label,
                         "data": d,
                         "tipo": "Trabalhado",
                         "hora_entrada": viagem.horario_saida,
-                        "intervalo_inicio": None,
-                        "intervalo_fim": None,
+                        "intervalo_inicio": intervalo[0] if intervalo else None,
+                        "intervalo_fim": intervalo[1] if intervalo else None,
                         "hora_saida": fim_turno_condutor(viagem),
-                        "observacao": "",
                     }
                 )
             else:
                 linhas.append(
                     {
-                        "condutor": condutor.nome,
+                        "condutor": condutor_label,
                         "data": d,
                         "tipo": "PENDENTE",
                         "hora_entrada": None,
                         "intervalo_inicio": None,
                         "intervalo_fim": None,
                         "hora_saida": None,
-                        "observacao": "",
                     }
                 )
             d += dt.timedelta(days=1)
@@ -300,7 +298,7 @@ def gerar_csv_escalas(db: Session, condutores: list, inicio: dt.date, fim: dt.da
     linhas = _linhas_escala(db, condutores, inicio, fim)
     buffer = io.StringIO()
     writer = csv.writer(buffer, delimiter=";")
-    writer.writerow(["Condutor", "Data", "Tipo", "Entrada", "Intervalo inicio", "Intervalo fim", "Saida", "Observacao"])
+    writer.writerow(["Condutor", "Data", "Tipo", "Entrada", "Intervalo inicio", "Intervalo fim", "Saida"])
     for linha in linhas:
         writer.writerow(
             [
@@ -311,7 +309,6 @@ def gerar_csv_escalas(db: Session, condutores: list, inicio: dt.date, fim: dt.da
                 _formatar_hora(linha["intervalo_inicio"]),
                 _formatar_hora(linha["intervalo_fim"]),
                 _formatar_hora(linha["hora_saida"]),
-                linha["observacao"],
             ]
         )
     return buffer.getvalue().encode("utf-8-sig")
@@ -320,7 +317,9 @@ def gerar_csv_escalas(db: Session, condutores: list, inicio: dt.date, fim: dt.da
 def gerar_pdf_escalas(db: Session, condutores: list, inicio: dt.date, fim: dt.date) -> bytes:
     linhas = _linhas_escala(db, condutores, inicio, fim)
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1.5 * cm, bottomMargin=1.5 * cm)
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4, topMargin=1.5 * cm, bottomMargin=1.5 * cm, leftMargin=1.5 * cm, rightMargin=1.5 * cm
+    )
     elementos = [
         Paragraph(
             f"Escala de {inicio.strftime('%d/%m/%Y')} a {fim.strftime('%d/%m/%Y')}", _ESTILOS["Title"]
@@ -328,7 +327,7 @@ def gerar_pdf_escalas(db: Session, condutores: list, inicio: dt.date, fim: dt.da
         Spacer(1, 0.5 * cm),
     ]
 
-    cabecalho = ["Condutor", "Data", "Tipo", "Entrada", "Interv. inicio", "Interv. fim", "Saida", "Observacao"]
+    cabecalho = ["Condutor", "Data", "Tipo", "Entrada", "Interv. inicio", "Interv. fim", "Saida"]
     dados = [cabecalho]
     for linha in linhas:
         dados.append(
@@ -340,13 +339,12 @@ def gerar_pdf_escalas(db: Session, condutores: list, inicio: dt.date, fim: dt.da
                 _formatar_hora(linha["intervalo_inicio"]),
                 _formatar_hora(linha["intervalo_fim"]),
                 _formatar_hora(linha["hora_saida"]),
-                linha["observacao"],
             ]
         )
 
     tabela = Table(
         dados,
-        colWidths=[3 * cm, 2 * cm, 2.2 * cm, 1.8 * cm, 2.2 * cm, 1.8 * cm, 1.8 * cm, 4 * cm],
+        colWidths=[6 * cm, 2.2 * cm, 2.3 * cm, 1.8 * cm, 2.1 * cm, 1.9 * cm, 1.7 * cm],
         repeatRows=1,
     )
     tabela.setStyle(
