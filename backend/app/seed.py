@@ -30,6 +30,16 @@ from app.models import (
 
 EMPRESAS = ["AMTU", "VPAR", "RAPIDO", "CARIBUS", "INTEGRACAO"]
 
+# Regioes atendidas por cada empresa (define quem pode abrir carro onde na
+# geracao do dia -- ver _mapa_empresas_por_regiao em services/geracao.py).
+EMPRESA_REGIOES = {
+    "AMTU": ["CPA", "COXIPO", "OESTE"],
+    "RAPIDO": ["CPA", "OESTE"],
+    "VPAR": ["CPA", "OESTE"],
+    "CARIBUS": ["COXIPO", "OESTE"],
+    "INTEGRACAO": ["COXIPO", "OESTE"],
+}
+
 CSV_USUARIOS_PATH = os.path.join(os.path.dirname(__file__), "seed_data", "usuarios.csv")
 CSV_AGENDAMENTO_PATH = os.path.join(os.path.dirname(__file__), "seed_data", "usuario_agendamento.csv")
 CSV_LOCAIS_PATH = os.path.join(os.path.dirname(__file__), "seed_data", "locais.csv")
@@ -226,7 +236,9 @@ def seed_empresas() -> int:
             print("Tabela empresa ja possui dados, seed nao executado.")
             return 0
 
-        db.add_all(Empresa(nome=nome) for nome in EMPRESAS)
+        for nome in EMPRESAS:
+            regioes = [_get_or_create_regiao(db, r) for r in EMPRESA_REGIOES.get(nome, [])]
+            db.add(Empresa(nome=nome, regioes=regioes))
         db.commit()
         print(f"{len(EMPRESAS)} empresas inseridas.")
         return len(EMPRESAS)
@@ -351,8 +363,14 @@ def seed_locais() -> int:
                 if not nome:
                     continue
                 tipo = _parse_tipo_local(row["tipo"])
+                regiao_nome = (row.get("REGIAO") or "").strip()
+                if regiao_nome:
+                    regiao_id = _get_or_create_regiao(db, regiao_nome).id
+                else:
+                    print(f"AVISO: local {nome!r} sem REGIAO no CSV, usando placeholder {_REGIAO_PLACEHOLDER!r}.")
+                    regiao_id = regiao_placeholder.id
                 observacao = (row.get("detalhe") or "").strip() or None
-                db.add(Local(nome=nome, tipo=tipo, regiao_id=regiao_placeholder.id, observacao=observacao))
+                db.add(Local(nome=nome, tipo=tipo, regiao_id=regiao_id, observacao=observacao))
                 total += 1
 
         db.commit()

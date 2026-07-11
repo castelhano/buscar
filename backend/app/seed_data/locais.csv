@@ -1,48 +1,48 @@
-nome,tipo,detalhe
-CRIDAC,Fisioterapia,Centro Politico
-HARAS TWIN BROTHERS,Equoterapia,Sta Cruz II
-RANCHO DOURADO,Equoterapia,Jd Ubata
-EQUOTERAPIA ACRIMAT,Equoterapia,Dom Aquino
-CLINICA BARUK,Fisioterapia,"Capitao Ipora 267, Pico do Amor"
-UNIMED,Fisioterapia,"Cel Ben Leite, Centro Sul"
-FASICLIN,Fisioterapia,"R Rondonopolis, Qd 12, Lt 7, CPA 1"
-MEZZACLIN,Fisioterapia,"R Alm Pedro Alvares, 66, Jd Cuiaba"
-CER POLICL P Ramos,Fisioterapia,
-CER PLANALTO,Fisioterapia,
-UNIC,Fisioterapia,Av Beira Rio
-LIVRE APRENDER,Escola,Areao
-CENTRO DIA C HELENA,Escola,Jd Tropical
-RAIO DE SOL,Escola,Grde Terceiro
-PESTALOZZI,Escola,Praeiro
-MARIO CASTRO,Escola,Pedra 90
-ESTEVAO CORREA,Escola,Tijucal
-JUAREZ RODRIGUES,Escola,Sta Laura
-AGENOR LEAO,Escola,Tijucal
-PASCOAL M CABRAL,Escola,Jd Universitario
-SALIM FELICIO,Escola,Real Parque
-RUBENS MENDONCA,Escola,CH Sao Goncalo
-UFMT,Escola,Boa Esperanca
-E TEC MONTE SIAO,Escola,Centro
-ACECIM TOCANTINS,Escola,Verdao
-ALCEBIAD CALHAO,Escola,Quilombo
-JOAO BRIENNE CAM,Escola,"Av Joao Gomes Sobrinho, Liceira"
-CLEINA ROSALINA,Escola,"R Ivonete Pereira, Res Itamarati"
-PROF HERIODORAO,Escola,Pq Cuiaba
-ANA MARIA COUTO,Escola,"Av Brasil, CPA II"
-RODOLFO AUGUSTO,Escola,Res Paiaguas
-GUSTAVO KULMAN,Escola,Jd Vitoria
-MARIA HERMINIA,Escola,CPA IV
-FUNDACAO BRADESCO,Escola,Jd Vitoria
-VICTORINO MONTEI,Escola,Ilza Terezinha
-PE FIRMINO,Escola,"Av Rio Branco, Res M Rondon"
-ANDRE AVELINO,Escola,"Av Dep Osvaldo CP, 365, CPA 1"
-MARIANA CAMPOS,Escola,Santa Isabel
-CTR,Hemodialise,
-CLINEMAT,Hemodialise,
-DAVITA,Hemodialise,
-SENAI PORTO,Trabalho,
-UBS CAMPO VELHO,Trabalho,
-OFICINA DO CHICO,Trabalho,
-SENAI DISTRITO,Trabalho,
-CENTRO POLITICO,Trabalho,
-GAECO,Trabalho,
+nome,tipo,REGIAO,detalhe
+CRIDAC,Fisioterapia,CPA,Centro Politico
+HARAS TWIN BROTHERS,Equoterapia,OESTE,Sta Cruz II
+RANCHO DOURADO,Equoterapia,OESTE,Jd Ubata
+EQUOTERAPIA ACRIMAT,Equoterapia,OESTE,Dom Aquino
+CLINICA BARUK,Fisioterapia,OESTE,"Capitao Ipora 267, Pico do Amor"
+UNIMED,Fisioterapia,OESTE,"Cel Ben Leite, Centro Sul"
+FASICLIN,Fisioterapia,CPA,"R Rondonopolis, Qd 12, Lt 7, CPA 1"
+MEZZACLIN,Fisioterapia,OESTE,"R Alm Pedro Alvares, 66, Jd Cuiaba"
+CER POLICL P Ramos,Fisioterapia,COXIPO,
+CER PLANALTO,Fisioterapia,COXIPO,
+UNIC,Fisioterapia,OESTE,Av Beira Rio
+LIVRE APRENDER,Escola,OESTE,Areao
+CENTRO DIA C HELENA,Escola,CPA,Jd Tropical
+RAIO DE SOL,Escola,COXIPO,Grde Terceiro
+PESTALOZZI,Escola,CPA,Praeiro
+MARIO CASTRO,Escola,COXIPO,Pedra 90
+ESTEVAO CORREA,Escola,COXIPO,Tijucal
+JUAREZ RODRIGUES,Escola,COXIPO,Sta Laura
+AGENOR LEAO,Escola,COXIPO,Tijucal
+PASCOAL M CABRAL,Escola,CPA,Jd Universitario
+SALIM FELICIO,Escola,COXIPO,Real Parque
+RUBENS MENDONCA,Escola,COXIPO,CH Sao Goncalo
+UFMT,Escola,COXIPO,Boa Esperanca
+E TEC MONTE SIAO,Escola,OESTE,Centro
+ACECIM TOCANTINS,Escola,OESTE,Verdao
+ALCEBIAD CALHAO,Escola,OESTE,Quilombo
+JOAO BRIENNE CAM,Escola,OESTE,"Av Joao Gomes Sobrinho, Liceira"
+CLEINA ROSALINA,Escola,OESTE,"R Ivonete Pereira, Res Itamarati"
+PROF HERIODORAO,Escola,COXIPO,Pq Cuiaba
+ANA MARIA COUTO,Escola,CPA,"Av Brasil, CPA II"
+RODOLFO AUGUSTO,Escola,CPA,Res Paiaguas
+GUSTAVO KULMAN,Escola,CPA,Jd Vitoria
+MARIA HERMINIA,Escola,CPA,CPA IV
+FUNDACAO BRADESCO,Escola,CPA,Jd Vitoria
+VICTORINO MONTEI,Escola,CPA,Ilza Terezinha
+PE FIRMO,Escola,COXIPO,"Av Rio Branco, Res M Rondon"
+ANDRE AVELINO,Escola,CPA,"Av Dep Osvaldo CP, 365, CPA 1"
+MARIANA CAMPOS,Escola,OESTE,Santa Isabel
+CTR,Hemodialise,OESTE,
+CLINEMAT,Hemodialise,OESTE,
+DAVITA,Hemodialise,OESTE,
+SENAI PORTO,Trabalho,OESTE,
+UBS CAMPO VELHO,Trabalho,OESTE,
+OFICINA DO CHICO,Trabalho,CPA,"R Canarana, N 13, C America"
+SENAI DISTRITO,Trabalho,COXIPO,
+CENTRO POLITICO,Trabalho,CPA,
+GAECO,Trabalho,CPA,

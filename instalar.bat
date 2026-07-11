@@ -28,10 +28,6 @@ if errorlevel 1 (
     exit /b 1
 )
 
-if not exist buscar.db (
-    python -m app.seed
-)
-
 call deactivate
 
 echo.
