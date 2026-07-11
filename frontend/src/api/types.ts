@@ -180,3 +180,9 @@ export interface Sobras {
   condutores: CondutorSobra[];
   veiculos: Veiculo[];
 }
+
+export interface UsuarioDesconsiderado {
+  usuario_id: number;
+  usuario_nome: string;
+  motivo: string;
+}

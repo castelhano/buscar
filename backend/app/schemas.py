@@ -337,3 +337,13 @@ class CondutorSobraRead(CondutorRead):
 class SobrasRead(BaseModel):
     condutores: list[CondutorSobraRead]
     veiculos: list[VeiculoRead]
+
+
+# --------------------------------------------------------------------------
+# Desconsiderados (usuarios Fixo previstos no dia que ficaram de fora)
+# --------------------------------------------------------------------------
+
+class UsuarioDesconsideradoRead(BaseModel):
+    usuario_id: int
+    usuario_nome: str
+    motivo: str

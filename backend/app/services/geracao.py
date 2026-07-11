@@ -2,7 +2,7 @@ import datetime as dt
 from collections import defaultdict
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
     Condutor,
@@ -44,6 +44,79 @@ def _periodo_da_viagem(viagem: ViagemDia) -> PeriodoCondutor:
     return _periodo_da_hora(hora_referencia)
 
 
+def _agendas_fixo_do_dia(db: Session, data: dt.date):
+    """Agendas Fixo/ativas do dia da semana de `data`, com as excecoes pontuais
+    (por usuario) e os locais em recesso vigentes nessa data -- base comum
+    usada tanto pela geracao quanto pelo diagnostico de desconsiderados.
+    """
+    dia_semana = dia_semana_from_date(data)
+    agendas = (
+        db.query(UsuarioAgendaSemanal)
+        .join(Usuario, UsuarioAgendaSemanal.usuario_id == Usuario.id)
+        .options(joinedload(UsuarioAgendaSemanal.usuario))
+        .filter(
+            UsuarioAgendaSemanal.dia_semana == dia_semana,
+            UsuarioAgendaSemanal.tipo == TipoAtendimento.FIXO,
+            UsuarioAgendaSemanal.ativo.is_(True),
+            Usuario.status == StatusAtivoInativo.ATIVO,
+        )
+        .order_by(UsuarioAgendaSemanal.ordem)
+        .all()
+    )
+    usuario_ids = [a.usuario_id for a in agendas]
+    excecoes = {
+        e.usuario_id: e
+        for e in db.query(UsuarioExcecao).filter(
+            UsuarioExcecao.data == data, UsuarioExcecao.usuario_id.in_(usuario_ids)
+        )
+    }
+    locais_em_recesso = {
+        row[0]
+        for row in db.query(LocalRecesso.local_id).filter(
+            LocalRecesso.data_inicio <= data, LocalRecesso.data_fim >= data
+        )
+    }
+    return dia_semana, agendas, excecoes, locais_em_recesso
+
+
+def _motivo_desconsideracao(
+    agenda: UsuarioAgendaSemanal, excecao: UsuarioExcecao | None, locais_em_recesso: set[int]
+) -> str | None:
+    """Motivo pelo qual esse usuario nao entra na geracao do dia, ou None se
+    elegivel (ainda pode ficar de fora depois por falta de veiculo/frota --
+    isso e um problema de escala, tratado a parte no painel de Sobras, nao
+    aqui).
+    """
+    if excecao and excecao.suspenso:
+        return f"Excecao de usuario: suspenso nesse dia ({excecao.motivo})" if excecao.motivo else "Excecao de usuario: suspenso nesse dia"
+
+    destino_id = excecao.destino_id if excecao and excecao.destino_id else agenda.destino_id
+    if destino_id is not None and destino_id in locais_em_recesso:
+        return "Local de destino em recesso"
+
+    regiao_origem_id = (
+        excecao.regiao_origem_id if excecao and excecao.regiao_origem_id else agenda.regiao_origem_id
+    )
+    if regiao_origem_id is None:
+        return "Sem regiao de origem cadastrada"
+
+    return None
+
+
+def listar_desconsiderados_dia(db: Session, data: dt.date) -> list[dict]:
+    """Usuarios com atendimento Fixo previsto pra essa data que ficam de fora
+    da geracao (suspenso, local em recesso, sem regiao de origem), com o
+    motivo -- pra alertar na tela de agendamento do dia.
+    """
+    _, agendas, excecoes, locais_em_recesso = _agendas_fixo_do_dia(db, data)
+    desconsiderados = []
+    for agenda in agendas:
+        motivo = _motivo_desconsideracao(agenda, excecoes.get(agenda.usuario_id), locais_em_recesso)
+        if motivo is not None:
+            desconsiderados.append({"usuario_id": agenda.usuario_id, "usuario_nome": agenda.usuario.nome, "motivo": motivo})
+    return desconsiderados
+
+
 def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     """Gera as ViagemDia + ViagemDiaPassageiro de uma data a partir da agenda semanal.
 
@@ -60,40 +133,16 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     if existentes:
         return existentes
 
-    dia_semana = dia_semana_from_date(data)
-
-    agendas = (
-        db.query(UsuarioAgendaSemanal)
-        .join(Usuario, UsuarioAgendaSemanal.usuario_id == Usuario.id)
-        .filter(
-            UsuarioAgendaSemanal.dia_semana == dia_semana,
-            UsuarioAgendaSemanal.tipo == TipoAtendimento.FIXO,
-            UsuarioAgendaSemanal.ativo.is_(True),
-            Usuario.status == StatusAtivoInativo.ATIVO,
-        )
-        .order_by(UsuarioAgendaSemanal.ordem)
-        .all()
-    )
+    dia_semana, agendas, excecoes, locais_em_recesso = _agendas_fixo_do_dia(db, data)
     print(f"[geracao] {data} ({dia_semana.name}): {len(agendas)} agendas FIXO/ativas encontradas")
-    usuario_ids = [a.usuario_id for a in agendas]
-    excecoes = {
-        e.usuario_id: e
-        for e in db.query(UsuarioExcecao).filter(
-            UsuarioExcecao.data == data, UsuarioExcecao.usuario_id.in_(usuario_ids)
-        )
-    }
     locais_regiao = dict(db.query(Local.id, Local.regiao_id).all())
-    locais_em_recesso = {
-        row[0]
-        for row in db.query(LocalRecesso.local_id).filter(
-            LocalRecesso.data_inicio <= data, LocalRecesso.data_fim >= data
-        )
-    }
 
     pernas_por_regiao: dict[int, list[dict]] = defaultdict(list)
     for agenda in agendas:
         excecao = excecoes.get(agenda.usuario_id)
-        if excecao and excecao.suspenso:
+        motivo = _motivo_desconsideracao(agenda, excecao, locais_em_recesso)
+        if motivo is not None:
+            print(f"[geracao] usuario_id={agenda.usuario_id}: {motivo}, ficou de fora")
             continue
 
         origem = excecao.origem if excecao and excecao.origem else agenda.origem
@@ -102,14 +151,6 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
         )
         destino_id = excecao.destino_id if excecao and excecao.destino_id else agenda.destino_id
         regiao_destino_id = locais_regiao.get(destino_id) if destino_id else None
-
-        if destino_id is not None and destino_id in locais_em_recesso:
-            print(f"[geracao] usuario_id={agenda.usuario_id}: destino_id={destino_id} em recesso nessa data, ficou de fora")
-            continue  # local de destino fechado (recesso) nessa data -- sem atendimento nesse dia
-
-        if regiao_origem_id is None:
-            print(f"[geracao] usuario_id={agenda.usuario_id}: sem regiao_origem_id, ficou de fora")
-            continue  # sem regiao de origem cadastrada -- fica de fora para alocacao manual
 
         pernas = (
             (Sentido.IDA, agenda.saida, excecao.saida if excecao else None),

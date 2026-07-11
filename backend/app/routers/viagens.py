@@ -8,7 +8,7 @@ from app import models, schemas
 from app.database import get_db
 from app.services.exportacao import gerar_zip_agendamentos
 from app.services.frequencia import intervalo_do_condutor
-from app.services.geracao import gerar_agendamento_dia
+from app.services.geracao import gerar_agendamento_dia, listar_desconsiderados_dia
 from app.services.recursos import fim_viagem, janelas_sobrepoem
 
 router = APIRouter(prefix="/viagens", tags=["viagens"])
@@ -360,6 +360,11 @@ def sobras(data: dt.date, db: Session = Depends(get_db)):
     veiculos_sobrando = [schemas.VeiculoRead.model_validate(v) for v in veiculos if v.id not in usados_veiculo]
 
     return schemas.SobrasRead(condutores=condutores_sobrando, veiculos=veiculos_sobrando)
+
+
+@router.get("/desconsiderados", response_model=list[schemas.UsuarioDesconsideradoRead])
+def desconsiderados(data: dt.date, db: Session = Depends(get_db)):
+    return listar_desconsiderados_dia(db, data)
 
 
 @router.get("/agendamentos/zip")

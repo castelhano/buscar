@@ -3,9 +3,21 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { api } from "../api/client";
 import { useList } from "../api/hooks";
-import type { Condutor, Empresa, Local, Regiao, Sentido, Sobras, Veiculo, ViagemDia, ViagemDiaPassageiro } from "../api/types";
+import type {
+  Condutor,
+  Empresa,
+  Local,
+  Regiao,
+  Sentido,
+  Sobras,
+  UsuarioDesconsiderado,
+  Veiculo,
+  ViagemDia,
+  ViagemDiaPassageiro,
+} from "../api/types";
 import CarroCard from "../components/board/CarroCard";
 import SobrasPanel from "../components/board/SobrasPanel";
+import DesconsideradosPanel from "../components/board/DesconsideradosPanel";
 import AdicionarPassageiroModal from "../components/board/AdicionarPassageiroModal";
 import AtribuirModal from "../components/board/AtribuirModal";
 import AbrirCarroModal from "../components/board/AbrirCarroModal";
@@ -69,10 +81,15 @@ export default function AgendamentoDiaPage() {
     queryKey: ["sobras", data],
     queryFn: () => api.get<Sobras>("/viagens/sobras", { data }),
   });
+  const desconsideradosQuery = useQuery({
+    queryKey: ["desconsiderados", data],
+    queryFn: () => api.get<UsuarioDesconsiderado[]>("/viagens/desconsiderados", { data }),
+  });
 
   function invalidarDia() {
     queryClient.invalidateQueries({ queryKey: ["viagens", data] });
     queryClient.invalidateQueries({ queryKey: ["sobras", data] });
+    queryClient.invalidateQueries({ queryKey: ["desconsiderados", data] });
   }
 
   const gerar = useMutation({
@@ -277,6 +294,8 @@ export default function AgendamentoDiaPage() {
       {sobrasQuery.data && (
         <SobrasPanel sobras={sobrasQuery.data} onMarcarFolga={(ids) => marcarFolga.mutate(ids)} aplicando={marcarFolga.isPending} />
       )}
+
+      {desconsideradosQuery.data && <DesconsideradosPanel desconsiderados={desconsideradosQuery.data} />}
 
       {modalAdicionar !== null && (
         <AdicionarPassageiroModal
