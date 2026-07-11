@@ -11,7 +11,6 @@ interface Props {
   onRemoverPassageiro: (id: number) => void;
   onCancelarPassageiro: (id: number) => void;
   onEditarPassageiro: (passageiro: ViagemDiaPassageiro) => void;
-  onAtribuir: (viagemId: number) => void;
   onRemoverCarro: (viagemId: number) => void;
 }
 
@@ -23,7 +22,6 @@ export default function LegBlock({
   onRemoverPassageiro,
   onCancelarPassageiro,
   onEditarPassageiro,
-  onAtribuir,
   onRemoverCarro,
 }: Props) {
   const { setNodeRef, isOver } = useDroppable({ id: `carro-${viagem.id}`, data: { viagemId: viagem.id } });
@@ -62,16 +60,13 @@ export default function LegBlock({
             ⚠ {aviso}
           </div>
         ))}
-        <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.3rem" }}>
-          <button className="btn btn-sm" onClick={() => onAtribuir(viagem.id)}>
-            Condutor/veiculo
-          </button>
-          {viagem.passageiros.length === 0 && (
+        {viagem.passageiros.length === 0 && (
+          <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.3rem" }}>
             <button className="btn btn-sm btn-perigo" onClick={() => onRemoverCarro(viagem.id)}>
               Remover carro
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       <SortableContext items={passageirosOrdenados.map((p) => p.id)} strategy={verticalListSortingStrategy}>

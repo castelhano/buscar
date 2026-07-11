@@ -11,7 +11,7 @@ interface Props {
   onRemoverPassageiro: (id: number) => void;
   onCancelarPassageiro: (id: number) => void;
   onEditarPassageiro: (passageiro: ViagemDiaPassageiro) => void;
-  onAtribuir: (viagemId: number) => void;
+  onAtribuir: (viagemIds: number[]) => void;
   onRemoverCarro: (viagemId: number) => void;
 }
 
@@ -50,6 +50,11 @@ export default function CarroCard({
           Intervalo {primeira.intervalo_inicio.slice(0, 5)} - {primeira.intervalo_fim.slice(0, 5)}
         </div>
       )}
+      <div style={{ marginTop: "0.3rem" }}>
+        <button className="btn btn-sm" onClick={() => onAtribuir(pernas.map((v) => v.id))}>
+          Condutor/veiculo
+        </button>
+      </div>
 
       {pernas.map((viagem, indice) => (
         <LegBlock
@@ -61,7 +66,6 @@ export default function CarroCard({
           onRemoverPassageiro={onRemoverPassageiro}
           onCancelarPassageiro={onCancelarPassageiro}
           onEditarPassageiro={onEditarPassageiro}
-          onAtribuir={onAtribuir}
           onRemoverCarro={onRemoverCarro}
         />
       ))}

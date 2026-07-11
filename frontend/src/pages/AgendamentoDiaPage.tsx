@@ -103,7 +103,11 @@ export default function AgendamentoDiaPage() {
     onSuccess: invalidarDia,
   });
   const atribuir = useMutation({
-    mutationFn: ({ viagemId, body }: { viagemId: number; body: unknown }) => api.patch(`/viagens/${viagemId}/atribuir`, body),
+    mutationFn: async ({ viagemIds, body }: { viagemIds: number[]; body: unknown }) => {
+      for (const viagemId of viagemIds) {
+        await api.patch(`/viagens/${viagemId}/atribuir`, body);
+      }
+    },
     onSuccess: invalidarDia,
   });
   const removerCarro = useMutation({
@@ -125,7 +129,7 @@ export default function AgendamentoDiaPage() {
   });
 
   const [modalAdicionar, setModalAdicionar] = useState<number | null>(null);
-  const [modalAtribuir, setModalAtribuir] = useState<number | null>(null);
+  const [modalAtribuir, setModalAtribuir] = useState<number[] | null>(null);
   const [modalAbrirCarro, setModalAbrirCarro] = useState(false);
   const [modalEscalas, setModalEscalas] = useState(false);
   const [modalFerias, setModalFerias] = useState(false);
@@ -277,7 +281,7 @@ export default function AgendamentoDiaPage() {
           condutores={(condutores ?? []).filter((c) => c.status === "Ativo")}
           veiculos={(veiculos ?? []).filter((v) => v.status === "Ativo")}
           onFechar={() => setModalAtribuir(null)}
-          onConfirmar={(dados) => atribuir.mutate({ viagemId: modalAtribuir, body: dados }, { onSuccess: () => setModalAtribuir(null) })}
+          onConfirmar={(dados) => atribuir.mutate({ viagemIds: modalAtribuir, body: dados }, { onSuccess: () => setModalAtribuir(null) })}
         />
       )}
 
