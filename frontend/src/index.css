@@ -317,6 +317,23 @@ th {
   font-size: 0.75rem;
 }
 
+.passageiro-card .linha-origem-destino {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.passageiro-card .linha-origem-destino span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.passageiro-card .linha-origem-destino .destino {
+  text-align: right;
+}
+
 .passageiro-card .remover {
   position: absolute;
   top: 2px;
