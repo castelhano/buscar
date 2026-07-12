@@ -173,6 +173,16 @@ def mover_membro(
     hora_agenda = agenda.saida if sentido == Sentido.IDA else agenda.retorno
     if hora_agenda is None:
         raise ValueError("Usuario nao tem esse sentido nesse dia da semana")
+    if hora_agenda != hora:
+        # o horario de um membro tem que bater com o horario real da agenda
+        # dele -- Base so agrupa em carros, nao muda quando a pessoa e
+        # atendida. Sem essa checagem, um drop solto em cima de uma viagem
+        # de outro horario corromperia silenciosamente o horario "efetivo"
+        # dessa pessoa na geracao (ela ficaria com hora real X dentro de uma
+        # viagem_base rotulada com hora Y).
+        raise ValueError(
+            f"Horario informado ({hora}) nao bate com o horario real do usuario nesse sentido ({hora_agenda})"
+        )
     dia_semana = agenda.dia_semana
 
     grupo = db.get(GrupoBase, grupo_base_id)

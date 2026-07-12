@@ -334,6 +334,17 @@ def _regioes_do_grupo_base(
             perna = pernas_por_agenda_sentido.get((membro.agenda_id, viagem.sentido))
             if perna is None:
                 continue
+            if perna["hora"] != viagem.hora:
+                # defesa contra dado inconsistente (nao deveria acontecer --
+                # `mover_membro` ja valida isso na escrita): se o horario real
+                # da pessoa nao bate com o da viagem_base, ela nao materializa
+                # aqui; vira "nao classificado" nessa geracao em vez de
+                # corromper o carro com gente de dois horarios.
+                print(
+                    f"[geracao] membro_viagem_base agenda_id={membro.agenda_id}: horario real "
+                    f"({perna['hora']}) nao bate com o da viagem_base ({viagem.hora}), ignorado"
+                )
+                continue
             membros_hoje.append(perna)
             regioes.add(regiao_alocacao(viagem.sentido, perna["regiao_origem_id"], perna["regiao_destino_id"]))
         if membros_hoje:

@@ -265,27 +265,25 @@ export default function AgendamentoDiaPage() {
     const estrutura = estruturaBaseQuery.data;
     if (!estrutura) return;
 
-    let grupoBaseId: number;
-    let sentidoAlvo: Sentido;
-    let horaAlvo: string;
-    let membrosAlvo: { agenda_id: number }[] = [];
-    let overMembroAgendaId: number | undefined;
+    // sentido/horario SEMPRE vem de quem esta sendo arrastado -- nunca do
+    // alvo do drop. O horario real da pessoa e fixo (vem da agenda semanal
+    // dela), soltar em cima de uma viagem de outro horario nao muda isso;
+    // so decide em qual carro ela entra, criando a viagem certa on-the-fly
+    // se o carro ainda nao tiver uma pro horario dela.
+    const grupoBaseId = overData.grupoBaseId;
+    const sentidoAlvo = activeData.sentido;
+    const horaAlvo = activeData.hora;
 
-    if (overData.tipo === "grupo-base") {
-      // area vazia do carro (sem viagem nenhuma ali ainda) -- cria a viagem
-      // on-the-fly no proprio sentido/horario de quem foi arrastado
-      grupoBaseId = overData.grupoBaseId;
-      sentidoAlvo = activeData.sentido;
-      horaAlvo = activeData.hora;
-    } else {
-      grupoBaseId = overData.grupoBaseId;
-      sentidoAlvo = overData.sentido;
-      horaAlvo = overData.hora;
-      const grupo = estrutura.grupos.find((g) => g.id === grupoBaseId);
-      const viagem = grupo?.viagens.find((v) => v.id === overData.viagemBaseId);
-      membrosAlvo = viagem?.membros ?? [];
-      if (overData.tipo === "membro-base") overMembroAgendaId = overData.agendaId;
-    }
+    const grupo = estrutura.grupos.find((g) => g.id === grupoBaseId);
+    const viagemAlvo = grupo?.viagens.find((v) => v.sentido === sentidoAlvo && v.hora === horaAlvo);
+    const membrosAlvo = viagemAlvo?.membros ?? [];
+
+    // a posicao dentro da lista (over em cima de um membro especifico) so
+    // faz sentido quando o alvo do drop e de fato a MESMA viagem (sentido e
+    // horario) de quem foi arrastado -- soltar em cima de alguem de outro
+    // horario so importa pra saber o carro, nao a posicao.
+    const overMembroAgendaId =
+      overData.tipo === "membro-base" && overData.viagemBaseId === viagemAlvo?.id ? overData.agendaId : undefined;
 
     if (activeData.tipo === "membro-base" && activeData.agendaId === overMembroAgendaId) return; // solto em cima de si mesmo
 
