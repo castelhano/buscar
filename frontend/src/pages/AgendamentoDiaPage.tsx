@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { api } from "../api/client";
 import { useList } from "../api/hooks";
 import { DIAS_SEMANA, DIAS_SEMANA_LABEL } from "../api/types";
@@ -244,8 +244,21 @@ export default function AgendamentoDiaPage() {
     const grupoOrigem = grupos.find((g) => g.passageiros.some((p) => p.id === activeData.passageiroId));
     const grupoDestino = grupos.find((g) => g.id === destinoId);
     const passageiroAtivo = grupoOrigem?.passageiros.find((p) => p.id === activeData.passageiroId);
-    if (!grupoOrigem || !grupoDestino || !passageiroAtivo) return;
-    if (activeData.passageiroId === overData?.passageiroId) return; // solto em cima de si mesmo
+    if (!grupoOrigem || !grupoDestino || !passageiroAtivo) {
+      console.debug("[base-drag] cancelado: nao achei grupo/passageiro", {
+        destinoId,
+        passageiroId: activeData.passageiroId,
+        grupoOrigemAchado: !!grupoOrigem,
+        grupoDestinoAchado: !!grupoDestino,
+        passageiroAtivoAchado: !!passageiroAtivo,
+        totalGrupos: grupos.length,
+      });
+      return;
+    }
+    if (activeData.passageiroId === overData?.passageiroId) {
+      console.debug("[base-drag] cancelado: solto em cima de si mesmo");
+      return;
+    }
 
     // sentido/horario tem que bater sempre -- arrastar pra um sentido/horario
     // diferente mudaria a agenda semanal da pessoa, nao so a ordem, e isso
@@ -255,7 +268,16 @@ export default function AgendamentoDiaPage() {
     const referencia = grupoDestino.passageiros.find((p) => p.id !== activeData.passageiroId);
     const mesmoSentidoHorario =
       !referencia || (referencia.sentido === passageiroAtivo.sentido && referencia.hora === passageiroAtivo.hora);
-    if (!mesmoSentidoHorario) return;
+    if (!mesmoSentidoHorario) {
+      console.debug("[base-drag] cancelado: carro de destino e de sentido/horario diferente", {
+        usuario: passageiroAtivo.usuario.nome,
+        sentidoAtivo: passageiroAtivo.sentido,
+        horaAtiva: passageiroAtivo.hora,
+        sentidoDestino: referencia?.sentido,
+        horaDestino: referencia?.hora,
+      });
+      return;
+    }
 
     // regiao "natural" do proprio passageiro (independente do rotulo do
     // grupo, que pode ja ser o rotulo de um cluster pinado cross-regiao) --
@@ -299,25 +321,57 @@ export default function AgendamentoDiaPage() {
       ordem = antesDoDestino + posicaoNoGrupoDestino;
     }
 
+    console.debug("[base-drag] enviando mover", {
+      usuario: passageiroAtivo.usuario.nome,
+      agendaId: passageiroAtivo.agenda_id,
+      sentido: passageiroAtivo.sentido,
+      deGrupo: grupoOrigem.id,
+      paraGrupo: grupoDestino.id,
+      crossRegiao,
+      regiaoNatural,
+      regiaoDestino: grupoDestino.regiao_id,
+      ordem,
+      pinParaAgendaId,
+    });
+
     moverPassageiroBase.mutate(
       { agendaId: passageiroAtivo.agenda_id, sentido: passageiroAtivo.sentido, ordem, pinParaAgendaId },
-      { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao reordenar no molde")) },
+      {
+        onSuccess: () => console.debug("[base-drag] sucesso"),
+        onError: (e: unknown) => {
+          console.debug("[base-drag] erro do backend", e);
+          setErro(mensagemErro(e, "Erro ao reordenar no molde"));
+        },
+      },
     );
   }
 
   function handleDragEnd(evento: DragEndEvent) {
     const { active, over } = evento;
-    if (!over) return;
+    if (!over) {
+      if (modo === "base") console.debug("[base-drag] cancelado: solto fora de qualquer area valida (over=null)");
+      return;
+    }
 
     const activeData = active.data.current as { viagemId: number; passageiroId: number } | undefined;
-    if (!activeData) return;
+    if (!activeData) {
+      if (modo === "base") console.debug("[base-drag] cancelado: item arrastado sem activeData", { active });
+      return;
+    }
 
     const overData = over.data.current as { viagemId: number; passageiroId?: number } | undefined;
     const destinoId = overData?.viagemId ?? Number(String(over.id).replace("carro-", ""));
-    if (!destinoId || Number.isNaN(destinoId)) return;
+    if (!destinoId || Number.isNaN(destinoId)) {
+      if (modo === "base") console.debug("[base-drag] cancelado: nao consegui resolver o carro de destino", { overId: over.id, overData });
+      return;
+    }
 
-    if (modo === "base") handleDragEndBase(activeData, overData, destinoId);
-    else handleDragEndDia(activeData, overData, destinoId);
+    if (modo === "base") {
+      console.debug("[base-drag] drag detectado", { activeData, overData, destinoId });
+      handleDragEndBase(activeData, overData, destinoId);
+    } else {
+      handleDragEndDia(activeData, overData, destinoId);
+    }
   }
 
   const viagens = modo === "dia" ? viagensQuery.data ?? [] : previewQuery.data ?? [];
@@ -463,7 +517,7 @@ export default function AgendamentoDiaPage() {
       {modo === "dia" && viagensQuery.isLoading && <p>Carregando...</p>}
       {modo === "base" && gerarPreviewBase.isPending && <p>Gerando previa...</p>}
 
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <div className="board-layout">
           <div className="board">
             {gruposCondutor.map((grupo, indice) => (

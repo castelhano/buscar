@@ -804,7 +804,23 @@ def reordenar_preview_semana(
         raise ValueError("Nenhuma empresa atende as regioes envolvidas, nao e possivel juntar esses carros")
 
     if bucket is None:
-        bucket = [p for p in pernas_por_regiao_restante.get(regiao_movida, []) if p["sentido"] == sentido]
+        # sem cluster (nao pinado): o bucket real e por (regiao, sentido,
+        # horario) -- so essa combinacao decide em qual carro cada um cai
+        # (`_preencher_regiao`/`_preencher_regiao_preview` abrem um carro por
+        # horario dentro da regiao). Faltar o filtro de horario aqui mistura
+        # gente de horarios diferentes no reindex e escala quem nem foi
+        # arrastado pra outro carro na proxima geracao.
+        perna_movida_atual = next(
+            (p for pernas in pernas_por_regiao.values() for p in pernas if p["agenda_id"] == agenda_id and p["sentido"] == sentido),
+            None,
+        )
+        if perna_movida_atual is None:
+            raise ValueError("Usuario nao tem esse sentido elegivel hoje")
+        bucket = [
+            p
+            for p in pernas_por_regiao_restante.get(regiao_movida, [])
+            if p["sentido"] == sentido and p["hora"] == perna_movida_atual["hora"]
+        ]
 
     bucket = sorted(bucket, key=_chave_ordenacao_perna)
     indice_atual = next((i for i, p in enumerate(bucket) if p["agenda_id"] == agenda_id), None)
