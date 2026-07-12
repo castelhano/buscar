@@ -264,6 +264,7 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     janelas: dict[int, tuple[dt.time, dt.time]] = {}
     ocupacao: dict[tuple[int, Sentido, dt.time], int] = defaultdict(int)
     regioes_por_viagem: dict[int, set[int]] = defaultdict(set)
+    proximo_ordem: dict[int, int] = {}
     avisos_emitidos: set[tuple] = set()
     consumidos: set[tuple[int, Sentido]] = set()
 
@@ -284,6 +285,7 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
             janelas,
             ocupacao,
             regioes_por_viagem,
+            proximo_ordem,
             avisos_emitidos,
             ultimos_usos_veiculo,
             empresas_por_regiao,
@@ -301,6 +303,7 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
         janelas,
         ocupacao,
         regioes_por_viagem,
+        proximo_ordem,
         avisos_emitidos,
         ultimos_usos_veiculo,
         empresas_por_regiao,
@@ -347,6 +350,7 @@ def _gerar_carro_do_grupo_base(
     janelas: dict[int, tuple[dt.time, dt.time]],
     ocupacao: dict[tuple[int, Sentido, dt.time], int],
     regioes_por_viagem: dict[int, set[int]],
+    proximo_ordem: dict[int, int],
     avisos_emitidos: set[tuple],
     ultimos_usos_veiculo: dict[int, dt.date],
     empresas_por_regiao: dict[int, list[int]],
@@ -410,7 +414,7 @@ def _gerar_carro_do_grupo_base(
             db.flush()
             todas_viagens.append(viagem)
 
-        for perna in membros:
+        for indice, perna in enumerate(membros):
             db.add(
                 ViagemDiaPassageiro(
                     viagem_dia_id=viagem.id,
@@ -422,6 +426,7 @@ def _gerar_carro_do_grupo_base(
                     destino_id=perna["destino_id"],
                     regiao_destino_id=perna["regiao_destino_id"],
                     acompanhante=perna["acompanhante"],
+                    ordem=indice,
                 )
             )
             lugares = 2 if perna["acompanhante"] else 1
@@ -429,6 +434,8 @@ def _gerar_carro_do_grupo_base(
             ocupacao[(viagem.id, perna["sentido"], perna["hora"])] += lugares
             regioes_por_viagem[viagem.id].add(regiao_pessoa)
             consumidos.add((perna["agenda_id"], perna["sentido"]))
+
+        proximo_ordem[viagem.id] = len(membros)
 
 
 def _preencher_residual(
@@ -439,6 +446,7 @@ def _preencher_residual(
     janelas: dict[int, tuple[dt.time, dt.time]],
     ocupacao: dict[tuple[int, Sentido, dt.time], int],
     regioes_por_viagem: dict[int, set[int]],
+    proximo_ordem: dict[int, int],
     avisos_emitidos: set[tuple],
     ultimos_usos_veiculo: dict[int, dt.date],
     empresas_por_regiao: dict[int, list[int]],
@@ -479,6 +487,7 @@ def _preencher_residual(
                 break
 
         if viagem_encontrada is not None:
+            ordem = proximo_ordem.get(viagem_encontrada.id, 0)
             db.add(
                 ViagemDiaPassageiro(
                     viagem_dia_id=viagem_encontrada.id,
@@ -490,8 +499,10 @@ def _preencher_residual(
                     destino_id=perna["destino_id"],
                     regiao_destino_id=perna["regiao_destino_id"],
                     acompanhante=perna["acompanhante"],
+                    ordem=ordem,
                 )
             )
+            proximo_ordem[viagem_encontrada.id] = ordem + 1
             ocupacao[(viagem_encontrada.id, *chave)] += lugares
             regioes_por_viagem[viagem_encontrada.id].add(regiao_pessoa)
             continue
