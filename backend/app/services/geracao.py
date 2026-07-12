@@ -472,9 +472,10 @@ def _preencher_residual(
     residuais e irrelevante (nao ha ordem curada pra eles) -- so processa na
     ordem em que chegam.
     """
+    viagens_por_id = {v.id: v for v in todas_viagens}
     viagens_por_sentido_hora: dict[tuple[Sentido, dt.time], list[ViagemDia]] = defaultdict(list)
     for viagem_id, sentido, hora in ocupacao:
-        viagem = next((v for v in todas_viagens if v.id == viagem_id), None)
+        viagem = viagens_por_id.get(viagem_id)
         if viagem is not None and viagem not in viagens_por_sentido_hora[(sentido, hora)]:
             viagens_por_sentido_hora[(sentido, hora)].append(viagem)
 
