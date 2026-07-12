@@ -6,6 +6,7 @@ import EmpresasSection from "./cadastros/EmpresasSection";
 import VeiculosSection from "./cadastros/VeiculosSection";
 import CondutoresSection from "./cadastros/CondutoresSection";
 import FeriasSection from "./cadastros/FeriasSection";
+import BackupSection from "./cadastros/BackupSection";
 import ContasSection from "./cadastros/ContasSection";
 import { useAuth } from "../auth/AuthContext";
 
@@ -17,6 +18,7 @@ const ABAS = [
   { chave: "veiculos", label: "Frota", Componente: VeiculosSection },
   { chave: "condutores", label: "Condutores", Componente: CondutoresSection },
   { chave: "ferias", label: "Ferias", Componente: FeriasSection },
+  { chave: "backup", label: "Backup", Componente: BackupSection },
   { chave: "contas", label: "Contas", Componente: ContasSection, somenteAdmin: true },
 ] as const;
 
