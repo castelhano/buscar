@@ -17,8 +17,6 @@ interface FormState {
   tipo: TipoAtendimento;
   modalidade: Modalidade;
   acompanhante: boolean;
-  ordem_ida: number;
-  ordem_retorno: number;
   saida: string;
   retorno: string;
   origem: string;
@@ -31,8 +29,6 @@ const formVazio: FormState = {
   tipo: "Fixo",
   modalidade: "Ida e Volta",
   acompanhante: false,
-  ordem_ida: 0,
-  ordem_retorno: 0,
   saida: "",
   retorno: "",
   origem: "",
@@ -73,8 +69,6 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
             tipo: existente.tipo,
             modalidade: existente.modalidade,
             acompanhante: existente.acompanhante,
-            ordem_ida: existente.ordem_ida,
-            ordem_retorno: existente.ordem_retorno,
             saida: existente.saida ?? "",
             retorno: existente.retorno ?? "",
             origem: existente.origem ?? "",
@@ -92,8 +86,6 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
       tipo: form.tipo,
       modalidade: form.modalidade,
       acompanhante: form.acompanhante,
-      ordem_ida: form.ordem_ida,
-      ordem_retorno: form.ordem_retorno,
       saida: form.saida || null,
       retorno: form.retorno || null,
       origem: form.origem || null,
@@ -180,30 +172,6 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
                   onChange={(e) => setForm({ ...form, acompanhante: e.target.checked })}
                 />
                 Acompanhante
-              </label>
-              <label
-                style={{ display: "flex", gap: "0.25rem", alignItems: "center", fontWeight: "normal" }}
-                title="Ordem de preenchimento dos carros na Ida -- usada para manter juntos quem mora perto. Prefira ajustar pelo modo Base na tela de Agendamento, que mostra o efeito de arrastar em vez de numero cru."
-              >
-                Ordem (Ida)
-                <input
-                  type="number"
-                  style={{ width: "4rem" }}
-                  value={form.ordem_ida}
-                  onChange={(e) => setForm({ ...form, ordem_ida: Number(e.target.value) })}
-                />
-              </label>
-              <label
-                style={{ display: "flex", gap: "0.25rem", alignItems: "center", fontWeight: "normal" }}
-                title="Ordem de preenchimento dos carros na Volta -- vizinhanca de quem sai do destino, pode ser diferente da Ida. Prefira ajustar pelo modo Base na tela de Agendamento."
-              >
-                Ordem (Volta)
-                <input
-                  type="number"
-                  style={{ width: "4rem" }}
-                  value={form.ordem_retorno}
-                  onChange={(e) => setForm({ ...form, ordem_retorno: Number(e.target.value) })}
-                />
               </label>
               <label style={{ display: "flex", gap: "0.25rem", alignItems: "center", fontWeight: "normal" }}>
                 <input type="checkbox" checked={form.ativo} onChange={(e) => setForm({ ...form, ativo: e.target.checked })} />

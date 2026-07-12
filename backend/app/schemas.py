@@ -143,8 +143,6 @@ class UsuarioAgendaSemanalCreate(BaseModel):
     tipo: TipoAtendimento
     modalidade: Modalidade = Modalidade.IDA_E_VOLTA
     acompanhante: bool = False
-    ordem_ida: int = 0
-    ordem_retorno: int = 0
     saida: dt.time | None = None
     retorno: dt.time | None = None
     origem: str | None = None
@@ -161,8 +159,6 @@ class UsuarioAgendaSemanalRead(ORMModel):
     tipo: TipoAtendimento
     modalidade: Modalidade
     acompanhante: bool
-    ordem_ida: int
-    ordem_retorno: int
     saida: dt.time | None
     retorno: dt.time | None
     origem: str | None
@@ -295,26 +291,70 @@ class ViagemDiaAtribuir(BaseModel):
 
 
 # --------------------------------------------------------------------------
-# Preview do modo Base (molde por dia da semana) -- mesma forma de
-# ViagemDiaRead/ViagemDiaPassageiroRead, com um `agenda_id` a mais pra
-# identificar de qual UsuarioAgendaSemanal veio cada passageiro sintetico
-# (necessario pra persistir o reorder). Schemas separados dos "reais" pra nao
-# arriscar nada na serializacao da geracao/tela do dia de verdade.
+# Modo Base (molde por dia da semana): grupos/viagens/membros curados
+# manualmente -- a geracao real tenta materializar cada grupo como um carro
+# real, sem dividir (ver app/services/base.py e app/services/geracao.py).
 # --------------------------------------------------------------------------
 
-class ViagemDiaPassageiroPreviewRead(ViagemDiaPassageiroRead):
+class MembroBaseRead(BaseModel):
+    id: int
     agenda_id: int
-
-
-class ViagemPreviewRead(ViagemDiaRead):
-    passageiros: list[ViagemDiaPassageiroPreviewRead] = []
-
-
-class PreviewSemanaPassageiroMover(BaseModel):
-    dia_semana: DiaSemana
-    sentido: Sentido
     ordem: int
-    pin_para_agenda_id: int | None = None
+    usuario_id: int
+    usuario_nome: str
+    usuario_abbr: str
+    origem: str | None
+    regiao_origem_id: int | None
+    destino_id: int | None
+    regiao_destino_id: int | None
+    acompanhante: bool
+
+
+class ViagemBaseRead(BaseModel):
+    id: int
+    grupo_base_id: int
+    sentido: Sentido
+    hora: dt.time
+    membros: list[MembroBaseRead] = []
+
+
+class GrupoBaseRead(BaseModel):
+    id: int
+    dia_semana: DiaSemana
+    rotulo: str | None
+    ordem_exibicao: int
+    viagens: list[ViagemBaseRead] = []
+
+
+class NaoClassificadoRead(BaseModel):
+    agenda_id: int
+    usuario_id: int
+    usuario_nome: str
+    usuario_abbr: str
+    sentido: Sentido
+    hora: dt.time
+    origem: str | None
+    regiao_origem_id: int | None
+    destino_id: int | None
+    regiao_destino_id: int | None
+    acompanhante: bool
+
+
+class EstruturaBaseRead(BaseModel):
+    grupos: list[GrupoBaseRead]
+    nao_classificados: list[NaoClassificadoRead]
+
+
+class ViagemBaseCreate(BaseModel):
+    sentido: Sentido
+    hora: dt.time
+
+
+class MembroBaseMover(BaseModel):
+    sentido: Sentido
+    grupo_base_id: int
+    hora: dt.time
+    ordem: int | None = None
 
 
 class ViagemDiaAbrir(BaseModel):

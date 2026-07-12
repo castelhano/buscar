@@ -7,6 +7,7 @@ import { DIAS_SEMANA, DIAS_SEMANA_LABEL } from "../api/types";
 import type {
   Condutor,
   DiaSemana,
+  EstruturaBase,
   Empresa,
   Local,
   Regiao,
@@ -16,9 +17,10 @@ import type {
   Veiculo,
   ViagemDia,
   ViagemDiaPassageiro,
-  ViagemPreview,
 } from "../api/types";
 import CarroCard from "../components/board/CarroCard";
+import CarroBaseCard from "../components/board/CarroBaseCard";
+import NaoClassificadosBasePanel from "../components/board/NaoClassificadosBasePanel";
 import SobrasPanel from "../components/board/SobrasPanel";
 import DesconsideradosPanel from "../components/board/DesconsideradosPanel";
 import SemVagaPanel from "../components/board/SemVagaPanel";
@@ -96,11 +98,14 @@ export default function AgendamentoDiaPage() {
     queryFn: () => api.get<ViagemDiaPassageiro[]>("/viagens/sem-vaga", { data }),
   });
 
-  const previewQuery = useQuery({
-    queryKey: ["preview-semana", diaSemanaBase],
-    queryFn: () => api.get<ViagemPreview[]>("/viagens/preview-semana", { dia_semana: diaSemanaBase }),
-    enabled: false,
+  const estruturaBaseQuery = useQuery({
+    queryKey: ["estrutura-base", diaSemanaBase],
+    queryFn: () => api.get<EstruturaBase>(`/base/${diaSemanaBase}`),
   });
+
+  function atualizarEstruturaBase(dados: EstruturaBase) {
+    queryClient.setQueryData(["estrutura-base", diaSemanaBase], dados);
+  }
 
   function invalidarDia() {
     queryClient.invalidateQueries({ queryKey: ["viagens", data] });
@@ -136,33 +141,42 @@ export default function AgendamentoDiaPage() {
       api.patch(`/viagens/passageiros/${id}/mover`, { viagem_dia_destino_id, ordem }),
     onSuccess: invalidarDia,
   });
-  const gerarPreviewBase = useMutation({
-    mutationFn: () => api.post<ViagemPreview[]>("/viagens/preview-semana/gerar", undefined, { dia_semana: diaSemanaBase }),
-    onSuccess: (dados) => {
-      queryClient.setQueryData(["preview-semana", diaSemanaBase], dados);
-    },
+  const criarGrupoBase = useMutation({
+    mutationFn: () => api.post<EstruturaBase>(`/base/${diaSemanaBase}/grupos`),
+    onSuccess: atualizarEstruturaBase,
   });
-  const moverPassageiroBase = useMutation({
+  const removerGrupoBase = useMutation({
+    mutationFn: (grupoId: number) => api.delete<EstruturaBase>(`/base/grupos/${grupoId}`),
+    onSuccess: atualizarEstruturaBase,
+  });
+  const criarViagemBase = useMutation({
+    mutationFn: ({ grupoId, sentido, hora }: { grupoId: number; sentido: Sentido; hora: string }) =>
+      api.post<EstruturaBase>(`/base/grupos/${grupoId}/viagens`, { sentido, hora }),
+    onSuccess: atualizarEstruturaBase,
+  });
+  const removerViagemBase = useMutation({
+    mutationFn: (viagemId: number) => api.delete<EstruturaBase>(`/base/viagens/${viagemId}`),
+    onSuccess: atualizarEstruturaBase,
+  });
+  const removerMembroBase = useMutation({
+    mutationFn: (membroId: number) => api.delete<EstruturaBase>(`/base/membros/${membroId}`),
+    onSuccess: atualizarEstruturaBase,
+  });
+  const moverMembroBase = useMutation({
     mutationFn: ({
       agendaId,
       sentido,
+      grupoBaseId,
+      hora,
       ordem,
-      pinParaAgendaId,
     }: {
       agendaId: number;
       sentido: Sentido;
-      ordem: number;
-      pinParaAgendaId?: number;
-    }) =>
-      api.patch<ViagemPreview[]>(`/viagens/preview-semana/passageiros/${agendaId}/mover`, {
-        dia_semana: diaSemanaBase,
-        sentido,
-        ordem,
-        pin_para_agenda_id: pinParaAgendaId ?? null,
-      }),
-    onSuccess: (dados) => {
-      queryClient.setQueryData(["preview-semana", diaSemanaBase], dados);
-    },
+      grupoBaseId: number;
+      hora: string;
+      ordem?: number;
+    }) => api.patch<EstruturaBase>(`/base/membros/${agendaId}/mover`, { sentido, grupo_base_id: grupoBaseId, hora, ordem }),
+    onSuccess: atualizarEstruturaBase,
   });
   const atribuir = useMutation({
     mutationFn: async ({ viagemIds, body }: { viagemIds: number[]; body: unknown }) => {
@@ -239,143 +253,76 @@ export default function AgendamentoDiaPage() {
     );
   }
 
-  function handleDragEndBase(activeData: { viagemId: number; passageiroId: number }, overData: { viagemId: number; passageiroId?: number } | undefined, destinoId: number) {
-    const grupos = previewQuery.data ?? [];
-    const grupoOrigem = grupos.find((g) => g.passageiros.some((p) => p.id === activeData.passageiroId));
-    const grupoDestino = grupos.find((g) => g.id === destinoId);
-    const passageiroAtivo = grupoOrigem?.passageiros.find((p) => p.id === activeData.passageiroId);
-    if (!grupoOrigem || !grupoDestino || !passageiroAtivo) {
-      console.debug("[base-drag] cancelado: nao achei grupo/passageiro", {
-        destinoId,
-        passageiroId: activeData.passageiroId,
-        grupoOrigemAchado: !!grupoOrigem,
-        grupoDestinoAchado: !!grupoDestino,
-        passageiroAtivoAchado: !!passageiroAtivo,
-        totalGrupos: grupos.length,
-      });
-      return;
-    }
-    if (activeData.passageiroId === overData?.passageiroId) {
-      console.debug("[base-drag] cancelado: solto em cima de si mesmo");
-      return;
-    }
+  type ItemBase =
+    | { tipo: "membro-base"; agendaId: number; viagemBaseId: number; grupoBaseId: number; sentido: Sentido; hora: string }
+    | { tipo: "nao-classificado"; agendaId: number; sentido: Sentido; hora: string };
+  type AlvoBase =
+    | { tipo: "viagem-base"; viagemBaseId: number; grupoBaseId: number; sentido: Sentido; hora: string }
+    | { tipo: "membro-base"; agendaId: number; viagemBaseId: number; grupoBaseId: number; sentido: Sentido; hora: string }
+    | { tipo: "grupo-base"; grupoBaseId: number };
 
-    // sentido/horario tem que bater sempre -- arrastar pra um sentido/horario
-    // diferente mudaria a agenda semanal da pessoa, nao so a ordem, e isso
-    // nao e feito por drag aqui. Regiao diferente e permitido: vira um pin
-    // cross-regiao, validado no backend (rejeita se nao houver empresa com
-    // frota que atenda as duas).
-    const referencia = grupoDestino.passageiros.find((p) => p.id !== activeData.passageiroId);
-    const mesmoSentidoHorario =
-      !referencia || (referencia.sentido === passageiroAtivo.sentido && referencia.hora === passageiroAtivo.hora);
-    if (!mesmoSentidoHorario) {
-      console.debug("[base-drag] cancelado: carro de destino e de sentido/horario diferente", {
-        usuario: passageiroAtivo.usuario.nome,
-        sentidoAtivo: passageiroAtivo.sentido,
-        horaAtiva: passageiroAtivo.hora,
-        sentidoDestino: referencia?.sentido,
-        horaDestino: referencia?.hora,
-      });
-      return;
-    }
+  function handleDragEndBase(activeData: ItemBase, overData: AlvoBase) {
+    const estrutura = estruturaBaseQuery.data;
+    if (!estrutura) return;
 
-    // regiao "natural" do proprio passageiro (independente do rotulo do
-    // grupo, que pode ja ser o rotulo de um cluster pinado cross-regiao) --
-    // evita limpar um pin existente ao so reordenar dentro do mesmo cluster
-    const regiaoNatural =
-      passageiroAtivo.sentido === "Retorno" && passageiroAtivo.regiao_destino_id != null
-        ? passageiroAtivo.regiao_destino_id
-        : passageiroAtivo.regiao_origem_id;
-    const crossRegiao = regiaoNatural !== grupoDestino.regiao_id;
+    let grupoBaseId: number;
+    let sentidoAlvo: Sentido;
+    let horaAlvo: string;
+    let membrosAlvo: { agenda_id: number }[] = [];
+    let overMembroAgendaId: number | undefined;
 
-    const destinoSemAtivo = grupoDestino.passageiros.filter((p) => p.id !== activeData.passageiroId);
-    let posicaoNoGrupoDestino = destinoSemAtivo.length;
-    if (overData?.passageiroId !== undefined) {
-      const idx = destinoSemAtivo.findIndex((p) => p.id === overData.passageiroId);
-      if (idx >= 0) posicaoNoGrupoDestino = idx;
-    }
-
-    let ordem = posicaoNoGrupoDestino;
-    let pinParaAgendaId: number | undefined;
-    if (crossRegiao) {
-      // cluster ainda nao existe (ou esta sendo formado agora) -- o backend
-      // recalcula do zero, entao so mandamos a posicao dentro do carro de
-      // destino como aproximacao inicial; drags seguintes (ja no mesmo
-      // grupo/regiao) reindexam com precisao total
-      pinParaAgendaId = (referencia ?? grupoDestino.passageiros[0]).agenda_id;
+    if (overData.tipo === "grupo-base") {
+      // area vazia do carro (sem viagem nenhuma ali ainda) -- cria a viagem
+      // on-the-fly no proprio sentido/horario de quem foi arrastado
+      grupoBaseId = overData.grupoBaseId;
+      sentidoAlvo = activeData.sentido;
+      horaAlvo = activeData.hora;
     } else {
-      // mesma regiao: ordem_ida/ordem_retorno e um criterio global dentro do
-      // bucket inteiro (nao "dentro de um carro"), entao o indice soma
-      // quantos ficam antes do carro de destino nos outros carros do bucket
-      const bucket = grupos.filter(
-        (g) =>
-          g.regiao_id === grupoOrigem.regiao_id &&
-          g.passageiros[0]?.sentido === passageiroAtivo.sentido &&
-          g.passageiros[0]?.hora === passageiroAtivo.hora,
-      );
-      let antesDoDestino = 0;
-      for (const g of bucket) {
-        if (g.id === grupoDestino.id) break;
-        antesDoDestino += g.id === grupoOrigem.id ? g.passageiros.length - 1 : g.passageiros.length;
-      }
-      ordem = antesDoDestino + posicaoNoGrupoDestino;
+      grupoBaseId = overData.grupoBaseId;
+      sentidoAlvo = overData.sentido;
+      horaAlvo = overData.hora;
+      const grupo = estrutura.grupos.find((g) => g.id === grupoBaseId);
+      const viagem = grupo?.viagens.find((v) => v.id === overData.viagemBaseId);
+      membrosAlvo = viagem?.membros ?? [];
+      if (overData.tipo === "membro-base") overMembroAgendaId = overData.agendaId;
     }
 
-    console.debug("[base-drag] enviando mover", {
-      usuario: passageiroAtivo.usuario.nome,
-      agendaId: passageiroAtivo.agenda_id,
-      sentido: passageiroAtivo.sentido,
-      deGrupo: grupoOrigem.id,
-      paraGrupo: grupoDestino.id,
-      crossRegiao,
-      regiaoNatural,
-      regiaoDestino: grupoDestino.regiao_id,
-      ordem,
-      pinParaAgendaId,
-    });
+    if (activeData.tipo === "membro-base" && activeData.agendaId === overMembroAgendaId) return; // solto em cima de si mesmo
 
-    moverPassageiroBase.mutate(
-      { agendaId: passageiroAtivo.agenda_id, sentido: passageiroAtivo.sentido, ordem, pinParaAgendaId },
-      {
-        onSuccess: () => console.debug("[base-drag] sucesso"),
-        onError: (e: unknown) => {
-          console.debug("[base-drag] erro do backend", e);
-          setErro(mensagemErro(e, "Erro ao reordenar no molde"));
-        },
-      },
+    const semAtivo = membrosAlvo.filter((m) => m.agenda_id !== activeData.agendaId);
+    let ordem = semAtivo.length;
+    if (overMembroAgendaId !== undefined) {
+      const idx = semAtivo.findIndex((m) => m.agenda_id === overMembroAgendaId);
+      if (idx >= 0) ordem = idx;
+    }
+
+    moverMembroBase.mutate(
+      { agendaId: activeData.agendaId, sentido: sentidoAlvo, grupoBaseId, hora: horaAlvo, ordem },
+      { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao mover no molde")) },
     );
   }
 
   function handleDragEnd(evento: DragEndEvent) {
     const { active, over } = evento;
-    if (!over) {
-      if (modo === "base") console.debug("[base-drag] cancelado: solto fora de qualquer area valida (over=null)");
+    if (!over) return;
+
+    if (modo === "base") {
+      const activeData = active.data.current as ItemBase | undefined;
+      const overData = over.data.current as AlvoBase | undefined;
+      if (!activeData || !overData) return;
+      handleDragEndBase(activeData, overData);
       return;
     }
 
     const activeData = active.data.current as { viagemId: number; passageiroId: number } | undefined;
-    if (!activeData) {
-      if (modo === "base") console.debug("[base-drag] cancelado: item arrastado sem activeData", { active });
-      return;
-    }
-
+    if (!activeData) return;
     const overData = over.data.current as { viagemId: number; passageiroId?: number } | undefined;
     const destinoId = overData?.viagemId ?? Number(String(over.id).replace("carro-", ""));
-    if (!destinoId || Number.isNaN(destinoId)) {
-      if (modo === "base") console.debug("[base-drag] cancelado: nao consegui resolver o carro de destino", { overId: over.id, overData });
-      return;
-    }
-
-    if (modo === "base") {
-      console.debug("[base-drag] drag detectado", { activeData, overData, destinoId });
-      handleDragEndBase(activeData, overData, destinoId);
-    } else {
-      handleDragEndDia(activeData, overData, destinoId);
-    }
+    if (!destinoId || Number.isNaN(destinoId)) return;
+    handleDragEndDia(activeData, overData, destinoId);
   }
 
-  const viagens = modo === "dia" ? viagensQuery.data ?? [] : previewQuery.data ?? [];
-  const viagensDoPeriodo = viagens.filter((v) => periodoDaViagem(v) === periodo);
+  const viagensDoPeriodo = (viagensQuery.data ?? []).filter((v) => periodoDaViagem(v) === periodo);
   const gruposCondutor = agruparPorCondutor(viagensDoPeriodo);
 
   return (
@@ -399,8 +346,8 @@ export default function AgendamentoDiaPage() {
           </div>
         )}
 
-      {modo === "base" && previewQuery.error && (
-        <div className="erro-box">Erro ao carregar previa do molde: {mensagemErro(previewQuery.error, "erro desconhecido")}</div>
+      {modo === "base" && estruturaBaseQuery.error && (
+        <div className="erro-box">Erro ao carregar o molde: {mensagemErro(estruturaBaseQuery.error, "erro desconhecido")}</div>
       )}
 
       <div className="linha-toolbar">
@@ -429,12 +376,12 @@ export default function AgendamentoDiaPage() {
           </div>
         )}
 
-        {modo === "dia" && viagens.length > 0 && (
+        {modo === "dia" && (viagensQuery.data ?? []).length > 0 && (
           <button className="btn btn-perigo" onClick={() => setModalLimparDia(true)} disabled={limparDia.isPending}>
             Limpar
           </button>
         )}
-        {modo === "dia" && viagens.length === 0 && !viagensQuery.isLoading && (
+        {modo === "dia" && (viagensQuery.data ?? []).length === 0 && !viagensQuery.isLoading && (
           <button
             className="btn btn-primario"
             onClick={() =>
@@ -449,13 +396,13 @@ export default function AgendamentoDiaPage() {
           <button
             className="btn btn-primario"
             onClick={() =>
-              gerarPreviewBase.mutate(undefined, {
-                onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao gerar previa do molde")),
+              criarGrupoBase.mutate(undefined, {
+                onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao criar carro")),
               })
             }
-            disabled={gerarPreviewBase.isPending}
+            disabled={criarGrupoBase.isPending}
           >
-            Gerar previa
+            + Novo carro
           </button>
         )}
         {modo === "dia" && (
@@ -498,68 +445,107 @@ export default function AgendamentoDiaPage() {
           </button>
         )}
 
-        <div className="btn-group" style={{ marginLeft: "auto" }}>
-          <button
-            className={`btn btn-sm ${periodo === "Manha" ? "btn-group-ativo" : ""}`}
-            onClick={() => setPeriodo("Manha")}
-          >
-            Manha
-          </button>
-          <button
-            className={`btn btn-sm ${periodo === "Tarde" ? "btn-group-ativo" : ""}`}
-            onClick={() => setPeriodo("Tarde")}
-          >
-            Tarde
-          </button>
-        </div>
+        {modo === "dia" && (
+          <div className="btn-group" style={{ marginLeft: "auto" }}>
+            <button
+              className={`btn btn-sm ${periodo === "Manha" ? "btn-group-ativo" : ""}`}
+              onClick={() => setPeriodo("Manha")}
+            >
+              Manha
+            </button>
+            <button
+              className={`btn btn-sm ${periodo === "Tarde" ? "btn-group-ativo" : ""}`}
+              onClick={() => setPeriodo("Tarde")}
+            >
+              Tarde
+            </button>
+          </div>
+        )}
       </div>
 
       {modo === "dia" && viagensQuery.isLoading && <p>Carregando...</p>}
-      {modo === "base" && gerarPreviewBase.isPending && <p>Gerando previa...</p>}
+      {modo === "base" && estruturaBaseQuery.isLoading && <p>Carregando molde...</p>}
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <div className="board-layout">
-          <div className="board">
-            {gruposCondutor.map((grupo, indice) => (
-              <CarroCard
-                key={grupo[0].condutor_id !== null ? `c${grupo[0].condutor_id}` : `v${grupo[0].id}`}
-                viagens={grupo}
-                empresas={empresas ?? []}
-                veiculos={veiculos ?? []}
-                condutores={condutores ?? []}
+        {modo === "dia" ? (
+          <div className="board-layout">
+            <div className="board">
+              {gruposCondutor.map((grupo) => (
+                <CarroCard
+                  key={grupo[0].condutor_id !== null ? `c${grupo[0].condutor_id}` : `v${grupo[0].id}`}
+                  viagens={grupo}
+                  empresas={empresas ?? []}
+                  veiculos={veiculos ?? []}
+                  condutores={condutores ?? []}
+                  locais={locais ?? []}
+                  regioes={regioes ?? []}
+                  tituloSemVeiculo="Carro sem veiculo"
+                  onAdicionarPassageiro={setModalAdicionar}
+                  onRemoverPassageiro={setModalRemoverPassageiro}
+                  onCancelarPassageiro={setModalCancelar}
+                  onEditarPassageiro={setModalEditarPassageiro}
+                  onAtribuir={setModalAtribuir}
+                  onRemoverCarro={(id) =>
+                    removerCarro.mutate(id, {
+                      onError: (e: unknown) => setErro(mensagemErro(e, "Nao foi possivel remover o carro")),
+                    })
+                  }
+                />
+              ))}
+            </div>
+
+            {semVagaQuery.data && (
+              <SemVagaPanel
+                passageiros={semVagaQuery.data}
                 locais={locais ?? []}
-                regioes={regioes ?? []}
-                tituloSemVeiculo={
-                  modo === "base" ? (grupo[0].capacidade === 0 ? "Sem vaga" : `Grupo ${indice + 1}`) : "Carro sem veiculo"
-                }
-                onAdicionarPassageiro={modo === "dia" ? setModalAdicionar : undefined}
-                onRemoverPassageiro={modo === "dia" ? setModalRemoverPassageiro : undefined}
-                onCancelarPassageiro={modo === "dia" ? setModalCancelar : undefined}
-                onEditarPassageiro={modo === "dia" ? setModalEditarPassageiro : undefined}
-                onAtribuir={modo === "dia" ? setModalAtribuir : undefined}
-                onRemoverCarro={
-                  modo === "dia"
-                    ? (id) =>
-                        removerCarro.mutate(id, {
-                          onError: (e: unknown) => setErro(mensagemErro(e, "Nao foi possivel remover o carro")),
-                        })
-                    : undefined
-                }
+                onRemover={setModalRemoverPassageiro}
+                onCancelar={setModalCancelar}
+                onEditar={setModalEditarPassageiro}
               />
-            ))}
+            )}
           </div>
+        ) : (
+          <div className="board-layout">
+            <div className="board">
+              {(estruturaBaseQuery.data?.grupos ?? []).map((grupo, indice) => (
+                <CarroBaseCard
+                  key={grupo.id}
+                  grupo={grupo}
+                  indice={indice}
+                  locais={locais ?? []}
+                  regioes={regioes ?? []}
+                  onNovaViagem={(grupoId, sentido, hora) =>
+                    criarViagemBase.mutate(
+                      { grupoId, sentido, hora: `${hora}:00` },
+                      { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao criar viagem")) },
+                    )
+                  }
+                  onRemoverGrupo={(grupoId) =>
+                    removerGrupoBase.mutate(grupoId, {
+                      onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao remover carro")),
+                    })
+                  }
+                  onRemoverViagem={(viagemId) =>
+                    removerViagemBase.mutate(viagemId, {
+                      onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao remover viagem")),
+                    })
+                  }
+                  onRemoverMembro={(membroId) =>
+                    removerMembroBase.mutate(membroId, {
+                      onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao tirar do carro")),
+                    })
+                  }
+                />
+              ))}
+            </div>
 
-          {modo === "dia" && semVagaQuery.data && (
-            <SemVagaPanel
-              passageiros={semVagaQuery.data}
+            <NaoClassificadosBasePanel
+              membros={estruturaBaseQuery.data?.nao_classificados ?? []}
               locais={locais ?? []}
-              onRemover={setModalRemoverPassageiro}
-              onCancelar={setModalCancelar}
-              onEditar={setModalEditarPassageiro}
+              regioes={regioes ?? []}
             />
-          )}
-
-        </div>
+          </div>
+        )}
 
         {modo === "dia" && sobrasQuery.data && (
           <SobrasPanel

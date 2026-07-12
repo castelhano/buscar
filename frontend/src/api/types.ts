@@ -94,8 +94,6 @@ export interface UsuarioAgendaSemanal {
   tipo: TipoAtendimento;
   modalidade: Modalidade;
   acompanhante: boolean;
-  ordem_ida: number;
-  ordem_retorno: number;
   saida: string | null;
   retorno: string | null;
   origem: string | null;
@@ -162,12 +160,57 @@ export interface ViagemDia {
   intervalo_fim: string | null;
 }
 
-export interface ViagemDiaPassageiroPreview extends ViagemDiaPassageiro {
+// --------------------------------------------------------------------------
+// Modo Base (molde por dia da semana)
+// --------------------------------------------------------------------------
+
+export interface MembroBase {
+  id: number;
   agenda_id: number;
+  ordem: number;
+  usuario_id: number;
+  usuario_nome: string;
+  usuario_abbr: string;
+  origem: string | null;
+  regiao_origem_id: number | null;
+  destino_id: number | null;
+  regiao_destino_id: number | null;
+  acompanhante: boolean;
 }
 
-export interface ViagemPreview extends Omit<ViagemDia, "passageiros"> {
-  passageiros: ViagemDiaPassageiroPreview[];
+export interface ViagemBase {
+  id: number;
+  grupo_base_id: number;
+  sentido: Sentido;
+  hora: string;
+  membros: MembroBase[];
+}
+
+export interface GrupoBase {
+  id: number;
+  dia_semana: DiaSemana;
+  rotulo: string | null;
+  ordem_exibicao: number;
+  viagens: ViagemBase[];
+}
+
+export interface NaoClassificadoBase {
+  agenda_id: number;
+  usuario_id: number;
+  usuario_nome: string;
+  usuario_abbr: string;
+  sentido: Sentido;
+  hora: string;
+  origem: string | null;
+  regiao_origem_id: number | null;
+  destino_id: number | null;
+  regiao_destino_id: number | null;
+  acompanhante: boolean;
+}
+
+export interface EstruturaBase {
+  grupos: GrupoBase[];
+  nao_classificados: NaoClassificadoBase[];
 }
 
 export interface Frequencia {

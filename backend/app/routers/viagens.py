@@ -11,13 +11,7 @@ from app.auth import obter_conta_atual
 from app.database import get_db
 from app.services.exportacao import gerar_pdf_resumo_dia, gerar_zip_agendamentos
 from app.services.frequencia import INTERVALO_PADRAO_POR_PERIODO
-from app.services.geracao import (
-    gerar_agendamento_dia,
-    listar_desconsiderados_dia,
-    montar_preview_semana,
-    persistir_ordem_semana,
-    reordenar_preview_semana,
-)
+from app.services.geracao import gerar_agendamento_dia, listar_desconsiderados_dia
 from app.services.recursos import fim_viagem, janelas_sobrepoem
 
 router = APIRouter(prefix="/viagens", tags=["viagens"], dependencies=[Depends(obter_conta_atual)])
@@ -222,40 +216,6 @@ def gerar(data: dt.date, db: Session = Depends(get_db)):
     viagens_do_dia = _query_viagens(db, data)
     contexto = _construir_contexto_dia(db, data, viagens_do_dia)
     return [_serializar_viagem(v, contexto) for v in viagens_do_dia]
-
-
-@router.get("/preview-semana", response_model=list[schemas.ViagemPreviewRead])
-def preview_semana(dia_semana: models.DiaSemana, db: Session = Depends(get_db)):
-    """Modo Base: previa de como a geracao alocaria carros pra um dia da
-    semana generico, direto da agenda semanal -- nao persiste nada."""
-    return montar_preview_semana(db, dia_semana)
-
-
-@router.post("/preview-semana/gerar", response_model=list[schemas.ViagemPreviewRead])
-def gerar_preview_semana(dia_semana: models.DiaSemana, db: Session = Depends(get_db)):
-    """Modo Base: ao "gerar" o molde, ja baixa ordem_ida/ordem_retorno pro
-    banco (0..N-1 por bucket) refletindo o agrupamento atual -- sem isso,
-    quem o usuario nao arrastou continuaria com ordem=0 pra sempre."""
-    persistir_ordem_semana(db, dia_semana)
-    return montar_preview_semana(db, dia_semana)
-
-
-@router.patch("/preview-semana/passageiros/{agenda_id}/mover", response_model=list[schemas.ViagemPreviewRead])
-def mover_passageiro_preview_semana(
-    agenda_id: int, payload: schemas.PreviewSemanaPassageiroMover, db: Session = Depends(get_db)
-):
-    """Persiste um arrastar no modo Base: reindexa ordem_ida/ordem_retorno do
-    bucket (regiao/sentido, incluindo cluster pinado se houver) do usuario
-    movido na UsuarioAgendaSemanal. `pin_para_agenda_id` (opcional) forca um
-    agrupamento cross-regiao, validado antes de gravar (400 se nao existir
-    empresa com frota que atenda as regioes envolvidas)."""
-    try:
-        reordenar_preview_semana(
-            db, payload.dia_semana, agenda_id, payload.sentido, payload.ordem, payload.pin_para_agenda_id
-        )
-    except ValueError as erro:
-        raise HTTPException(status_code=400, detail=str(erro)) from erro
-    return montar_preview_semana(db, payload.dia_semana)
 
 
 @router.post("/abrir", response_model=schemas.ViagemDiaRead, status_code=201)

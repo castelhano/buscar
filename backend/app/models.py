@@ -251,17 +251,9 @@ class UsuarioAgendaSemanal(Base):
     Cobre nativamente o caso de um usuario ser Fixo de Seg-Qui e Eventual na Sex,
     com horarios/locais diferentes, sem precisar de um conceito separado de excecao.
 
-    `ordem_ida`/`ordem_retorno` sao curados manualmente (agrupar quem mora/sai
-    perto em cada sentido -- a vizinhanca de quem sai de casa na Ida nao e a
-    mesma de quem sai do destino na Volta) e usados pela geracao do dia pra
-    decidir a sequencia de preenchimento dos carros por regiao. `ordem` 0
-    significa "sem classificacao" (ninguem revisou ainda no modo Base) e e
-    tratado como prioridade mais baixa, nao mais alta, na geracao.
-
-    `pin_ida_agenda_id`/`pin_retorno_agenda_id` forcam esse usuario a cair no
-    mesmo carro que a `UsuarioAgendaSemanal` referenciada, mesmo que sejam de
-    regioes diferentes (quando existir empresa que atenda as duas) -- curado
-    só pelo modo Base ao arrastar, nunca pelo formulario de cadastro.
+    O agrupamento em carros pro modo Base (`GrupoBase`/`ViagemBase`/
+    `MembroViagemBase`) e curado a parte, sem nenhum campo aqui -- essa agenda
+    so descreve o atendimento em si (horario/local/regiao).
     """
 
     __tablename__ = "usuario_agenda_semanal"
@@ -272,14 +264,6 @@ class UsuarioAgendaSemanal(Base):
     tipo: Mapped[TipoAtendimento] = mapped_column(_enum(TipoAtendimento))
     modalidade: Mapped[Modalidade] = mapped_column(_enum(Modalidade), default=Modalidade.IDA_E_VOLTA)
     acompanhante: Mapped[bool] = mapped_column(default=False)
-    ordem_ida: Mapped[int] = mapped_column(Integer, default=0)
-    ordem_retorno: Mapped[int] = mapped_column(Integer, default=0)
-    pin_ida_agenda_id: Mapped[int | None] = mapped_column(
-        ForeignKey("usuario_agenda_semanal.id", ondelete="SET NULL"), nullable=True
-    )
-    pin_retorno_agenda_id: Mapped[int | None] = mapped_column(
-        ForeignKey("usuario_agenda_semanal.id", ondelete="SET NULL"), nullable=True
-    )
     saida: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
     retorno: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
     origem: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -328,6 +312,74 @@ class UsuarioExcecao(Base):
 
     __table_args__ = (
         UniqueConstraint("usuario_id", "data", name="uq_usuario_excecao_data"),
+    )
+
+
+# --------------------------------------------------------------------------
+# Modo Base (molde por dia da semana): carros conceituais curados manualmente,
+# sem restricao de regiao nem limite rigido de gente por horario -- so uma
+# entidade explicita que a geracao real replica, sem tentar reotimizar.
+# --------------------------------------------------------------------------
+
+class GrupoBase(Base):
+    """Um "carro conceitual" da Base: sem prefixo/empresa/condutor, so um
+    agrupamento manual que a geracao do dia tenta materializar como um unico
+    carro real (mesmo condutor/veiculo ao longo do dia), sem dividir.
+    """
+
+    __tablename__ = "grupo_base"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dia_semana: Mapped[DiaSemana] = mapped_column(_enum(DiaSemana), index=True)
+    rotulo: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    ordem_exibicao: Mapped[int] = mapped_column(Integer, default=0)
+
+    viagens: Mapped[list["ViagemBase"]] = relationship(
+        back_populates="grupo", cascade="all, delete-orphan"
+    )
+
+
+class ViagemBase(Base):
+    """Um horario (Ida ou Retorno) dentro de um `GrupoBase` -- vira uma
+    `ViagemDia` na geracao real, tentando reaproveitar o mesmo veiculo das
+    outras viagens do mesmo grupo.
+    """
+
+    __tablename__ = "viagem_base"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    grupo_base_id: Mapped[int] = mapped_column(ForeignKey("grupo_base.id", ondelete="CASCADE"))
+    sentido: Mapped[Sentido] = mapped_column(_enum(Sentido))
+    hora: Mapped[dt.time] = mapped_column(Time)
+
+    grupo: Mapped["GrupoBase"] = relationship(back_populates="viagens")
+    membros: Mapped[list["MembroViagemBase"]] = relationship(
+        back_populates="viagem", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        UniqueConstraint("grupo_base_id", "sentido", "hora", name="uq_viagem_base_horario"),
+    )
+
+
+class MembroViagemBase(Base):
+    """Um usuario (via sua `UsuarioAgendaSemanal`) dentro de uma `ViagemBase`,
+    com sua posicao entre os demais dessa viagem -- sem limite rigido, so um
+    alerta visual na tela quando passa de 4.
+    """
+
+    __tablename__ = "membro_viagem_base"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    viagem_base_id: Mapped[int] = mapped_column(ForeignKey("viagem_base.id", ondelete="CASCADE"))
+    agenda_id: Mapped[int] = mapped_column(ForeignKey("usuario_agenda_semanal.id", ondelete="CASCADE"))
+    ordem: Mapped[int] = mapped_column(Integer, default=0)
+
+    viagem: Mapped["ViagemBase"] = relationship(back_populates="membros")
+    agenda: Mapped["UsuarioAgendaSemanal"] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint("viagem_base_id", "agenda_id", name="uq_membro_viagem_base"),
     )
 
 
