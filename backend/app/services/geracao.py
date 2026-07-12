@@ -390,6 +390,7 @@ def _gerar_carro_do_grupo_base(
             )
             if viagem is not None:
                 veiculo_do_grupo = viagem.veiculo_id
+                todas_viagens.append(viagem)
 
         if viagem is None:
             lugares_totais = sum(2 if m["acompanhante"] else 1 for m in membros)
