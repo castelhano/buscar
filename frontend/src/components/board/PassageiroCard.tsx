@@ -54,10 +54,17 @@ export default function PassageiroCard({ viagemId, passageiro, destinoNome, onRe
         </div>
       )}
       <div className="linha-2 linha-origem-destino">
-        <span title={passageiro.origem ?? undefined}>{passageiro.origem ?? "-"}</span>
-        <span title={destinoNome} className="destino">
-          {passageiro.destino_id ? destinoNome ?? "destino cadastrado" : "-"}
-        </span>
+        {passageiro.sentido === "Retorno" ? (
+          <>
+            <span title={destinoNome}>{passageiro.destino_id ? destinoNome ?? "destino cadastrado" : "-"}</span>
+            <span title={passageiro.origem ?? undefined}>{passageiro.origem ?? "-"}</span>
+          </>
+        ) : (
+          <>
+            <span title={passageiro.origem ?? undefined}>{passageiro.origem ?? "-"}</span>
+            <span title={destinoNome}>{passageiro.destino_id ? destinoNome ?? "destino cadastrado" : "-"}</span>
+          </>
+        )}
       </div>
       {passageiro.irregular && (
         <div className="linha-2" title={passageiro.motivo_irregular ?? ""} style={{ color: "var(--cor-alerta-borda)", fontWeight: 600 }}>

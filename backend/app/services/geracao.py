@@ -116,6 +116,21 @@ def listar_desconsiderados_dia(db: Session, data: dt.date) -> list[dict]:
     return desconsiderados
 
 
+def _chave_ordenacao_perna(perna: dict) -> tuple:
+    """Ordem de preenchimento dos carros dentro de uma regiao: por sentido
+    (ida e retorno nunca dividem carro, mas idas sao sempre "Ida" < "Retorno"
+    entao ficam naturalmente separadas), depois horario.
+
+    Na ida o desempate e o `ordem` manual (curado pra manter juntos quem mora
+    perto). No retorno o desempate prioriza o destino exato (Local, ex: mesma
+    escola) antes do `ordem` -- so mistura locais diferentes da mesma regiao
+    quando o destino exato acabou.
+    """
+    if perna["sentido"] == Sentido.RETORNO:
+        return (perna["sentido"].value, perna["hora"], perna["destino_id"] or 0, perna["ordem"])
+    return (perna["sentido"].value, perna["hora"], perna["ordem"])
+
+
 def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     """Gera as ViagemDia + ViagemDiaPassageiro de uma data a partir da agenda semanal.
 
@@ -127,6 +142,12 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     manualmente para manter juntos quem mora perto) e abre carros por
     regiao/sentido/horario ate a frota disponivel se esgotar; o que sobra fica
     de fora para alocacao manual na tela de escala do dia.
+
+    No Retorno o carro opera na regiao do destino (ex: regiao da escola, de
+    onde o usuario esta saindo nessa perna) em vez da regiao de origem/casa, e
+    a ordem de preenchimento prioriza horario, depois o destino exato (mesmo
+    local), so entao a regiao (local diferente, mesma regiao) -- ao contrario
+    da Ida, que so usa horario + `ordem` manual.
     """
     existentes = db.query(ViagemDia).filter(ViagemDia.data == data).all()
     if existentes:
@@ -162,7 +183,15 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
             hora = hora_excecao or hora_padrao
             if hora is None:
                 continue
-            pernas_por_regiao[regiao_origem_id].append(
+            # No retorno o veiculo opera na regiao do destino (de onde o
+            # usuario esta saindo nessa perna, ex: escola); sem regiao de
+            # destino cadastrada, cai pra regiao de origem como na ida.
+            regiao_alocacao_id = (
+                regiao_destino_id
+                if sentido == Sentido.RETORNO and regiao_destino_id is not None
+                else regiao_origem_id
+            )
+            pernas_por_regiao[regiao_alocacao_id].append(
                 {
                     "usuario_id": agenda.usuario_id,
                     "ordem": agenda.ordem,
@@ -182,7 +211,7 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     janelas: dict[int, tuple[dt.time, dt.time]] = {}
     avisos_emitidos: set[tuple] = set()
     for regiao_id, pernas in pernas_por_regiao.items():
-        pernas.sort(key=lambda p: (p["sentido"].value, p["hora"], p["ordem"]))
+        pernas.sort(key=_chave_ordenacao_perna)
         _preencher_regiao(
             db, regiao_id, pernas, data, todas_viagens, janelas, avisos_emitidos, ultimos_usos_veiculo, empresas_por_regiao
         )

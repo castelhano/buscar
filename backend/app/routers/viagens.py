@@ -240,6 +240,10 @@ def limpar_dia(data: dt.date, db: Session = Depends(get_db)):
     """Apaga todas as ViagemDia (e seus passageiros) de uma data -- destrutivo,
     usado pra descartar a geracao/escala do dia e recomecar do zero. Precisa
     vir antes de "/{viagem_id}" nas rotas pra nao ser capturado por ela.
+
+    Tambem apaga os "sem vaga" orfaos (viagem_dia_id NULL) daquela data --
+    sem isso, gerar/limpar/gerar de novo acumula orfaos duplicados de
+    tentativas anteriores no painel de Sem Vaga.
     """
     viagem_ids = [
         row[0] for row in db.query(models.ViagemDia.id).filter(models.ViagemDia.data == data).all()
@@ -249,6 +253,9 @@ def limpar_dia(data: dt.date, db: Session = Depends(get_db)):
             models.ViagemDiaPassageiro.viagem_dia_id.in_(viagem_ids)
         ).delete(synchronize_session=False)
         db.query(models.ViagemDia).filter(models.ViagemDia.id.in_(viagem_ids)).delete(synchronize_session=False)
+    db.query(models.ViagemDiaPassageiro).filter(
+        models.ViagemDiaPassageiro.viagem_dia_id.is_(None), models.ViagemDiaPassageiro.data == data
+    ).delete(synchronize_session=False)
     db.commit()
 
 

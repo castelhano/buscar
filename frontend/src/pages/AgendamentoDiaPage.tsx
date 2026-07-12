@@ -314,6 +314,7 @@ export default function AgendamentoDiaPage() {
                 veiculos={veiculos ?? []}
                 condutores={condutores ?? []}
                 locais={locais ?? []}
+                regioes={regioes ?? []}
                 onAdicionarPassageiro={setModalAdicionar}
                 onRemoverPassageiro={setModalRemoverPassageiro}
                 onCancelarPassageiro={setModalCancelar}

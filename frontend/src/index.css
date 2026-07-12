@@ -206,6 +206,15 @@ th {
   color: var(--cor-perigo);
 }
 
+.tag-regiao {
+  background: var(--cor-primaria);
+  color: #fff;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
 .linha-inativa td {
   background: var(--cor-fundo);
   color: var(--cor-texto-suave);
@@ -247,6 +256,13 @@ th {
   padding: 0.75rem;
   display: flex;
   flex-direction: column;
+  gap: 0.5rem;
+}
+
+.carro-card-topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 0.5rem;
 }
 
@@ -354,7 +370,7 @@ th {
   min-width: 0;
 }
 
-.passageiro-card .linha-origem-destino .destino {
+.passageiro-card .linha-origem-destino span:last-child {
   text-align: right;
 }
 

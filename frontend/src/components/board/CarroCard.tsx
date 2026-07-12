@@ -1,4 +1,4 @@
-import type { Condutor, Empresa, Local, Veiculo, ViagemDia, ViagemDiaPassageiro } from "../../api/types";
+import type { Condutor, Empresa, Local, Regiao, Veiculo, ViagemDia, ViagemDiaPassageiro } from "../../api/types";
 import LegBlock from "./LegBlock";
 
 interface Props {
@@ -7,6 +7,7 @@ interface Props {
   veiculos: Veiculo[];
   condutores: Condutor[];
   locais: Local[];
+  regioes: Regiao[];
   onAdicionarPassageiro: (viagemId: number) => void;
   onRemoverPassageiro: (id: number) => void;
   onCancelarPassageiro: (id: number) => void;
@@ -21,6 +22,7 @@ export default function CarroCard({
   veiculos,
   condutores,
   locais,
+  regioes,
   onAdicionarPassageiro,
   onRemoverPassageiro,
   onCancelarPassageiro,
@@ -39,9 +41,18 @@ export default function CarroCard({
   const empresa = empresas.find((e) => e.id === primeira.empresa_id);
   const condutor = condutores.find((c) => c.id === primeira.condutor_id);
 
+  const regiaoNomes = [...new Set(pernas.map((v) => v.regiao_id))].map(
+    (id) => regioes.find((r) => r.id === id)?.nome ?? "?",
+  );
+
   return (
     <div className="carro-card">
-      <div className="titulo">{veiculo ? veiculo.prefixo : "Carro sem veiculo"}</div>
+      <div className="carro-card-topo">
+        <div className="titulo">{veiculo ? veiculo.prefixo : "Carro sem veiculo"}</div>
+        <span className="tag tag-regiao" title="Regiao do veiculo">
+          {regiaoNomes.join(" · ")}
+        </span>
+      </div>
       <div className="meta">
         {empresa?.nome ?? "Sem empresa"} · {condutor?.nome ?? "Sem condutor"}
       </div>
