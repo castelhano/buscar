@@ -131,14 +131,22 @@ def _chave_ordenacao_perna(perna: dict) -> tuple:
     (ida e retorno nunca dividem carro, mas idas sao sempre "Ida" < "Retorno"
     entao ficam naturalmente separadas), depois horario.
 
-    Na ida o desempate e o `ordem` manual (curado pra manter juntos quem mora
-    perto). No retorno o desempate prioriza o destino exato (Local, ex: mesma
-    escola) antes do `ordem` -- so mistura locais diferentes da mesma regiao
-    quando o destino exato acabou.
+    `ordem` 0 significa "sem classificacao" (ninguem revisou no modo Base
+    ainda) -- entra como criterio de desempate ANTES do valor de `ordem` em
+    si, pra quem nunca foi classificado preencher só o que sobrar depois de
+    quem já foi organizado (mas ainda pode abrir carro novo se tiver frota,
+    já que o laço de preenchimento roda por cima da lista inteira já
+    ordenada, sem precisar de duas fases separadas).
+
+    Na ida o desempate seguinte e o `ordem` manual (curado pra manter juntos
+    quem mora perto). No retorno o desempate prioriza o destino exato (Local,
+    ex: mesma escola) antes do "sem classificacao"/`ordem` -- so mistura
+    locais diferentes da mesma regiao quando o destino exato acabou.
     """
+    nao_classificado = perna["ordem"] == 0
     if perna["sentido"] == Sentido.RETORNO:
-        return (perna["sentido"].value, perna["hora"], perna["destino_id"] or 0, perna["ordem"])
-    return (perna["sentido"].value, perna["hora"], perna["ordem"])
+        return (perna["sentido"].value, perna["hora"], perna["destino_id"] or 0, nao_classificado, perna["ordem"])
+    return (perna["sentido"].value, perna["hora"], nao_classificado, perna["ordem"])
 
 
 def _regiao_alocacao(sentido: Sentido, regiao_origem_id: int, regiao_destino_id: int | None) -> int:
@@ -206,6 +214,101 @@ def _montar_pernas(
     return pernas_por_regiao
 
 
+def _empresas_com_veiculo_ativo(db: Session) -> set[int]:
+    """Empresas que tem pelo menos um veiculo ATIVO -- uma empresa pode
+    atender uma regiao (`empresa_regiao`) sem ter frota nenhuma hoje, o que
+    nao conta como opcao real pra viabilizar um pin cross-regiao.
+    """
+    return {row[0] for row in db.query(Veiculo.empresa_id).filter(Veiculo.status == StatusVeiculo.ATIVO).distinct()}
+
+
+def _resolver_clusters_pin(
+    pernas_por_regiao: dict[int, list[dict]],
+    agendas_por_id: dict[int, UsuarioAgendaSemanal],
+    sentido: Sentido,
+    empresas_por_regiao: dict[int, list[int]],
+    empresas_com_veiculo: set[int],
+) -> tuple[list[tuple[int, list[int], list[dict]]], dict[int, list[dict]]]:
+    """Resolve `pin_ida_agenda_id`/`pin_retorno_agenda_id` do sentido em
+    clusters (uniao-find), so entre quem esta de fato elegivel nessa geracao
+    -- um pin cujo alvo nao apareceu hoje (afastado, recesso, excecao pontual)
+    e ignorado silenciosamente pra essa aresta, sem erro.
+
+    Retorna (clusters, pernas_por_regiao_restante): cada cluster viavel (mais
+    de uma regiao envolvida e existe empresa com veiculo ativo que atenda
+    todas) vira uma tupla (regiao_rotulo, empresa_ids_da_intersecao,
+    pernas_do_cluster); as pernas dos clusters viaveis saem do dict residual
+    (processadas a parte, com a frota da intersecao). Cluster sem empresa
+    com frota em comum e descartado -- suas pernas continuam no dict
+    residual, como se nao tivessem pin nenhum.
+    """
+    campo_pin = "pin_ida_agenda_id" if sentido == Sentido.IDA else "pin_retorno_agenda_id"
+
+    pernas_por_agenda: dict[int, dict] = {}
+    regiao_por_agenda: dict[int, int] = {}
+    for regiao_id, pernas in pernas_por_regiao.items():
+        for perna in pernas:
+            if perna["sentido"] != sentido:
+                continue
+            pernas_por_agenda[perna["agenda_id"]] = perna
+            regiao_por_agenda[perna["agenda_id"]] = regiao_id
+
+    pai: dict[int, int] = {aid: aid for aid in pernas_por_agenda}
+
+    def encontrar(x: int) -> int:
+        while pai[x] != x:
+            pai[x] = pai[pai[x]]
+            x = pai[x]
+        return x
+
+    def unir(a: int, b: int) -> None:
+        ra, rb = encontrar(a), encontrar(b)
+        if ra != rb:
+            pai[ra] = rb
+
+    for agenda_id in pernas_por_agenda:
+        alvo_id = getattr(agendas_por_id[agenda_id], campo_pin)
+        if alvo_id is not None and alvo_id in pernas_por_agenda:
+            unir(agenda_id, alvo_id)
+
+    grupos_por_raiz: dict[int, list[int]] = defaultdict(list)
+    for agenda_id in pernas_por_agenda:
+        grupos_por_raiz[encontrar(agenda_id)].append(agenda_id)
+
+    clusters: list[tuple[int, list[int], list[dict]]] = []
+    consumidos: set[int] = set()
+
+    for membros_ids in grupos_por_raiz.values():
+        if len(membros_ids) < 2:
+            continue
+
+        regioes_envolvidas = {regiao_por_agenda[aid] for aid in membros_ids}
+        if len(regioes_envolvidas) < 2:
+            continue  # todo mundo ja estava na mesma regiao, nao precisa de tratamento especial
+
+        intersecao = set(empresas_por_regiao.get(next(iter(regioes_envolvidas)), []))
+        for regiao_id in regioes_envolvidas:
+            intersecao &= set(empresas_por_regiao.get(regiao_id, []))
+        intersecao &= empresas_com_veiculo
+
+        if not intersecao:
+            print(
+                f"[geracao] pin inviavel entre agendas {membros_ids} ({sentido.value}): "
+                f"nenhuma empresa com frota atende as regioes {regioes_envolvidas}, pin ignorado"
+            )
+            continue
+
+        membros = [pernas_por_agenda[aid] for aid in membros_ids]
+        clusters.append((min(regioes_envolvidas), sorted(intersecao), membros))
+        consumidos.update(membros_ids)
+
+    pernas_por_regiao_restante = {
+        regiao_id: [p for p in pernas if p["agenda_id"] not in consumidos]
+        for regiao_id, pernas in pernas_por_regiao.items()
+    }
+    return clusters, pernas_por_regiao_restante
+
+
 def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     """Gera as ViagemDia + ViagemDiaPassageiro de uma data a partir da agenda semanal.
 
@@ -234,16 +337,37 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     ultimos_usos_veiculo = _ultimos_usos(db, ViagemDia.veiculo_id, data)
     ultimos_usos_condutor = _ultimos_usos(db, ViagemDia.condutor_id, data)
     empresas_por_regiao = _mapa_empresas_por_regiao(db)
+    empresas_com_veiculo = _empresas_com_veiculo_ativo(db)
+    agendas_por_id = {a.id: a for a in agendas}
 
     pernas_por_regiao = _montar_pernas(agendas, excecoes, locais_em_recesso, locais_regiao)
 
     todas_viagens: list[ViagemDia] = []
     janelas: dict[int, tuple[dt.time, dt.time]] = {}
     avisos_emitidos: set[tuple] = set()
+
+    for sentido in (Sentido.IDA, Sentido.RETORNO):
+        clusters, pernas_por_regiao = _resolver_clusters_pin(
+            pernas_por_regiao, agendas_por_id, sentido, empresas_por_regiao, empresas_com_veiculo
+        )
+        for regiao_rotulo, empresa_ids_cluster, membros in clusters:
+            membros.sort(key=_chave_ordenacao_perna)
+            _preencher_regiao(
+                db, regiao_rotulo, membros, data, todas_viagens, janelas, avisos_emitidos, ultimos_usos_veiculo, empresa_ids_cluster
+            )
+
     for regiao_id, pernas in pernas_por_regiao.items():
         pernas.sort(key=_chave_ordenacao_perna)
         _preencher_regiao(
-            db, regiao_id, pernas, data, todas_viagens, janelas, avisos_emitidos, ultimos_usos_veiculo, empresas_por_regiao
+            db,
+            regiao_id,
+            pernas,
+            data,
+            todas_viagens,
+            janelas,
+            avisos_emitidos,
+            ultimos_usos_veiculo,
+            empresas_por_regiao.get(regiao_id, []),
         )
 
     db.flush()
@@ -264,11 +388,14 @@ def _preencher_regiao(
     janelas: dict[int, tuple[dt.time, dt.time]],
     avisos_emitidos: set[tuple],
     ultimos_usos_veiculo: dict[int, dt.date],
-    empresas_por_regiao: dict[int, list[int]],
+    empresa_ids: list[int],
 ) -> None:
-    """Preenche os carros de uma regiao, na ordem de `ordem`, abrindo um novo
+    """Preenche os carros de uma regiao (ou de um cluster pinado, rotulado
+    com uma regiao so pra exibicao), na ordem de `ordem`, abrindo um novo
     carro (leg) sempre que o sentido/horario atual estoura a capacidade dos
-    carros ja abertos para esse mesmo sentido/horario.
+    carros ja abertos para esse mesmo sentido/horario. `empresa_ids` ja vem
+    resolvido pelo chamador -- da regiao (caminho normal) ou da intersecao de
+    empresas de um cluster pinado cross-regiao.
 
     Um usuario com acompanhante ocupa 2 lugares no veiculo em vez de 1.
     """
@@ -296,7 +423,7 @@ def _preencher_regiao(
                 janelas,
                 avisos_emitidos,
                 ultimos_usos_veiculo,
-                empresas_por_regiao,
+                empresa_ids,
             )
             if viagem is None:
                 # sem veiculo disponivel na regiao/horario -- fica "orfao" (sem
@@ -359,22 +486,31 @@ def _mapa_empresas_por_regiao(db: Session) -> dict[int, list[int]]:
 # operacionais reais.
 # --------------------------------------------------------------------------
 
-def _mapa_veiculos_por_regiao(db: Session, empresas_por_regiao: dict[int, list[int]]) -> dict[int, list[Veiculo]]:
-    """Veiculos ATIVOS de cada regiao (via empresas que a atendem), em ordem
-    estavel por id -- sem historico de "ultimo uso", que so existe pra uma
-    data real.
+def _mapa_veiculos_por_empresa(db: Session, empresa_ids: set[int]) -> dict[int, list[Veiculo]]:
+    """Veiculos ATIVOS de um conjunto de empresas, em ordem estavel por id --
+    sem historico de "ultimo uso", que so existe pra uma data real. Base
+    reaproveitada tanto pro mapa por regiao quanto pra intersecao de um
+    cluster pinado cross-regiao.
     """
-    todos_empresa_ids = {eid for ids in empresas_por_regiao.values() for eid in ids}
-    veiculos_por_empresa: dict[int, list[Veiculo]] = defaultdict(list)
-    if todos_empresa_ids:
-        for veiculo in (
-            db.query(Veiculo)
-            .filter(Veiculo.empresa_id.in_(todos_empresa_ids), Veiculo.status == StatusVeiculo.ATIVO)
-            .order_by(Veiculo.id)
-            .all()
-        ):
-            veiculos_por_empresa[veiculo.empresa_id].append(veiculo)
+    resultado: dict[int, list[Veiculo]] = defaultdict(list)
+    if not empresa_ids:
+        return resultado
+    for veiculo in (
+        db.query(Veiculo)
+        .filter(Veiculo.empresa_id.in_(empresa_ids), Veiculo.status == StatusVeiculo.ATIVO)
+        .order_by(Veiculo.id)
+        .all()
+    ):
+        resultado[veiculo.empresa_id].append(veiculo)
+    return resultado
 
+
+def _mapa_veiculos_por_regiao(
+    empresas_por_regiao: dict[int, list[int]], veiculos_por_empresa: dict[int, list[Veiculo]]
+) -> dict[int, list[Veiculo]]:
+    """Veiculos ATIVOS de cada regiao (via empresas que a atendem), em ordem
+    estavel por id.
+    """
     return {
         regiao_id: [v for empresa_id in empresa_ids for v in veiculos_por_empresa.get(empresa_id, [])]
         for regiao_id, empresa_ids in empresas_por_regiao.items()
@@ -397,7 +533,11 @@ def montar_preview_semana(db: Session, dia_semana: DiaSemana) -> list[dict]:
     agendas = _agendas_fixo_da_semana(db, dia_semana)
     locais_regiao = dict(db.query(Local.id, Local.regiao_id).all())
     empresas_por_regiao = _mapa_empresas_por_regiao(db)
-    veiculos_por_regiao = _mapa_veiculos_por_regiao(db, empresas_por_regiao)
+    todos_empresa_ids = {eid for ids in empresas_por_regiao.values() for eid in ids}
+    veiculos_por_empresa = _mapa_veiculos_por_empresa(db, todos_empresa_ids)
+    veiculos_por_regiao = _mapa_veiculos_por_regiao(empresas_por_regiao, veiculos_por_empresa)
+    empresas_com_veiculo = {eid for eid, vs in veiculos_por_empresa.items() if vs}
+    agendas_por_id = {a.id: a for a in agendas}
 
     pernas_por_regiao = _montar_pernas(agendas, {}, set(), locais_regiao)
 
@@ -405,9 +545,21 @@ def montar_preview_semana(db: Session, dia_semana: DiaSemana) -> list[dict]:
     janelas: dict[int, tuple[dt.time, dt.time]] = {}
     veiculo_por_grupo: dict[int, int] = {}
     contador_id = [0]
+
+    for sentido in (Sentido.IDA, Sentido.RETORNO):
+        clusters, pernas_por_regiao = _resolver_clusters_pin(
+            pernas_por_regiao, agendas_por_id, sentido, empresas_por_regiao, empresas_com_veiculo
+        )
+        for regiao_rotulo, empresa_ids_cluster, membros in clusters:
+            membros.sort(key=_chave_ordenacao_perna)
+            veiculos_cluster = [v for empresa_id in empresa_ids_cluster for v in veiculos_por_empresa.get(empresa_id, [])]
+            _preencher_regiao_preview(regiao_rotulo, membros, grupos, janelas, veiculo_por_grupo, veiculos_cluster, contador_id)
+
     for regiao_id, pernas in pernas_por_regiao.items():
         pernas.sort(key=_chave_ordenacao_perna)
-        _preencher_regiao_preview(regiao_id, pernas, grupos, janelas, veiculo_por_grupo, veiculos_por_regiao, contador_id)
+        _preencher_regiao_preview(
+            regiao_id, pernas, grupos, janelas, veiculo_por_grupo, veiculos_por_regiao.get(regiao_id, []), contador_id
+        )
     return grupos
 
 
@@ -417,13 +569,15 @@ def _preencher_regiao_preview(
     grupos: list[dict],
     janelas: dict[int, tuple[dt.time, dt.time]],
     veiculo_por_grupo: dict[int, int],
-    veiculos_por_regiao: dict[int, list[Veiculo]],
+    veiculos: list[Veiculo],
     contador_id: list[int],
 ) -> None:
     """Espelha `_preencher_regiao`, mas monta dicts em memoria (nada de
     `db.add`) e sem rodizio/condutor. Um grupo com `capacidade` 0 e o
     "overflow" da regiao/sentido/horario (frota esgotada) -- sempre aceita
     mais gente (por isso o `or g["capacidade"] == 0` no filtro de vaga).
+    `veiculos` ja vem resolvido pelo chamador -- da regiao (caminho normal)
+    ou da intersecao de empresas de um cluster pinado cross-regiao.
     """
     ocupacao: dict[tuple[int, Sentido, dt.time], int] = defaultdict(int)
     abertos_por_perna: dict[tuple[Sentido, dt.time], list[dict]] = defaultdict(list)
@@ -441,7 +595,7 @@ def _preencher_regiao_preview(
         )
         if grupo is None:
             grupo = _abrir_grupo_preview(
-                regiao_id, perna["hora"], janelas, veiculo_por_grupo, veiculos_por_regiao, contador_id
+                regiao_id, perna["hora"], janelas, veiculo_por_grupo, veiculos, contador_id
             ) or _abrir_grupo_overflow_preview(regiao_id, perna["hora"], contador_id)
             abertos_por_perna[perna_chave].append(grupo)
             grupos.append(grupo)
@@ -502,11 +656,11 @@ def _abrir_grupo_preview(
     hora: dt.time,
     janelas: dict[int, tuple[dt.time, dt.time]],
     veiculo_por_grupo: dict[int, int],
-    veiculos_por_regiao: dict[int, list[Veiculo]],
+    veiculos: list[Veiculo],
     contador_id: list[int],
 ) -> dict | None:
     horario_saida = _horario_garagem(hora)
-    veiculo = _proximo_veiculo_livre_preview(regiao_id, janelas, veiculo_por_grupo, horario_saida, hora, veiculos_por_regiao)
+    veiculo = _proximo_veiculo_livre_preview(janelas, veiculo_por_grupo, horario_saida, hora, veiculos)
     if veiculo is None:
         return None  # sem veiculo disponivel na regiao/horario -- vira "sem vaga" no molde
 
@@ -536,19 +690,18 @@ def _abrir_grupo_preview(
 
 
 def _proximo_veiculo_livre_preview(
-    regiao_id: int,
     janelas: dict[int, tuple[dt.time, dt.time]],
     veiculo_por_grupo: dict[int, int],
     inicio: dt.time,
     fim: dt.time,
-    veiculos_por_regiao: dict[int, list[Veiculo]],
+    candidatos: list[Veiculo],
 ) -> Veiculo | None:
     """Igual a `_proximo_veiculo_livre`, mas sem rodizio historico (nao existe
     "ultimo uso" pra um dia da semana generico) -- so evita reusar o mesmo
     veiculo em janelas que se sobrepoem dentro do proprio preview, sempre em
-    ordem estavel por id.
+    ordem estavel por id. `candidatos` ja vem resolvido pelo chamador (regiao
+    ou intersecao de um cluster pinado).
     """
-    candidatos = veiculos_por_regiao.get(regiao_id, [])
 
     def livre(veiculo_id: int) -> bool:
         for grupo_id, outro_veiculo_id in veiculo_por_grupo.items():
@@ -563,11 +716,13 @@ def _proximo_veiculo_livre_preview(
 
 
 def _reindexar_bucket(bucket: list[dict], campo: str, agendas_por_id: dict[int, UsuarioAgendaSemanal]) -> None:
-    """Regrava `ordem_ida`/`ordem_retorno` (0..N-1) de todo mundo no bucket,
-    na ordem em que aparecem na lista -- usado tanto ao persistir o molde
-    inteiro quanto ao reordenar um unico arrastar.
+    """Regrava `ordem_ida`/`ordem_retorno` (1..N) de todo mundo no bucket, na
+    ordem em que aparecem na lista -- usado tanto ao persistir o molde
+    inteiro quanto ao reordenar um unico arrastar. Comeca em 1 (nao 0) porque
+    0 e reservado como sentinela de "sem classificacao"; depois de qualquer
+    arrasto, todo mundo do bucket sai "classificado".
     """
-    for indice, perna in enumerate(bucket):
+    for indice, perna in enumerate(bucket, start=1):
         setattr(agendas_por_id[perna["agenda_id"]], campo, indice)
 
 
@@ -591,12 +746,25 @@ def persistir_ordem_semana(db: Session, dia_semana: DiaSemana) -> None:
     db.commit()
 
 
-def reordenar_preview_semana(db: Session, dia_semana: DiaSemana, agenda_id: int, sentido: Sentido, ordem: int) -> None:
+def reordenar_preview_semana(
+    db: Session,
+    dia_semana: DiaSemana,
+    agenda_id: int,
+    sentido: Sentido,
+    ordem: int,
+    pin_para_agenda_id: int | None = None,
+) -> None:
     """Persiste um arrastar do modo Base: reindexa `ordem_ida`/`ordem_retorno`
-    de TODO o bucket (regiao de alocacao + sentido) de quem foi movido -- e
-    um criterio global de prioridade dentro da regiao/sentido (quem decide em
-    qual carro cada um cai na geracao), nao uma ordem "dentro de um carro"
-    como `ViagemDiaPassageiro.ordem` na tela do dia real.
+    de TODO o bucket de quem foi movido -- um criterio global de prioridade
+    (quem decide em qual carro cada um cai na geracao), nao uma ordem "dentro
+    de um carro" como `ViagemDiaPassageiro.ordem` na tela do dia real.
+
+    Se `pin_para_agenda_id` for de uma regiao diferente da natural do usuario
+    movido, tenta um pin cross-regiao: so grava se existir empresa que atenda
+    todas as regioes do cluster resultante (reaproveita `_resolver_clusters_pin`,
+    a mesma logica usada na geracao) -- senao reverte e leva ValueError, sem
+    persistir nada. Mesma regiao (ou `pin_para_agenda_id=None`) limpa
+    qualquer pin existente daquele sentido e volta ao comportamento normal.
     """
     agendas = _agendas_fixo_da_semana(db, dia_semana)
     agendas_por_id = {a.id: a for a in agendas}
@@ -605,14 +773,40 @@ def reordenar_preview_semana(db: Session, dia_semana: DiaSemana, agenda_id: int,
         raise ValueError("Agenda nao encontrada para esse dia da semana")
 
     locais_regiao = dict(db.query(Local.id, Local.regiao_id).all())
+    empresas_por_regiao = _mapa_empresas_por_regiao(db)
+    empresas_com_veiculo = _empresas_com_veiculo_ativo(db)
     pernas_por_regiao = _montar_pernas(agendas, {}, set(), locais_regiao)
 
-    regiao_destino_id = locais_regiao.get(agenda_movida.destino_id) if agenda_movida.destino_id else None
-    regiao_alocacao_id = _regiao_alocacao(sentido, agenda_movida.regiao_origem_id, regiao_destino_id)
+    def regiao_de(agenda: UsuarioAgendaSemanal) -> int:
+        regiao_destino = locais_regiao.get(agenda.destino_id) if agenda.destino_id else None
+        return _regiao_alocacao(sentido, agenda.regiao_origem_id, regiao_destino)
 
-    bucket = [p for p in pernas_por_regiao.get(regiao_alocacao_id, []) if p["sentido"] == sentido]
-    bucket.sort(key=_chave_ordenacao_perna)
+    campo_ordem = "ordem_ida" if sentido == Sentido.IDA else "ordem_retorno"
+    campo_pin = "pin_ida_agenda_id" if sentido == Sentido.IDA else "pin_retorno_agenda_id"
+    regiao_movida = regiao_de(agenda_movida)
 
+    cross_regiao = False
+    if pin_para_agenda_id is not None:
+        alvo_agenda = agendas_por_id.get(pin_para_agenda_id)
+        if alvo_agenda is None:
+            raise ValueError("Agenda de destino nao encontrada")
+        cross_regiao = regiao_de(alvo_agenda) != regiao_movida
+
+    setattr(agenda_movida, campo_pin, pin_para_agenda_id if cross_regiao else None)
+
+    clusters, pernas_por_regiao_restante = _resolver_clusters_pin(
+        pernas_por_regiao, agendas_por_id, sentido, empresas_por_regiao, empresas_com_veiculo
+    )
+    bucket = next((membros for _, _, membros in clusters if any(p["agenda_id"] == agenda_id for p in membros)), None)
+
+    if cross_regiao and bucket is None:
+        setattr(agenda_movida, campo_pin, None)  # inviavel -- reverte, nada persiste
+        raise ValueError("Nenhuma empresa atende as regioes envolvidas, nao e possivel juntar esses carros")
+
+    if bucket is None:
+        bucket = [p for p in pernas_por_regiao_restante.get(regiao_movida, []) if p["sentido"] == sentido]
+
+    bucket = sorted(bucket, key=_chave_ordenacao_perna)
     indice_atual = next((i for i, p in enumerate(bucket) if p["agenda_id"] == agenda_id), None)
     if indice_atual is None:
         raise ValueError("Usuario nao pertence a esse bucket nesse sentido")
@@ -621,9 +815,7 @@ def reordenar_preview_semana(db: Session, dia_semana: DiaSemana, agenda_id: int,
     posicao = max(0, min(ordem, len(bucket)))
     bucket.insert(posicao, perna_movida)
 
-    campo = "ordem_ida" if sentido == Sentido.IDA else "ordem_retorno"
-    _reindexar_bucket(bucket, campo, agendas_por_id)
-
+    _reindexar_bucket(bucket, campo_ordem, agendas_por_id)
     db.commit()
 
 
@@ -636,9 +828,8 @@ def _abrir_carro(
     janelas: dict[int, tuple[dt.time, dt.time]],
     avisos_emitidos: set[tuple],
     ultimos_usos_veiculo: dict[int, dt.date],
-    empresas_por_regiao: dict[int, list[int]],
+    empresa_ids: list[int],
 ) -> ViagemDia | None:
-    empresa_ids = empresas_por_regiao.get(regiao_id, [])
     if not empresa_ids:
         chave_aviso = ("sem_empresa", regiao_id)
         if chave_aviso not in avisos_emitidos:

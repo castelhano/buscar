@@ -43,9 +43,13 @@ export default function CarroCard({
   const empresa = empresas.find((e) => e.id === primeira.empresa_id);
   const condutor = condutores.find((c) => c.id === primeira.condutor_id);
 
-  const regiaoNomes = [...new Set(pernas.map((v) => v.regiao_id))].map(
-    (id) => regioes.find((r) => r.id === id)?.nome ?? "?",
+  // Regiao de cada passageiro (nao da viagem/leg) -- cobre tanto o condutor
+  // com pernas em regioes diferentes ao longo do dia quanto um unico carro
+  // misturando passageiros de regioes diferentes (pin cross-regiao).
+  const regiaoIdsPassageiros = pernas.flatMap((v) =>
+    v.passageiros.map((p) => (p.sentido === "Retorno" && p.regiao_destino_id != null ? p.regiao_destino_id : p.regiao_origem_id)),
   );
+  const regiaoNomes = [...new Set(regiaoIdsPassageiros)].map((id) => regioes.find((r) => r.id === id)?.nome ?? "?");
 
   return (
     <div className="carro-card">

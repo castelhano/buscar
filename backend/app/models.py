@@ -254,7 +254,14 @@ class UsuarioAgendaSemanal(Base):
     `ordem_ida`/`ordem_retorno` sao curados manualmente (agrupar quem mora/sai
     perto em cada sentido -- a vizinhanca de quem sai de casa na Ida nao e a
     mesma de quem sai do destino na Volta) e usados pela geracao do dia pra
-    decidir a sequencia de preenchimento dos carros por regiao.
+    decidir a sequencia de preenchimento dos carros por regiao. `ordem` 0
+    significa "sem classificacao" (ninguem revisou ainda no modo Base) e e
+    tratado como prioridade mais baixa, nao mais alta, na geracao.
+
+    `pin_ida_agenda_id`/`pin_retorno_agenda_id` forcam esse usuario a cair no
+    mesmo carro que a `UsuarioAgendaSemanal` referenciada, mesmo que sejam de
+    regioes diferentes (quando existir empresa que atenda as duas) -- curado
+    só pelo modo Base ao arrastar, nunca pelo formulario de cadastro.
     """
 
     __tablename__ = "usuario_agenda_semanal"
@@ -267,6 +274,12 @@ class UsuarioAgendaSemanal(Base):
     acompanhante: Mapped[bool] = mapped_column(default=False)
     ordem_ida: Mapped[int] = mapped_column(Integer, default=0)
     ordem_retorno: Mapped[int] = mapped_column(Integer, default=0)
+    pin_ida_agenda_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuario_agenda_semanal.id", ondelete="SET NULL"), nullable=True
+    )
+    pin_retorno_agenda_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuario_agenda_semanal.id", ondelete="SET NULL"), nullable=True
+    )
     saida: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
     retorno: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
     origem: Mapped[str | None] = mapped_column(String(200), nullable=True)

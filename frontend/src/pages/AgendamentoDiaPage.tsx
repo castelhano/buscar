@@ -143,11 +143,22 @@ export default function AgendamentoDiaPage() {
     },
   });
   const moverPassageiroBase = useMutation({
-    mutationFn: ({ agendaId, sentido, ordem }: { agendaId: number; sentido: Sentido; ordem: number }) =>
+    mutationFn: ({
+      agendaId,
+      sentido,
+      ordem,
+      pinParaAgendaId,
+    }: {
+      agendaId: number;
+      sentido: Sentido;
+      ordem: number;
+      pinParaAgendaId?: number;
+    }) =>
       api.patch<ViagemPreview[]>(`/viagens/preview-semana/passageiros/${agendaId}/mover`, {
         dia_semana: diaSemanaBase,
         sentido,
         ordem,
+        pin_para_agenda_id: pinParaAgendaId ?? null,
       }),
     onSuccess: (dados) => {
       queryClient.setQueryData(["preview-semana", diaSemanaBase], dados);
@@ -236,22 +247,24 @@ export default function AgendamentoDiaPage() {
     if (!grupoOrigem || !grupoDestino || !passageiroAtivo) return;
     if (activeData.passageiroId === overData?.passageiroId) return; // solto em cima de si mesmo
 
-    // no modo Base so faz sentido reordenar dentro do mesmo "bucket" (regiao
-    // + sentido + horario) -- arrastar pra um sentido/horario diferente
-    // mudaria a agenda semanal da pessoa, nao so a ordem, e isso nao e feito
-    // por drag aqui
+    // sentido/horario tem que bater sempre -- arrastar pra um sentido/horario
+    // diferente mudaria a agenda semanal da pessoa, nao so a ordem, e isso
+    // nao e feito por drag aqui. Regiao diferente e permitido: vira um pin
+    // cross-regiao, validado no backend (rejeita se nao houver empresa com
+    // frota que atenda as duas).
     const referencia = grupoDestino.passageiros.find((p) => p.id !== activeData.passageiroId);
-    const mesmoBucket =
-      grupoDestino.regiao_id === grupoOrigem.regiao_id &&
-      (!referencia || (referencia.sentido === passageiroAtivo.sentido && referencia.hora === passageiroAtivo.hora));
-    if (!mesmoBucket) return;
+    const mesmoSentidoHorario =
+      !referencia || (referencia.sentido === passageiroAtivo.sentido && referencia.hora === passageiroAtivo.hora);
+    if (!mesmoSentidoHorario) return;
 
-    const bucket = grupos.filter(
-      (g) =>
-        g.regiao_id === grupoOrigem.regiao_id &&
-        g.passageiros[0]?.sentido === passageiroAtivo.sentido &&
-        g.passageiros[0]?.hora === passageiroAtivo.hora,
-    );
+    // regiao "natural" do proprio passageiro (independente do rotulo do
+    // grupo, que pode ja ser o rotulo de um cluster pinado cross-regiao) --
+    // evita limpar um pin existente ao so reordenar dentro do mesmo cluster
+    const regiaoNatural =
+      passageiroAtivo.sentido === "Retorno" && passageiroAtivo.regiao_destino_id != null
+        ? passageiroAtivo.regiao_destino_id
+        : passageiroAtivo.regiao_origem_id;
+    const crossRegiao = regiaoNatural !== grupoDestino.regiao_id;
 
     const destinoSemAtivo = grupoDestino.passageiros.filter((p) => p.id !== activeData.passageiroId);
     let posicaoNoGrupoDestino = destinoSemAtivo.length;
@@ -260,17 +273,34 @@ export default function AgendamentoDiaPage() {
       if (idx >= 0) posicaoNoGrupoDestino = idx;
     }
 
-    // ordem_ida/ordem_retorno e um criterio global dentro do bucket inteiro
-    // (nao "dentro de um carro"), entao o indice enviado ao backend soma
-    // quantos ficam antes do carro de destino nos outros carros do bucket
-    let antesDoDestino = 0;
-    for (const g of bucket) {
-      if (g.id === grupoDestino.id) break;
-      antesDoDestino += g.id === grupoOrigem.id ? g.passageiros.length - 1 : g.passageiros.length;
+    let ordem = posicaoNoGrupoDestino;
+    let pinParaAgendaId: number | undefined;
+    if (crossRegiao) {
+      // cluster ainda nao existe (ou esta sendo formado agora) -- o backend
+      // recalcula do zero, entao so mandamos a posicao dentro do carro de
+      // destino como aproximacao inicial; drags seguintes (ja no mesmo
+      // grupo/regiao) reindexam com precisao total
+      pinParaAgendaId = (referencia ?? grupoDestino.passageiros[0]).agenda_id;
+    } else {
+      // mesma regiao: ordem_ida/ordem_retorno e um criterio global dentro do
+      // bucket inteiro (nao "dentro de um carro"), entao o indice soma
+      // quantos ficam antes do carro de destino nos outros carros do bucket
+      const bucket = grupos.filter(
+        (g) =>
+          g.regiao_id === grupoOrigem.regiao_id &&
+          g.passageiros[0]?.sentido === passageiroAtivo.sentido &&
+          g.passageiros[0]?.hora === passageiroAtivo.hora,
+      );
+      let antesDoDestino = 0;
+      for (const g of bucket) {
+        if (g.id === grupoDestino.id) break;
+        antesDoDestino += g.id === grupoOrigem.id ? g.passageiros.length - 1 : g.passageiros.length;
+      }
+      ordem = antesDoDestino + posicaoNoGrupoDestino;
     }
 
     moverPassageiroBase.mutate(
-      { agendaId: passageiroAtivo.agenda_id, sentido: passageiroAtivo.sentido, ordem: antesDoDestino + posicaoNoGrupoDestino },
+      { agendaId: passageiroAtivo.agenda_id, sentido: passageiroAtivo.sentido, ordem, pinParaAgendaId },
       { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao reordenar no molde")) },
     );
   }

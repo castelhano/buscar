@@ -314,6 +314,7 @@ class PreviewSemanaPassageiroMover(BaseModel):
     dia_semana: DiaSemana
     sentido: Sentido
     ordem: int
+    pin_para_agenda_id: int | None = None
 
 
 class ViagemDiaAbrir(BaseModel):

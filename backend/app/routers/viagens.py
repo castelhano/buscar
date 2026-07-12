@@ -245,11 +245,16 @@ def mover_passageiro_preview_semana(
     agenda_id: int, payload: schemas.PreviewSemanaPassageiroMover, db: Session = Depends(get_db)
 ):
     """Persiste um arrastar no modo Base: reindexa ordem_ida/ordem_retorno do
-    bucket (regiao/sentido) do usuario movido na UsuarioAgendaSemanal."""
+    bucket (regiao/sentido, incluindo cluster pinado se houver) do usuario
+    movido na UsuarioAgendaSemanal. `pin_para_agenda_id` (opcional) forca um
+    agrupamento cross-regiao, validado antes de gravar (400 se nao existir
+    empresa com frota que atenda as regioes envolvidas)."""
     try:
-        reordenar_preview_semana(db, payload.dia_semana, agenda_id, payload.sentido, payload.ordem)
+        reordenar_preview_semana(
+            db, payload.dia_semana, agenda_id, payload.sentido, payload.ordem, payload.pin_para_agenda_id
+        )
     except ValueError as erro:
-        raise HTTPException(status_code=404, detail=str(erro)) from erro
+        raise HTTPException(status_code=400, detail=str(erro)) from erro
     return montar_preview_semana(db, payload.dia_semana)
 
 
