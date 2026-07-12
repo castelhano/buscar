@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { api } from "../api/client";
 import { useList } from "../api/hooks";
+import { DIAS_SEMANA, DIAS_SEMANA_LABEL } from "../api/types";
 import type {
   Condutor,
+  DiaSemana,
   Empresa,
   Local,
   Regiao,
@@ -14,6 +16,7 @@ import type {
   Veiculo,
   ViagemDia,
   ViagemDiaPassageiro,
+  ViagemPreview,
 } from "../api/types";
 import CarroCard from "../components/board/CarroCard";
 import SobrasPanel from "../components/board/SobrasPanel";
@@ -66,6 +69,8 @@ function agruparPorCondutor(viagens: ViagemDia[]): ViagemDia[][] {
 export default function AgendamentoDiaPage() {
   const [data, setData] = useState(hoje());
   const [periodo, setPeriodo] = useState<"Manha" | "Tarde">("Manha");
+  const [modo, setModo] = useState<"dia" | "base">("dia");
+  const [diaSemanaBase, setDiaSemanaBase] = useState<DiaSemana>("SEG");
   const queryClient = useQueryClient();
 
   const { data: regioes } = useList<Regiao>("regioes", "/regioes");
@@ -89,6 +94,12 @@ export default function AgendamentoDiaPage() {
   const semVagaQuery = useQuery({
     queryKey: ["sem-vaga", data],
     queryFn: () => api.get<ViagemDiaPassageiro[]>("/viagens/sem-vaga", { data }),
+  });
+
+  const previewQuery = useQuery({
+    queryKey: ["preview-semana", diaSemanaBase],
+    queryFn: () => api.get<ViagemPreview[]>("/viagens/preview-semana", { dia_semana: diaSemanaBase }),
+    enabled: false,
   });
 
   function invalidarDia() {
@@ -124,6 +135,23 @@ export default function AgendamentoDiaPage() {
     mutationFn: ({ id, viagem_dia_destino_id, ordem }: { id: number; viagem_dia_destino_id: number; ordem: number }) =>
       api.patch(`/viagens/passageiros/${id}/mover`, { viagem_dia_destino_id, ordem }),
     onSuccess: invalidarDia,
+  });
+  const gerarPreviewBase = useMutation({
+    mutationFn: () => api.post<ViagemPreview[]>("/viagens/preview-semana/gerar", undefined, { dia_semana: diaSemanaBase }),
+    onSuccess: (dados) => {
+      queryClient.setQueryData(["preview-semana", diaSemanaBase], dados);
+    },
+  });
+  const moverPassageiroBase = useMutation({
+    mutationFn: ({ agendaId, sentido, ordem }: { agendaId: number; sentido: Sentido; ordem: number }) =>
+      api.patch<ViagemPreview[]>(`/viagens/preview-semana/passageiros/${agendaId}/mover`, {
+        dia_semana: diaSemanaBase,
+        sentido,
+        ordem,
+      }),
+    onSuccess: (dados) => {
+      queryClient.setQueryData(["preview-semana", diaSemanaBase], dados);
+    },
   });
   const atribuir = useMutation({
     mutationFn: async ({ viagemIds, body }: { viagemIds: number[]; body: unknown }) => {
@@ -176,21 +204,10 @@ export default function AgendamentoDiaPage() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  function handleDragEnd(evento: DragEndEvent) {
-    const { active, over } = evento;
-    if (!over) return;
+  function handleDragEndDia(activeData: { viagemId: number; passageiroId: number }, overData: { viagemId: number; passageiroId?: number } | undefined, destinoId: number) {
     const viagens = viagensQuery.data ?? [];
-
-    const activeData = active.data.current as { viagemId: number; passageiroId: number } | undefined;
-    if (!activeData) return;
-
-    const overData = over.data.current as { viagemId: number; passageiroId?: number } | undefined;
-    const destinoViagemId = overData?.viagemId ?? Number(String(over.id).replace("carro-", ""));
-    if (!destinoViagemId || Number.isNaN(destinoViagemId)) return;
-
-    const carroDestino = viagens.find((v) => v.id === destinoViagemId);
+    const carroDestino = viagens.find((v) => v.id === destinoId);
     if (!carroDestino) return;
-
     if (activeData.passageiroId === overData?.passageiroId) return; // solto em cima de si mesmo
 
     // posicao alvo calculada sobre a lista SEM o passageiro ativo, pra bater
@@ -204,14 +221,76 @@ export default function AgendamentoDiaPage() {
     }
 
     moverPassageiro.mutate(
-      { id: activeData.passageiroId, viagem_dia_destino_id: destinoViagemId, ordem: novaOrdem },
+      { id: activeData.passageiroId, viagem_dia_destino_id: destinoId, ordem: novaOrdem },
       {
         onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao mover passageiro")),
       },
     );
   }
 
-  const viagens = viagensQuery.data ?? [];
+  function handleDragEndBase(activeData: { viagemId: number; passageiroId: number }, overData: { viagemId: number; passageiroId?: number } | undefined, destinoId: number) {
+    const grupos = previewQuery.data ?? [];
+    const grupoOrigem = grupos.find((g) => g.passageiros.some((p) => p.id === activeData.passageiroId));
+    const grupoDestino = grupos.find((g) => g.id === destinoId);
+    const passageiroAtivo = grupoOrigem?.passageiros.find((p) => p.id === activeData.passageiroId);
+    if (!grupoOrigem || !grupoDestino || !passageiroAtivo) return;
+    if (activeData.passageiroId === overData?.passageiroId) return; // solto em cima de si mesmo
+
+    // no modo Base so faz sentido reordenar dentro do mesmo "bucket" (regiao
+    // + sentido + horario) -- arrastar pra um sentido/horario diferente
+    // mudaria a agenda semanal da pessoa, nao so a ordem, e isso nao e feito
+    // por drag aqui
+    const referencia = grupoDestino.passageiros.find((p) => p.id !== activeData.passageiroId);
+    const mesmoBucket =
+      grupoDestino.regiao_id === grupoOrigem.regiao_id &&
+      (!referencia || (referencia.sentido === passageiroAtivo.sentido && referencia.hora === passageiroAtivo.hora));
+    if (!mesmoBucket) return;
+
+    const bucket = grupos.filter(
+      (g) =>
+        g.regiao_id === grupoOrigem.regiao_id &&
+        g.passageiros[0]?.sentido === passageiroAtivo.sentido &&
+        g.passageiros[0]?.hora === passageiroAtivo.hora,
+    );
+
+    const destinoSemAtivo = grupoDestino.passageiros.filter((p) => p.id !== activeData.passageiroId);
+    let posicaoNoGrupoDestino = destinoSemAtivo.length;
+    if (overData?.passageiroId !== undefined) {
+      const idx = destinoSemAtivo.findIndex((p) => p.id === overData.passageiroId);
+      if (idx >= 0) posicaoNoGrupoDestino = idx;
+    }
+
+    // ordem_ida/ordem_retorno e um criterio global dentro do bucket inteiro
+    // (nao "dentro de um carro"), entao o indice enviado ao backend soma
+    // quantos ficam antes do carro de destino nos outros carros do bucket
+    let antesDoDestino = 0;
+    for (const g of bucket) {
+      if (g.id === grupoDestino.id) break;
+      antesDoDestino += g.id === grupoOrigem.id ? g.passageiros.length - 1 : g.passageiros.length;
+    }
+
+    moverPassageiroBase.mutate(
+      { agendaId: passageiroAtivo.agenda_id, sentido: passageiroAtivo.sentido, ordem: antesDoDestino + posicaoNoGrupoDestino },
+      { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao reordenar no molde")) },
+    );
+  }
+
+  function handleDragEnd(evento: DragEndEvent) {
+    const { active, over } = evento;
+    if (!over) return;
+
+    const activeData = active.data.current as { viagemId: number; passageiroId: number } | undefined;
+    if (!activeData) return;
+
+    const overData = over.data.current as { viagemId: number; passageiroId?: number } | undefined;
+    const destinoId = overData?.viagemId ?? Number(String(over.id).replace("carro-", ""));
+    if (!destinoId || Number.isNaN(destinoId)) return;
+
+    if (modo === "base") handleDragEndBase(activeData, overData, destinoId);
+    else handleDragEndDia(activeData, overData, destinoId);
+  }
+
+  const viagens = modo === "dia" ? viagensQuery.data ?? [] : previewQuery.data ?? [];
   const viagensDoPeriodo = viagens.filter((v) => periodoDaViagem(v) === periodo);
   const gruposCondutor = agruparPorCondutor(viagensDoPeriodo);
 
@@ -225,26 +304,53 @@ export default function AgendamentoDiaPage() {
         </div>
       )}
 
-      {(viagensQuery.error || sobrasQuery.error || desconsideradosQuery.error || semVagaQuery.error) && (
-        <div className="erro-box">
-          Erro ao carregar dados do dia:{" "}
-          {mensagemErro(
-            viagensQuery.error ?? sobrasQuery.error ?? desconsideradosQuery.error ?? semVagaQuery.error,
-            "erro desconhecido",
-          )}
-        </div>
+      {modo === "dia" &&
+        (viagensQuery.error || sobrasQuery.error || desconsideradosQuery.error || semVagaQuery.error) && (
+          <div className="erro-box">
+            Erro ao carregar dados do dia:{" "}
+            {mensagemErro(
+              viagensQuery.error ?? sobrasQuery.error ?? desconsideradosQuery.error ?? semVagaQuery.error,
+              "erro desconhecido",
+            )}
+          </div>
+        )}
+
+      {modo === "base" && previewQuery.error && (
+        <div className="erro-box">Erro ao carregar previa do molde: {mensagemErro(previewQuery.error, "erro desconhecido")}</div>
       )}
 
       <div className="linha-toolbar">
-        <div className="campo">
-          <input type="date" value={data} onChange={(e) => setData(e.target.value)} />
+        <div className="btn-group">
+          <button className={`btn btn-sm ${modo === "dia" ? "btn-group-ativo" : ""}`} onClick={() => setModo("dia")}>
+            Dia
+          </button>
+          <button className={`btn btn-sm ${modo === "base" ? "btn-group-ativo" : ""}`} onClick={() => setModo("base")}>
+            Base
+          </button>
         </div>
-        {viagens.length > 0 && (
+
+        {modo === "dia" ? (
+          <div className="campo">
+            <input type="date" value={data} onChange={(e) => setData(e.target.value)} />
+          </div>
+        ) : (
+          <div className="campo">
+            <select value={diaSemanaBase} onChange={(e) => setDiaSemanaBase(e.target.value as DiaSemana)}>
+              {DIAS_SEMANA.map((dia) => (
+                <option key={dia} value={dia}>
+                  {DIAS_SEMANA_LABEL[dia]}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {modo === "dia" && viagens.length > 0 && (
           <button className="btn btn-perigo" onClick={() => setModalLimparDia(true)} disabled={limparDia.isPending}>
             Limpar
           </button>
         )}
-        {viagens.length === 0 && !viagensQuery.isLoading && (
+        {modo === "dia" && viagens.length === 0 && !viagensQuery.isLoading && (
           <button
             className="btn btn-primario"
             onClick={() =>
@@ -255,35 +361,58 @@ export default function AgendamentoDiaPage() {
             Gerar agendamento do dia
           </button>
         )}
-        <button className="btn" onClick={() => setModalAbrirCarro(true)}>
-          + Abrir carro
-        </button>
-        <button
-          className="btn"
-          onClick={() =>
-            api
-              .download("/viagens/agendamentos/zip", { data })
-              .catch((e: unknown) => setErro(mensagemErro(e, "Erro ao baixar agendamentos")))
-          }
-        >
-          Agendamentos (zip)
-        </button>
-        <button className="btn" onClick={() => setModalEscalas(true)}>
-          Exportar escalas
-        </button>
-        <button className="btn" onClick={() => setModalFerias(true)}>
-          Ferias
-        </button>
-        <button
-          className="btn"
-          onClick={() =>
-            api
-              .download("/viagens/agendamentos/resumo", { data })
-              .catch((e: unknown) => setErro(mensagemErro(e, "Erro ao baixar resumo")))
-          }
-        >
-          Resumo
-        </button>
+        {modo === "base" && (
+          <button
+            className="btn btn-primario"
+            onClick={() =>
+              gerarPreviewBase.mutate(undefined, {
+                onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao gerar previa do molde")),
+              })
+            }
+            disabled={gerarPreviewBase.isPending}
+          >
+            Gerar previa
+          </button>
+        )}
+        {modo === "dia" && (
+          <button className="btn" onClick={() => setModalAbrirCarro(true)}>
+            + Abrir carro
+          </button>
+        )}
+        {modo === "dia" && (
+          <button
+            className="btn"
+            onClick={() =>
+              api
+                .download("/viagens/agendamentos/zip", { data })
+                .catch((e: unknown) => setErro(mensagemErro(e, "Erro ao baixar agendamentos")))
+            }
+          >
+            Agendamentos (zip)
+          </button>
+        )}
+        {modo === "dia" && (
+          <button className="btn" onClick={() => setModalEscalas(true)}>
+            Exportar escalas
+          </button>
+        )}
+        {modo === "dia" && (
+          <button className="btn" onClick={() => setModalFerias(true)}>
+            Ferias
+          </button>
+        )}
+        {modo === "dia" && (
+          <button
+            className="btn"
+            onClick={() =>
+              api
+                .download("/viagens/agendamentos/resumo", { data })
+                .catch((e: unknown) => setErro(mensagemErro(e, "Erro ao baixar resumo")))
+            }
+          >
+            Resumo
+          </button>
+        )}
 
         <div className="btn-group" style={{ marginLeft: "auto" }}>
           <button
@@ -301,12 +430,13 @@ export default function AgendamentoDiaPage() {
         </div>
       </div>
 
-      {viagensQuery.isLoading && <p>Carregando...</p>}
+      {modo === "dia" && viagensQuery.isLoading && <p>Carregando...</p>}
+      {modo === "base" && gerarPreviewBase.isPending && <p>Gerando previa...</p>}
 
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <div className="board-layout">
           <div className="board">
-            {gruposCondutor.map((grupo) => (
+            {gruposCondutor.map((grupo, indice) => (
               <CarroCard
                 key={grupo[0].condutor_id !== null ? `c${grupo[0].condutor_id}` : `v${grupo[0].id}`}
                 viagens={grupo}
@@ -315,21 +445,27 @@ export default function AgendamentoDiaPage() {
                 condutores={condutores ?? []}
                 locais={locais ?? []}
                 regioes={regioes ?? []}
-                onAdicionarPassageiro={setModalAdicionar}
-                onRemoverPassageiro={setModalRemoverPassageiro}
-                onCancelarPassageiro={setModalCancelar}
-                onEditarPassageiro={setModalEditarPassageiro}
-                onAtribuir={setModalAtribuir}
-                onRemoverCarro={(id) =>
-                  removerCarro.mutate(id, {
-                    onError: (e: unknown) => setErro(mensagemErro(e, "Nao foi possivel remover o carro")),
-                  })
+                tituloSemVeiculo={
+                  modo === "base" ? (grupo[0].capacidade === 0 ? "Sem vaga" : `Grupo ${indice + 1}`) : "Carro sem veiculo"
+                }
+                onAdicionarPassageiro={modo === "dia" ? setModalAdicionar : undefined}
+                onRemoverPassageiro={modo === "dia" ? setModalRemoverPassageiro : undefined}
+                onCancelarPassageiro={modo === "dia" ? setModalCancelar : undefined}
+                onEditarPassageiro={modo === "dia" ? setModalEditarPassageiro : undefined}
+                onAtribuir={modo === "dia" ? setModalAtribuir : undefined}
+                onRemoverCarro={
+                  modo === "dia"
+                    ? (id) =>
+                        removerCarro.mutate(id, {
+                          onError: (e: unknown) => setErro(mensagemErro(e, "Nao foi possivel remover o carro")),
+                        })
+                    : undefined
                 }
               />
             ))}
           </div>
 
-          {semVagaQuery.data && (
+          {modo === "dia" && semVagaQuery.data && (
             <SemVagaPanel
               passageiros={semVagaQuery.data}
               locais={locais ?? []}
@@ -338,9 +474,10 @@ export default function AgendamentoDiaPage() {
               onEditar={setModalEditarPassageiro}
             />
           )}
+
         </div>
 
-        {sobrasQuery.data && (
+        {modo === "dia" && sobrasQuery.data && (
           <SobrasPanel
             sobras={sobrasQuery.data}
             onMarcarFolga={(ids) =>
@@ -350,7 +487,7 @@ export default function AgendamentoDiaPage() {
           />
         )}
 
-        {desconsideradosQuery.data && <DesconsideradosPanel desconsiderados={desconsideradosQuery.data} />}
+        {modo === "dia" && desconsideradosQuery.data && <DesconsideradosPanel desconsiderados={desconsideradosQuery.data} />}
       </DndContext>
 
       {modalAdicionar !== null && (

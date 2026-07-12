@@ -251,8 +251,10 @@ class UsuarioAgendaSemanal(Base):
     Cobre nativamente o caso de um usuario ser Fixo de Seg-Qui e Eventual na Sex,
     com horarios/locais diferentes, sem precisar de um conceito separado de excecao.
 
-    `ordem` e curado manualmente (agrupar quem mora perto) e usado pela geracao
-    do dia para decidir a sequencia de preenchimento dos carros por regiao.
+    `ordem_ida`/`ordem_retorno` sao curados manualmente (agrupar quem mora/sai
+    perto em cada sentido -- a vizinhanca de quem sai de casa na Ida nao e a
+    mesma de quem sai do destino na Volta) e usados pela geracao do dia pra
+    decidir a sequencia de preenchimento dos carros por regiao.
     """
 
     __tablename__ = "usuario_agenda_semanal"
@@ -263,7 +265,8 @@ class UsuarioAgendaSemanal(Base):
     tipo: Mapped[TipoAtendimento] = mapped_column(_enum(TipoAtendimento))
     modalidade: Mapped[Modalidade] = mapped_column(_enum(Modalidade), default=Modalidade.IDA_E_VOLTA)
     acompanhante: Mapped[bool] = mapped_column(default=False)
-    ordem: Mapped[int] = mapped_column(Integer, default=0)
+    ordem_ida: Mapped[int] = mapped_column(Integer, default=0)
+    ordem_retorno: Mapped[int] = mapped_column(Integer, default=0)
     saida: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
     retorno: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
     origem: Mapped[str | None] = mapped_column(String(200), nullable=True)

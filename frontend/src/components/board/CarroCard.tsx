@@ -8,12 +8,13 @@ interface Props {
   condutores: Condutor[];
   locais: Local[];
   regioes: Regiao[];
-  onAdicionarPassageiro: (viagemId: number) => void;
-  onRemoverPassageiro: (id: number) => void;
-  onCancelarPassageiro: (id: number) => void;
-  onEditarPassageiro: (passageiro: ViagemDiaPassageiro) => void;
-  onAtribuir: (dados: { viagemIds: number[]; condutorAtualId: number | null; veiculoAtualId: number | null }) => void;
-  onRemoverCarro: (viagemId: number) => void;
+  tituloSemVeiculo?: string;
+  onAdicionarPassageiro?: (viagemId: number) => void;
+  onRemoverPassageiro?: (id: number) => void;
+  onCancelarPassageiro?: (id: number) => void;
+  onEditarPassageiro?: (passageiro: ViagemDiaPassageiro) => void;
+  onAtribuir?: (dados: { viagemIds: number[]; condutorAtualId: number | null; veiculoAtualId: number | null }) => void;
+  onRemoverCarro?: (viagemId: number) => void;
 }
 
 export default function CarroCard({
@@ -23,6 +24,7 @@ export default function CarroCard({
   condutores,
   locais,
   regioes,
+  tituloSemVeiculo = "Carro sem veiculo",
   onAdicionarPassageiro,
   onRemoverPassageiro,
   onCancelarPassageiro,
@@ -48,33 +50,37 @@ export default function CarroCard({
   return (
     <div className="carro-card">
       <div className="carro-card-topo">
-        <div className="titulo">{veiculo ? veiculo.prefixo : "Carro sem veiculo"}</div>
+        <div className="titulo">{veiculo ? veiculo.prefixo : tituloSemVeiculo}</div>
         <span className="tag tag-regiao" title="Regiao do veiculo">
           {regiaoNomes.join(" · ")}
         </span>
       </div>
-      <div className="meta">
-        {empresa?.nome ?? "Sem empresa"} · {condutor?.nome ?? "Sem condutor"}
-      </div>
-      {primeira.intervalo_inicio && primeira.intervalo_fim && (
-        <div className="meta">
-          Intervalo {primeira.intervalo_inicio.slice(0, 5)} - {primeira.intervalo_fim.slice(0, 5)}
-        </div>
+      {onAtribuir && (
+        <>
+          <div className="meta">
+            {empresa?.nome ?? "Sem empresa"} · {condutor?.nome ?? "Sem condutor"}
+          </div>
+          {primeira.intervalo_inicio && primeira.intervalo_fim && (
+            <div className="meta">
+              Intervalo {primeira.intervalo_inicio.slice(0, 5)} - {primeira.intervalo_fim.slice(0, 5)}
+            </div>
+          )}
+          <div style={{ marginTop: "0.3rem" }}>
+            <button
+              className="btn btn-sm"
+              onClick={() =>
+                onAtribuir({
+                  viagemIds: pernas.map((v) => v.id),
+                  condutorAtualId: primeira.condutor_id,
+                  veiculoAtualId: primeira.veiculo_id,
+                })
+              }
+            >
+              Condutor/veiculo
+            </button>
+          </div>
+        </>
       )}
-      <div style={{ marginTop: "0.3rem" }}>
-        <button
-          className="btn btn-sm"
-          onClick={() =>
-            onAtribuir({
-              viagemIds: pernas.map((v) => v.id),
-              condutorAtualId: primeira.condutor_id,
-              veiculoAtualId: primeira.veiculo_id,
-            })
-          }
-        >
-          Condutor/veiculo
-        </button>
-      </div>
 
       {pernas.map((viagem, indice) => (
         <LegBlock

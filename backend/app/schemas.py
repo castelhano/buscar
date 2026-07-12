@@ -143,7 +143,8 @@ class UsuarioAgendaSemanalCreate(BaseModel):
     tipo: TipoAtendimento
     modalidade: Modalidade = Modalidade.IDA_E_VOLTA
     acompanhante: bool = False
-    ordem: int = 0
+    ordem_ida: int = 0
+    ordem_retorno: int = 0
     saida: dt.time | None = None
     retorno: dt.time | None = None
     origem: str | None = None
@@ -160,7 +161,8 @@ class UsuarioAgendaSemanalRead(ORMModel):
     tipo: TipoAtendimento
     modalidade: Modalidade
     acompanhante: bool
-    ordem: int
+    ordem_ida: int
+    ordem_retorno: int
     saida: dt.time | None
     retorno: dt.time | None
     origem: str | None
@@ -290,7 +292,28 @@ class ViagemDiaPassageiroMover(BaseModel):
 class ViagemDiaAtribuir(BaseModel):
     condutor_id: int | None = None
     veiculo_id: int | None = None
-    observacoes: str | None = None
+
+
+# --------------------------------------------------------------------------
+# Preview do modo Base (molde por dia da semana) -- mesma forma de
+# ViagemDiaRead/ViagemDiaPassageiroRead, com um `agenda_id` a mais pra
+# identificar de qual UsuarioAgendaSemanal veio cada passageiro sintetico
+# (necessario pra persistir o reorder). Schemas separados dos "reais" pra nao
+# arriscar nada na serializacao da geracao/tela do dia de verdade.
+# --------------------------------------------------------------------------
+
+class ViagemDiaPassageiroPreviewRead(ViagemDiaPassageiroRead):
+    agenda_id: int
+
+
+class ViagemPreviewRead(ViagemDiaRead):
+    passageiros: list[ViagemDiaPassageiroPreviewRead] = []
+
+
+class PreviewSemanaPassageiroMover(BaseModel):
+    dia_semana: DiaSemana
+    sentido: Sentido
+    ordem: int
 
 
 class ViagemDiaAbrir(BaseModel):

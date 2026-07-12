@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models import (
     Condutor,
     CondutorFerias,
+    DiaSemana,
     Local,
     LocalRecesso,
     PeriodoCondutor,
@@ -30,6 +31,7 @@ from app.services.recursos import fim_viagem, janelas_sobrepoem
 
 TEMPO_SAIDA_GARAGEM_MINUTOS = 60
 CORTE_PERIODO_TARDE = dt.time(14, 0)
+DATA_PREVIEW_PLACEHOLDER = dt.date(2000, 1, 1)
 
 
 def _periodo_da_hora(hora: dt.time) -> PeriodoCondutor:
@@ -43,13 +45,12 @@ def _periodo_da_viagem(viagem: ViagemDia) -> PeriodoCondutor:
     return _periodo_da_hora(hora_referencia)
 
 
-def _agendas_fixo_do_dia(db: Session, data: dt.date):
-    """Agendas Fixo/ativas do dia da semana de `data`, com as excecoes pontuais
-    (por usuario) e os locais em recesso vigentes nessa data -- base comum
-    usada tanto pela geracao quanto pelo diagnostico de desconsiderados.
+def _agendas_fixo_da_semana(db: Session, dia_semana: DiaSemana) -> list[UsuarioAgendaSemanal]:
+    """Agendas Fixo/ativas de um dia da semana generico, sem excecao pontual
+    nem recesso (so existem pra uma data especifica) -- base pro preview do
+    modo Base, e reaproveitada por `_agendas_fixo_do_dia` pra data real.
     """
-    dia_semana = dia_semana_from_date(data)
-    agendas = (
+    return (
         db.query(UsuarioAgendaSemanal)
         .join(Usuario, UsuarioAgendaSemanal.usuario_id == Usuario.id)
         .options(joinedload(UsuarioAgendaSemanal.usuario))
@@ -59,9 +60,18 @@ def _agendas_fixo_do_dia(db: Session, data: dt.date):
             UsuarioAgendaSemanal.ativo.is_(True),
             Usuario.status == StatusAtivoInativo.ATIVO,
         )
-        .order_by(UsuarioAgendaSemanal.ordem)
+        .order_by(UsuarioAgendaSemanal.id)
         .all()
     )
+
+
+def _agendas_fixo_do_dia(db: Session, data: dt.date):
+    """Agendas Fixo/ativas do dia da semana de `data`, com as excecoes pontuais
+    (por usuario) e os locais em recesso vigentes nessa data -- base comum
+    usada tanto pela geracao quanto pelo diagnostico de desconsiderados.
+    """
+    dia_semana = dia_semana_from_date(data)
+    agendas = _agendas_fixo_da_semana(db, dia_semana)
     usuario_ids = [a.usuario_id for a in agendas]
     excecoes = {
         e.usuario_id: e
@@ -131,6 +141,71 @@ def _chave_ordenacao_perna(perna: dict) -> tuple:
     return (perna["sentido"].value, perna["hora"], perna["ordem"])
 
 
+def _regiao_alocacao(sentido: Sentido, regiao_origem_id: int, regiao_destino_id: int | None) -> int:
+    """No retorno o veiculo opera na regiao do destino (de onde o usuario esta
+    saindo nessa perna, ex: escola) em vez da regiao de origem/casa; sem
+    regiao de destino cadastrada, cai pra regiao de origem como na ida.
+    """
+    if sentido == Sentido.RETORNO and regiao_destino_id is not None:
+        return regiao_destino_id
+    return regiao_origem_id
+
+
+def _montar_pernas(
+    agendas: list[UsuarioAgendaSemanal],
+    excecoes: dict[int, UsuarioExcecao],
+    locais_em_recesso: set[int],
+    locais_regiao: dict[int, int],
+) -> dict[int, list[dict]]:
+    """Monta as pernas (Ida/Retorno) de cada agenda elegivel, agrupadas por
+    regiao de alocacao -- usado tanto pela geracao real (com excecao/recesso
+    de uma data) quanto pelo preview do modo Base (sem excecao/recesso, que
+    so existem pra uma data especifica).
+    """
+    pernas_por_regiao: dict[int, list[dict]] = defaultdict(list)
+    for agenda in agendas:
+        excecao = excecoes.get(agenda.usuario_id)
+        motivo = _motivo_desconsideracao(agenda, excecao, locais_em_recesso)
+        if motivo is not None:
+            print(f"[geracao] usuario_id={agenda.usuario_id}: {motivo}, ficou de fora")
+            continue
+
+        origem = excecao.origem if excecao and excecao.origem else agenda.origem
+        regiao_origem_id = (
+            excecao.regiao_origem_id if excecao and excecao.regiao_origem_id else agenda.regiao_origem_id
+        )
+        destino_id = excecao.destino_id if excecao and excecao.destino_id else agenda.destino_id
+        regiao_destino_id = locais_regiao.get(destino_id) if destino_id else None
+
+        pernas = (
+            (Sentido.IDA, agenda.saida, excecao.saida if excecao else None, agenda.ordem_ida),
+            (Sentido.RETORNO, agenda.retorno, excecao.retorno if excecao else None, agenda.ordem_retorno),
+        )
+        for sentido, hora_padrao, hora_excecao, ordem in pernas:
+            hora = hora_excecao or hora_padrao
+            if hora is None:
+                continue
+            regiao_alocacao_id = _regiao_alocacao(sentido, regiao_origem_id, regiao_destino_id)
+            pernas_por_regiao[regiao_alocacao_id].append(
+                {
+                    "agenda_id": agenda.id,
+                    "usuario_id": agenda.usuario_id,
+                    "usuario": agenda.usuario,
+                    "ordem": ordem,
+                    "sentido": sentido,
+                    "hora": hora,
+                    "origem": origem,
+                    "regiao_origem_id": regiao_origem_id,
+                    "destino_id": destino_id,
+                    "regiao_destino_id": regiao_destino_id,
+                    "acompanhante": agenda.acompanhante,
+                }
+            )
+
+    print(f"[geracao] pernas por regiao: { {k: len(v) for k, v in pernas_por_regiao.items()} }")
+    return pernas_por_regiao
+
+
 def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     """Gera as ViagemDia + ViagemDiaPassageiro de uma data a partir da agenda semanal.
 
@@ -160,52 +235,7 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     ultimos_usos_condutor = _ultimos_usos(db, ViagemDia.condutor_id, data)
     empresas_por_regiao = _mapa_empresas_por_regiao(db)
 
-    pernas_por_regiao: dict[int, list[dict]] = defaultdict(list)
-    for agenda in agendas:
-        excecao = excecoes.get(agenda.usuario_id)
-        motivo = _motivo_desconsideracao(agenda, excecao, locais_em_recesso)
-        if motivo is not None:
-            print(f"[geracao] usuario_id={agenda.usuario_id}: {motivo}, ficou de fora")
-            continue
-
-        origem = excecao.origem if excecao and excecao.origem else agenda.origem
-        regiao_origem_id = (
-            excecao.regiao_origem_id if excecao and excecao.regiao_origem_id else agenda.regiao_origem_id
-        )
-        destino_id = excecao.destino_id if excecao and excecao.destino_id else agenda.destino_id
-        regiao_destino_id = locais_regiao.get(destino_id) if destino_id else None
-
-        pernas = (
-            (Sentido.IDA, agenda.saida, excecao.saida if excecao else None),
-            (Sentido.RETORNO, agenda.retorno, excecao.retorno if excecao else None),
-        )
-        for sentido, hora_padrao, hora_excecao in pernas:
-            hora = hora_excecao or hora_padrao
-            if hora is None:
-                continue
-            # No retorno o veiculo opera na regiao do destino (de onde o
-            # usuario esta saindo nessa perna, ex: escola); sem regiao de
-            # destino cadastrada, cai pra regiao de origem como na ida.
-            regiao_alocacao_id = (
-                regiao_destino_id
-                if sentido == Sentido.RETORNO and regiao_destino_id is not None
-                else regiao_origem_id
-            )
-            pernas_por_regiao[regiao_alocacao_id].append(
-                {
-                    "usuario_id": agenda.usuario_id,
-                    "ordem": agenda.ordem,
-                    "sentido": sentido,
-                    "hora": hora,
-                    "origem": origem,
-                    "regiao_origem_id": regiao_origem_id,
-                    "destino_id": destino_id,
-                    "regiao_destino_id": regiao_destino_id,
-                    "acompanhante": agenda.acompanhante,
-                }
-            )
-
-    print(f"[geracao] pernas por regiao: { {k: len(v) for k, v in pernas_por_regiao.items()} }")
+    pernas_por_regiao = _montar_pernas(agendas, excecoes, locais_em_recesso, locais_regiao)
 
     todas_viagens: list[ViagemDia] = []
     janelas: dict[int, tuple[dt.time, dt.time]] = {}
@@ -319,6 +349,282 @@ def _mapa_empresas_por_regiao(db: Session) -> dict[int, list[int]]:
     for empresa_id, regiao_id in db.query(empresa_regiao.c.empresa_id, empresa_regiao.c.regiao_id).all():
         resultado[regiao_id].append(empresa_id)
     return resultado
+
+
+# --------------------------------------------------------------------------
+# Preview do modo Base (molde por dia da semana) -- somente leitura, nunca
+# persiste ViagemDia/ViagemDiaPassageiro. Serve pro usuario visualizar como a
+# geracao alocaria carros numa semana tipica e curar `ordem_ida`/
+# `ordem_retorno` arrastando, sem misturar dados de template com dados
+# operacionais reais.
+# --------------------------------------------------------------------------
+
+def _mapa_veiculos_por_regiao(db: Session, empresas_por_regiao: dict[int, list[int]]) -> dict[int, list[Veiculo]]:
+    """Veiculos ATIVOS de cada regiao (via empresas que a atendem), em ordem
+    estavel por id -- sem historico de "ultimo uso", que so existe pra uma
+    data real.
+    """
+    todos_empresa_ids = {eid for ids in empresas_por_regiao.values() for eid in ids}
+    veiculos_por_empresa: dict[int, list[Veiculo]] = defaultdict(list)
+    if todos_empresa_ids:
+        for veiculo in (
+            db.query(Veiculo)
+            .filter(Veiculo.empresa_id.in_(todos_empresa_ids), Veiculo.status == StatusVeiculo.ATIVO)
+            .order_by(Veiculo.id)
+            .all()
+        ):
+            veiculos_por_empresa[veiculo.empresa_id].append(veiculo)
+
+    return {
+        regiao_id: [v for empresa_id in empresa_ids for v in veiculos_por_empresa.get(empresa_id, [])]
+        for regiao_id, empresa_ids in empresas_por_regiao.items()
+    }
+
+
+def montar_preview_semana(db: Session, dia_semana: DiaSemana) -> list[dict]:
+    """Preview de como a geracao alocaria carros pra um dia da semana
+    generico, direto a partir da agenda semanal -- sem excecao pontual, sem
+    recesso, sem rodizio historico de condutor/veiculo (nao fazem sentido
+    fora de uma data real) e sem atribuicao de condutor. Nada e persistido.
+
+    Devolve grupos no mesmo formato que a geracao real devolve pra tela (ids
+    sinteticos, sem veiculo/condutor identificados pra nao sugerir uma escala
+    que o rodizio diario pode nao repetir). Quem nao coube na frota
+    disponivel da regiao/horario entra num grupo "overflow" (capacidade 0,
+    sem veiculo) -- continua arrastavel/reordenavel como qualquer outro
+    grupo, so que sempre com o aviso de lugares acima da capacidade.
+    """
+    agendas = _agendas_fixo_da_semana(db, dia_semana)
+    locais_regiao = dict(db.query(Local.id, Local.regiao_id).all())
+    empresas_por_regiao = _mapa_empresas_por_regiao(db)
+    veiculos_por_regiao = _mapa_veiculos_por_regiao(db, empresas_por_regiao)
+
+    pernas_por_regiao = _montar_pernas(agendas, {}, set(), locais_regiao)
+
+    grupos: list[dict] = []
+    janelas: dict[int, tuple[dt.time, dt.time]] = {}
+    veiculo_por_grupo: dict[int, int] = {}
+    contador_id = [0]
+    for regiao_id, pernas in pernas_por_regiao.items():
+        pernas.sort(key=_chave_ordenacao_perna)
+        _preencher_regiao_preview(regiao_id, pernas, grupos, janelas, veiculo_por_grupo, veiculos_por_regiao, contador_id)
+    return grupos
+
+
+def _preencher_regiao_preview(
+    regiao_id: int,
+    pernas: list[dict],
+    grupos: list[dict],
+    janelas: dict[int, tuple[dt.time, dt.time]],
+    veiculo_por_grupo: dict[int, int],
+    veiculos_por_regiao: dict[int, list[Veiculo]],
+    contador_id: list[int],
+) -> None:
+    """Espelha `_preencher_regiao`, mas monta dicts em memoria (nada de
+    `db.add`) e sem rodizio/condutor. Um grupo com `capacidade` 0 e o
+    "overflow" da regiao/sentido/horario (frota esgotada) -- sempre aceita
+    mais gente (por isso o `or g["capacidade"] == 0` no filtro de vaga).
+    """
+    ocupacao: dict[tuple[int, Sentido, dt.time], int] = defaultdict(int)
+    abertos_por_perna: dict[tuple[Sentido, dt.time], list[dict]] = defaultdict(list)
+
+    for perna in pernas:
+        perna_chave = (perna["sentido"], perna["hora"])
+        lugares = 2 if perna["acompanhante"] else 1
+        grupo = next(
+            (
+                g
+                for g in abertos_por_perna[perna_chave]
+                if g["capacidade"] == 0 or ocupacao[(g["id"], *perna_chave)] + lugares <= g["capacidade"]
+            ),
+            None,
+        )
+        if grupo is None:
+            grupo = _abrir_grupo_preview(
+                regiao_id, perna["hora"], janelas, veiculo_por_grupo, veiculos_por_regiao, contador_id
+            ) or _abrir_grupo_overflow_preview(regiao_id, perna["hora"], contador_id)
+            abertos_por_perna[perna_chave].append(grupo)
+            grupos.append(grupo)
+
+        contador_id[0] += 1
+        grupo["passageiros"].append(
+            {
+                "id": -contador_id[0],
+                "viagem_dia_id": grupo["id"],
+                "usuario_id": perna["usuario_id"],
+                "usuario": perna["usuario"],
+                "sentido": perna["sentido"],
+                "hora": perna["hora"],
+                "origem": perna["origem"],
+                "regiao_origem_id": perna["regiao_origem_id"],
+                "destino_id": perna["destino_id"],
+                "regiao_destino_id": perna["regiao_destino_id"],
+                "acompanhante": perna["acompanhante"],
+                "ordem": perna["ordem"],
+                "status": StatusAtendimentoDia.AGENDADO,
+                "observacoes": None,
+                "irregular": False,
+                "motivo_irregular": None,
+                "agenda_id": perna["agenda_id"],
+            }
+        )
+        ocupacao[(grupo["id"], *perna_chave)] += lugares
+
+
+def _abrir_grupo_overflow_preview(regiao_id: int, hora: dt.time, contador_id: list[int]) -> dict:
+    """Grupo "sem vaga" da regiao/sentido/horario -- frota esgotada. Capacidade
+    0 faz o LegBlock/CarroCard ja mostrarem o aviso de lugares acima da
+    capacidade automaticamente, sem nenhuma logica extra no frontend.
+    """
+    contador_id[0] += 1
+    return {
+        "id": -contador_id[0],
+        "data": DATA_PREVIEW_PLACEHOLDER,
+        "regiao_id": regiao_id,
+        "empresa_id": None,
+        "condutor_id": None,
+        "veiculo_id": None,
+        "horario_saida": _horario_garagem(hora),
+        "capacidade": 0,
+        "status": StatusViagemDia.PLANEJADA,
+        "observacoes": None,
+        "passageiros": [],
+        "condutor_em_ferias": False,
+        "conflito_horario": False,
+        "motivo_conflito_horario": None,
+        "intervalo_inicio": None,
+        "intervalo_fim": None,
+    }
+
+
+def _abrir_grupo_preview(
+    regiao_id: int,
+    hora: dt.time,
+    janelas: dict[int, tuple[dt.time, dt.time]],
+    veiculo_por_grupo: dict[int, int],
+    veiculos_por_regiao: dict[int, list[Veiculo]],
+    contador_id: list[int],
+) -> dict | None:
+    horario_saida = _horario_garagem(hora)
+    veiculo = _proximo_veiculo_livre_preview(regiao_id, janelas, veiculo_por_grupo, horario_saida, hora, veiculos_por_regiao)
+    if veiculo is None:
+        return None  # sem veiculo disponivel na regiao/horario -- vira "sem vaga" no molde
+
+    contador_id[0] += 1
+    grupo_id = -contador_id[0]
+    grupo = {
+        "id": grupo_id,
+        "data": DATA_PREVIEW_PLACEHOLDER,
+        "regiao_id": regiao_id,
+        "empresa_id": None,
+        "condutor_id": None,
+        "veiculo_id": None,
+        "horario_saida": horario_saida,
+        "capacidade": veiculo.capacidade,
+        "status": StatusViagemDia.PLANEJADA,
+        "observacoes": None,
+        "passageiros": [],
+        "condutor_em_ferias": False,
+        "conflito_horario": False,
+        "motivo_conflito_horario": None,
+        "intervalo_inicio": None,
+        "intervalo_fim": None,
+    }
+    janelas[grupo_id] = (horario_saida, hora)
+    veiculo_por_grupo[grupo_id] = veiculo.id
+    return grupo
+
+
+def _proximo_veiculo_livre_preview(
+    regiao_id: int,
+    janelas: dict[int, tuple[dt.time, dt.time]],
+    veiculo_por_grupo: dict[int, int],
+    inicio: dt.time,
+    fim: dt.time,
+    veiculos_por_regiao: dict[int, list[Veiculo]],
+) -> Veiculo | None:
+    """Igual a `_proximo_veiculo_livre`, mas sem rodizio historico (nao existe
+    "ultimo uso" pra um dia da semana generico) -- so evita reusar o mesmo
+    veiculo em janelas que se sobrepoem dentro do proprio preview, sempre em
+    ordem estavel por id.
+    """
+    candidatos = veiculos_por_regiao.get(regiao_id, [])
+
+    def livre(veiculo_id: int) -> bool:
+        for grupo_id, outro_veiculo_id in veiculo_por_grupo.items():
+            if outro_veiculo_id != veiculo_id:
+                continue
+            janela = janelas.get(grupo_id)
+            if janela and janelas_sobrepoem(inicio, fim, janela[0], janela[1]):
+                return False
+        return True
+
+    return next((v for v in candidatos if livre(v.id)), None)
+
+
+def _reindexar_bucket(bucket: list[dict], campo: str, agendas_por_id: dict[int, UsuarioAgendaSemanal]) -> None:
+    """Regrava `ordem_ida`/`ordem_retorno` (0..N-1) de todo mundo no bucket,
+    na ordem em que aparecem na lista -- usado tanto ao persistir o molde
+    inteiro quanto ao reordenar um unico arrastar.
+    """
+    for indice, perna in enumerate(bucket):
+        setattr(agendas_por_id[perna["agenda_id"]], campo, indice)
+
+
+def persistir_ordem_semana(db: Session, dia_semana: DiaSemana) -> None:
+    """Ao "gerar" o molde no modo Base, ja regrava `ordem_ida`/`ordem_retorno`
+    sequencial (0..N-1) refletindo o agrupamento atual de cada bucket --
+    sem isso, quem o usuario nao arrastou continuaria com ordem=0 (empate),
+    sujeito a reordenar de forma imprevisivel se a agenda semanal mudar
+    (usuario novo, remocao etc) antes do proximo arrasto.
+    """
+    agendas = _agendas_fixo_da_semana(db, dia_semana)
+    agendas_por_id = {a.id: a for a in agendas}
+    locais_regiao = dict(db.query(Local.id, Local.regiao_id).all())
+    pernas_por_regiao = _montar_pernas(agendas, {}, set(), locais_regiao)
+
+    for pernas in pernas_por_regiao.values():
+        for sentido, campo in ((Sentido.IDA, "ordem_ida"), (Sentido.RETORNO, "ordem_retorno")):
+            bucket = sorted((p for p in pernas if p["sentido"] == sentido), key=_chave_ordenacao_perna)
+            _reindexar_bucket(bucket, campo, agendas_por_id)
+
+    db.commit()
+
+
+def reordenar_preview_semana(db: Session, dia_semana: DiaSemana, agenda_id: int, sentido: Sentido, ordem: int) -> None:
+    """Persiste um arrastar do modo Base: reindexa `ordem_ida`/`ordem_retorno`
+    de TODO o bucket (regiao de alocacao + sentido) de quem foi movido -- e
+    um criterio global de prioridade dentro da regiao/sentido (quem decide em
+    qual carro cada um cai na geracao), nao uma ordem "dentro de um carro"
+    como `ViagemDiaPassageiro.ordem` na tela do dia real.
+    """
+    agendas = _agendas_fixo_da_semana(db, dia_semana)
+    agendas_por_id = {a.id: a for a in agendas}
+    agenda_movida = agendas_por_id.get(agenda_id)
+    if agenda_movida is None:
+        raise ValueError("Agenda nao encontrada para esse dia da semana")
+
+    locais_regiao = dict(db.query(Local.id, Local.regiao_id).all())
+    pernas_por_regiao = _montar_pernas(agendas, {}, set(), locais_regiao)
+
+    regiao_destino_id = locais_regiao.get(agenda_movida.destino_id) if agenda_movida.destino_id else None
+    regiao_alocacao_id = _regiao_alocacao(sentido, agenda_movida.regiao_origem_id, regiao_destino_id)
+
+    bucket = [p for p in pernas_por_regiao.get(regiao_alocacao_id, []) if p["sentido"] == sentido]
+    bucket.sort(key=_chave_ordenacao_perna)
+
+    indice_atual = next((i for i, p in enumerate(bucket) if p["agenda_id"] == agenda_id), None)
+    if indice_atual is None:
+        raise ValueError("Usuario nao pertence a esse bucket nesse sentido")
+
+    perna_movida = bucket.pop(indice_atual)
+    posicao = max(0, min(ordem, len(bucket)))
+    bucket.insert(posicao, perna_movida)
+
+    campo = "ordem_ida" if sentido == Sentido.IDA else "ordem_retorno"
+    _reindexar_bucket(bucket, campo, agendas_por_id)
+
+    db.commit()
 
 
 def _abrir_carro(

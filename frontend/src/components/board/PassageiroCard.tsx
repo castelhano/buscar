@@ -6,9 +6,9 @@ interface Props {
   viagemId: number;
   passageiro: ViagemDiaPassageiro;
   destinoNome?: string;
-  onRemover: (id: number) => void;
-  onCancelar: (id: number) => void;
-  onEditar: (passageiro: ViagemDiaPassageiro) => void;
+  onRemover?: (id: number) => void;
+  onCancelar?: (id: number) => void;
+  onEditar?: (passageiro: ViagemDiaPassageiro) => void;
 }
 
 export default function PassageiroCard({ viagemId, passageiro, destinoNome, onRemover, onCancelar, onEditar }: Props) {
@@ -31,17 +31,19 @@ export default function PassageiroCard({ viagemId, passageiro, destinoNome, onRe
 
   return (
     <div ref={setNodeRef} style={style} className={classes.join(" ")} {...attributes} {...listeners}>
-      <button
-        className="remover"
-        title="Remover do atendimento"
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => {
-          e.stopPropagation();
-          onRemover(passageiro.id);
-        }}
-      >
-        ✕
-      </button>
+      {onRemover && (
+        <button
+          className="remover"
+          title="Remover do atendimento"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemover(passageiro.id);
+          }}
+        >
+          ✕
+        </button>
+      )}
       <div className="linha-1">
         <span>{passageiro.usuario.abbr || passageiro.usuario.nome}</span>
         <span>
@@ -72,28 +74,32 @@ export default function PassageiroCard({ viagemId, passageiro, destinoNome, onRe
         </div>
       )}
       {passageiro.status === "Em analise" && <span className="tag">Em analise</span>}
-      {!cancelado && (
+      {!cancelado && (onEditar || onCancelar) && (
         <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.3rem" }}>
-          <button
-            className="btn btn-sm"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onEditar(passageiro);
-            }}
-          >
-            Editar
-          </button>
-          <button
-            className="btn btn-sm"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onCancelar(passageiro.id);
-            }}
-          >
-            Cancelar
-          </button>
+          {onEditar && (
+            <button
+              className="btn btn-sm"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditar(passageiro);
+              }}
+            >
+              Editar
+            </button>
+          )}
+          {onCancelar && (
+            <button
+              className="btn btn-sm"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancelar(passageiro.id);
+              }}
+            >
+              Cancelar
+            </button>
+          )}
         </div>
       )}
     </div>

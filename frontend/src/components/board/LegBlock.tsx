@@ -7,11 +7,11 @@ interface Props {
   viagem: ViagemDia;
   isPrimeira: boolean;
   locais: Local[];
-  onAdicionarPassageiro: (viagemId: number) => void;
-  onRemoverPassageiro: (id: number) => void;
-  onCancelarPassageiro: (id: number) => void;
-  onEditarPassageiro: (passageiro: ViagemDiaPassageiro) => void;
-  onRemoverCarro: (viagemId: number) => void;
+  onAdicionarPassageiro?: (viagemId: number) => void;
+  onRemoverPassageiro?: (id: number) => void;
+  onCancelarPassageiro?: (id: number) => void;
+  onEditarPassageiro?: (passageiro: ViagemDiaPassageiro) => void;
+  onRemoverCarro?: (viagemId: number) => void;
 }
 
 export default function LegBlock({
@@ -60,7 +60,7 @@ export default function LegBlock({
             ⚠ {aviso}
           </div>
         ))}
-        {viagem.passageiros.length === 0 && (
+        {viagem.passageiros.length === 0 && onRemoverCarro && (
           <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.3rem" }}>
             <button className="btn btn-sm btn-perigo" onClick={() => onRemoverCarro(viagem.id)}>
               Remover carro
@@ -83,9 +83,11 @@ export default function LegBlock({
         ))}
       </SortableContext>
 
-      <button className="carro-card-add" onClick={() => onAdicionarPassageiro(viagem.id)}>
-        + adicionar passageiro
-      </button>
+      {onAdicionarPassageiro && (
+        <button className="carro-card-add" onClick={() => onAdicionarPassageiro(viagem.id)}>
+          + adicionar passageiro
+        </button>
+      )}
     </div>
   );
 }

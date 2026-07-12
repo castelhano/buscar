@@ -94,7 +94,8 @@ export interface UsuarioAgendaSemanal {
   tipo: TipoAtendimento;
   modalidade: Modalidade;
   acompanhante: boolean;
-  ordem: number;
+  ordem_ida: number;
+  ordem_retorno: number;
   saida: string | null;
   retorno: string | null;
   origem: string | null;
@@ -159,6 +160,14 @@ export interface ViagemDia {
   motivo_conflito_horario: string | null;
   intervalo_inicio: string | null;
   intervalo_fim: string | null;
+}
+
+export interface ViagemDiaPassageiroPreview extends ViagemDiaPassageiro {
+  agenda_id: number;
+}
+
+export interface ViagemPreview extends Omit<ViagemDia, "passageiros"> {
+  passageiros: ViagemDiaPassageiroPreview[];
 }
 
 export interface Frequencia {
