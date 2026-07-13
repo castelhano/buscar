@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import type { Local, Regiao, UsuarioExcecao } from "../../api/types";
+import ConfirmarModal from "../../components/board/ConfirmarModal";
 
 interface Props {
   usuarioId: number;
@@ -37,41 +38,75 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
   const queryClient = useQueryClient();
   const [form, setForm] = useState<FormState>(vazio);
   const [erro, setErro] = useState<string | null>(null);
+  const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [removendo, setRemovendo] = useState<UsuarioExcecao | null>(null);
   const chaveDetalhe = ["usuario", usuarioId];
 
   function mensagemErro(e: unknown, fallback: string): string {
     return e instanceof Error ? e.message : fallback;
   }
 
-  const adicionarMutation = useMutation({
+  function payload() {
+    return {
+      data: form.data,
+      suspenso: form.suspenso,
+      saida: form.suspenso ? null : form.saida || null,
+      retorno: form.suspenso ? null : form.retorno || null,
+      origem: form.suspenso ? null : form.origem || null,
+      regiao_origem_id: form.suspenso || form.regiao_origem_id === "" ? null : form.regiao_origem_id,
+      destino_id: form.suspenso || form.destino_id === "" ? null : form.destino_id,
+      motivo: form.motivo || null,
+    };
+  }
+
+  const salvarMutation = useMutation({
     mutationFn: () =>
-      api.post(`/usuarios/${usuarioId}/excecoes`, {
-        data: form.data,
-        suspenso: form.suspenso,
-        saida: form.suspenso ? null : form.saida || null,
-        retorno: form.suspenso ? null : form.retorno || null,
-        origem: form.suspenso ? null : form.origem || null,
-        regiao_origem_id: form.suspenso || form.regiao_origem_id === "" ? null : form.regiao_origem_id,
-        destino_id: form.suspenso || form.destino_id === "" ? null : form.destino_id,
-        motivo: form.motivo || null,
-      }),
+      editandoId !== null
+        ? api.put(`/usuarios/${usuarioId}/excecoes/${editandoId}`, payload())
+        : api.post(`/usuarios/${usuarioId}/excecoes`, payload()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: chaveDetalhe });
       setForm(vazio);
+      setEditandoId(null);
       setErro(null);
     },
-    onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao adicionar excecao")),
+    onError: (e: unknown) => setErro(mensagemErro(e, editandoId !== null ? "Erro ao salvar excecao" : "Erro ao adicionar excecao")),
   });
 
   function adicionar() {
     if (!form.data) return;
-    adicionarMutation.mutate();
+    salvarMutation.mutate();
+  }
+
+  function editar(e: UsuarioExcecao) {
+    setEditandoId(e.id);
+    setForm({
+      data: e.data,
+      suspenso: e.suspenso,
+      saida: e.saida ?? "",
+      retorno: e.retorno ?? "",
+      origem: e.origem ?? "",
+      regiao_origem_id: e.regiao_origem_id ?? "",
+      destino_id: e.destino_id ?? "",
+      motivo: e.motivo ?? "",
+    });
+  }
+
+  function cancelarEdicao() {
+    setEditandoId(null);
+    setForm(vazio);
+  }
+
+  function formatarData(data: string): string {
+    const [ano, mes, dia] = data.split("-");
+    return `${dia}/${mes}/${ano.slice(2)}`;
   }
 
   const removerMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/usuarios/${usuarioId}/excecoes/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: chaveDetalhe });
+      setRemovendo(null);
       setErro(null);
     },
     onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao remover excecao")),
@@ -120,9 +155,14 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
             </>
           )}
           <input placeholder="Motivo" value={form.motivo} onChange={(e) => setForm({ ...form, motivo: e.target.value })} />
-          <button className="btn btn-primario" onClick={adicionar} disabled={adicionarMutation.isPending}>
-            Adicionar
+          <button className="btn btn-primario" onClick={adicionar} disabled={salvarMutation.isPending}>
+            {editandoId !== null ? "Salvar" : "Adicionar"}
           </button>
+          {editandoId !== null && (
+            <button className="btn" onClick={cancelarEdicao} disabled={salvarMutation.isPending}>
+              Cancelar
+            </button>
+          )}
         </div>
       )}
       {erro && (
@@ -135,6 +175,7 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
           <tr>
             <th>Data</th>
             <th>Situacao</th>
+            <th>Destino</th>
             <th>Motivo</th>
             <th></th>
           </tr>
@@ -142,20 +183,34 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
         <tbody>
           {excecoes.map((e) => (
             <tr key={e.id}>
-              <td>{e.data}</td>
+              <td>{formatarData(e.data)}</td>
               <td>{e.suspenso ? <span className="tag tag-inativo">Suspenso</span> : `${e.saida ?? "-"} / ${e.retorno ?? "-"}`}</td>
+              <td>{e.destino_id ? locais.find((l) => l.id === e.destino_id)?.nome ?? "-" : "-"}</td>
               <td>{e.motivo ?? "-"}</td>
               <td>
                 {!somenteLeitura && (
-                  <button className="btn btn-sm btn-perigo" onClick={() => removerMutation.mutate(e.id)} disabled={removerMutation.isPending}>
-                    Remover
-                  </button>
+                  <>
+                    <button className="btn btn-sm" onClick={() => editar(e)}>
+                      Editar
+                    </button>{" "}
+                    <button className="btn btn-sm btn-perigo" onClick={() => setRemovendo(e)} disabled={removerMutation.isPending}>
+                      Remover
+                    </button>
+                  </>
                 )}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      {removendo && (
+        <ConfirmarModal
+          titulo="Remover excecao"
+          mensagem={`Deseja realmente remover a excecao de ${formatarData(removendo.data)}?`}
+          onFechar={() => setRemovendo(null)}
+          onConfirmar={() => removerMutation.mutate(removendo.id)}
+        />
+      )}
     </div>
   );
 }
