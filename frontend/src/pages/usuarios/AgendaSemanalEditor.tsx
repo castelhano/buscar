@@ -4,6 +4,7 @@ import { api } from "../../api/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { DIAS_SEMANA, DIAS_SEMANA_LABEL } from "../../api/types";
 import type { DiaSemana, Local, Modalidade, Regiao, TipoAtendimento, UsuarioAgendaSemanal } from "../../api/types";
+import ReplicarModal from "./ReplicarModal";
 
 interface Props {
   usuarioId: number;
@@ -50,6 +51,7 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
   const [edicao, setEdicao] = useState<Edicao | null>(null);
   const [form, setForm] = useState<FormState>(formVazio);
   const [erro, setErro] = useState<string | null>(null);
+  const [replicando, setReplicando] = useState<UsuarioAgendaSemanal | null>(null);
 
   const chaveDetalhe = ["usuario", usuarioId];
 
@@ -109,6 +111,35 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
       setErro(null);
     },
     onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao salvar atendimento")),
+  });
+
+  function payloadDeEntrada(existente: UsuarioAgendaSemanal, dia: DiaSemana) {
+    return {
+      dia_semana: dia,
+      tipo: existente.tipo,
+      modalidade: existente.modalidade,
+      acompanhante: existente.acompanhante,
+      saida: existente.saida,
+      retorno: existente.retorno,
+      origem: existente.origem,
+      regiao_origem_id: existente.regiao_origem_id,
+      destino_id: existente.destino_id,
+      ativo: existente.ativo,
+    };
+  }
+
+  const replicarMutation = useMutation({
+    mutationFn: (dias: DiaSemana[]) => {
+      if (!replicando) return Promise.resolve();
+      return Promise.all(dias.map((dia) => api.post(`/usuarios/${usuarioId}/agenda-semanal`, payloadDeEntrada(replicando, dia))));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chaveDetalhe });
+      queryClient.invalidateQueries({ queryKey: ["usuarios"] });
+      setReplicando(null);
+      setErro(null);
+    },
+    onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao replicar atendimento")),
   });
 
   const removerMutation = useMutation({
@@ -250,6 +281,9 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
                           disabled={removerMutation.isPending}
                         >
                           Remover
+                        </button>{" "}
+                        <button className="btn btn-sm" onClick={() => setReplicando(existente)}>
+                          Replicar
                         </button>
                         {ehUltima && !criandoNestedia && (
                           <>
@@ -292,6 +326,14 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
           })}
         </tbody>
       </table>
+      {replicando && (
+        <ReplicarModal
+          diaAtual={replicando.dia_semana}
+          onFechar={() => setReplicando(null)}
+          onConfirmar={(dias) => replicarMutation.mutate(dias)}
+          enviando={replicarMutation.isPending}
+        />
+      )}
     </div>
   );
 }
