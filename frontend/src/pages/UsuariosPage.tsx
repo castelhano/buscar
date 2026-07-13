@@ -215,8 +215,8 @@ export default function UsuariosPage() {
                   />
                 </div>
                 {isAdmin && (
-                  <button className="btn btn-sm btn-primario" onClick={salvarEdicaoBasica} disabled={atualizar.isPending}>
-                    Salvar dados basicos
+                  <button className="btn btn-sm btn-primario" style={{padding: "7px", marginTop: "22px"}} onClick={salvarEdicaoBasica} disabled={atualizar.isPending}>
+                    Salvar
                   </button>
                 )}
               </div>

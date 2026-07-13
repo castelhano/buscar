@@ -180,8 +180,9 @@ def _ler_csv_usuarios() -> list[tuple[str, str, str, str]]:
     usada em usuario_agendamento.csv), usado para casar os dois CSVs pelo
     nome.
 
-    O endereco bruto nao e persistido em Usuario.detalhe (fica em branco);
-    serve apenas de insumo pra tentar extrair o bairro no seed da agenda.
+    O endereco bruto tambem e usado para preencher Usuario.detalhe (primeiro
+    endereco nao vazio encontrado pra cada nome) e como insumo pra tentar
+    extrair o bairro no seed da agenda.
     """
     linhas = []
     with open(CSV_USUARIOS_PATH, encoding="utf-8") as f:
@@ -209,6 +210,11 @@ def seed_usuarios() -> dict[str, int]:
     nomes_formatados = [nome_formatado_por_chave[chave] for chave in nomes_chave_unicos]
     abbrs = _gerar_abbrs(nomes_formatados)
 
+    endereco_por_chave: dict[str, str] = {}
+    for chave, _, _, endereco in linhas:
+        if endereco and chave not in endereco_por_chave:
+            endereco_por_chave[chave] = endereco
+
     db = SessionLocal()
     try:
         existentes = db.query(Usuario).count()
@@ -217,7 +223,8 @@ def seed_usuarios() -> dict[str, int]:
             return {u.nome: u.id for u in db.query(Usuario)}
 
         usuarios = [
-            Usuario(nome=nome, abbr=abbr, detalhe=None) for nome, abbr in zip(nomes_formatados, abbrs)
+            Usuario(nome=nome, abbr=abbr, detalhe=endereco_por_chave.get(chave))
+            for chave, nome, abbr in zip(nomes_chave_unicos, nomes_formatados, abbrs)
         ]
         db.add_all(usuarios)
         db.commit()
