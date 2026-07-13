@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useCreate, useList, useUpdate } from "../api/hooks";
 import type { Local, Regiao, StatusAtivoInativo, Usuario, UsuarioComAgenda } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import AgendaSemanalEditor from "./usuarios/AgendaSemanalEditor";
 import ExcecoesEditor from "./usuarios/ExcecoesEditor";
+import ConfirmarModal from "../components/board/ConfirmarModal";
 
 interface FormState {
   nome: string;
@@ -43,7 +44,23 @@ export default function UsuariosPage() {
   });
 
   const [basico, setBasico] = useState<FormState>(vazio);
+  const [confirmandoRemocao, setConfirmandoRemocao] = useState(false);
+  const [erroRemocao, setErroRemocao] = useState<string | null>(null);
   const queryClient = useQueryClient();
+
+  const removerMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/usuarios/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["usuarios"] });
+      setConfirmandoRemocao(false);
+      setSelecionadoId(null);
+      setErroRemocao(null);
+    },
+    onError: (e: unknown) => {
+      setConfirmandoRemocao(false);
+      setErroRemocao(e instanceof Error ? e.message : "Erro ao remover usuario");
+    },
+  });
 
   // So resincroniza o formulario quando o usuario selecionado MUDA, nao a
   // cada refetch de ["usuario", id] -- salvar a agenda semanal ou uma
@@ -215,11 +232,26 @@ export default function UsuariosPage() {
                   />
                 </div>
                 {isAdmin && (
-                  <button className="btn btn-sm btn-primario" style={{padding: "7px", marginTop: "22px"}} onClick={salvarEdicaoBasica} disabled={atualizar.isPending}>
-                    Salvar
-                  </button>
+                  <>
+                    <button className="btn btn-sm btn-primario" style={{padding: "7px", marginTop: "22px"}} onClick={salvarEdicaoBasica} disabled={atualizar.isPending}>
+                      Salvar
+                    </button>
+                    <button
+                      className="btn btn-sm btn-perigo"
+                      style={{ padding: "7px", marginTop: "22px" }}
+                      onClick={() => setConfirmandoRemocao(true)}
+                      disabled={removerMutation.isPending}
+                    >
+                      Remover usuario
+                    </button>
+                  </>
                 )}
               </div>
+              {erroRemocao && (
+                <div className="erro-box" onClick={() => setErroRemocao(null)} style={{ cursor: "pointer" }}>
+                  {erroRemocao} (clique para fechar)
+                </div>
+              )}
               <p style={{ fontSize: "0.8rem", color: "var(--cor-texto-suave)" }}>Cadastrado em {detalhe.data.data_cadastro}</p>
             </div>
 
@@ -247,6 +279,15 @@ export default function UsuariosPage() {
 
         {!novo && selecionadoId === null && <div className="painel">Selecione um usuario na lista ou crie um novo.</div>}
       </div>
+
+      {confirmandoRemocao && detalhe.data && (
+        <ConfirmarModal
+          titulo="Remover usuario"
+          mensagem={`Deseja realmente remover "${detalhe.data.nome}"? Essa acao nao pode ser desfeita.`}
+          onFechar={() => setConfirmandoRemocao(false)}
+          onConfirmar={() => removerMutation.mutate(detalhe.data!.id)}
+        />
+      )}
     </div>
   );
 }

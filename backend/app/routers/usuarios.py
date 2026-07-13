@@ -75,6 +75,16 @@ def atualizar_usuario(usuario_id: int, payload: schemas.UsuarioCreate, db: Sessi
 @router.delete("/{usuario_id}", status_code=204, dependencies=[Depends(exigir_admin)])
 def remover_usuario(usuario_id: int, db: Session = Depends(get_db)):
     usuario = _get_usuario_ou_404(db, usuario_id)
+
+    tem_agenda = db.query(models.UsuarioAgendaSemanal).filter(models.UsuarioAgendaSemanal.usuario_id == usuario_id).first()
+    tem_excecao = db.query(models.UsuarioExcecao).filter(models.UsuarioExcecao.usuario_id == usuario_id).first()
+    tem_viagem = db.query(models.ViagemDiaPassageiro).filter(models.ViagemDiaPassageiro.usuario_id == usuario_id).first()
+    if tem_agenda is not None or tem_excecao is not None or tem_viagem is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Nao e possivel remover o usuario: existem registros relacionados (agenda semanal, excecoes ou viagens). Remova-os primeiro.",
+        )
+
     db.delete(usuario)
     db.commit()
 
