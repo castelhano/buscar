@@ -48,7 +48,7 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
     grupos_saida = []
     for grupo in grupos_db:
         viagens_saida = []
-        for viagem in sorted(grupo.viagens, key=lambda v: (v.sentido.value, v.hora)):
+        for viagem in sorted(grupo.viagens, key=lambda v: v.hora):
             membros_saida = []
             for membro in sorted(viagem.membros, key=lambda m: m.ordem):
                 perna = pernas_por_agenda_sentido.get((membro.agenda_id, viagem.sentido))
@@ -82,7 +82,7 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
         for chave, perna in pernas_por_agenda_sentido.items()
         if chave not in classificados
     ]
-    nao_classificados.sort(key=lambda p: (p["sentido"].value, p["hora"], p["usuario_nome"]))
+    nao_classificados.sort(key=lambda p: (p["hora"], p["usuario_nome"]))
 
     return {"grupos": grupos_saida, "nao_classificados": nao_classificados}
 
