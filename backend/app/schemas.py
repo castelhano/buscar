@@ -357,6 +357,10 @@ class MembroBaseMover(BaseModel):
     ordem: int | None = None
 
 
+class ViagemBaseAlterarHora(BaseModel):
+    hora: dt.time
+
+
 class ViagemDiaAbrir(BaseModel):
     data: dt.date
     regiao_id: int

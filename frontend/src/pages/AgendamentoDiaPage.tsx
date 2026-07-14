@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import {
+  DndContext,
+  pointerWithin,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+} from "@dnd-kit/core";
 import { api } from "../api/client";
 import { useList } from "../api/hooks";
 import { DIAS_SEMANA, DIAS_SEMANA_LABEL } from "../api/types";
@@ -9,12 +18,14 @@ import type {
   DiaSemana,
   EstruturaBase,
   Empresa,
+  GrupoBase,
   Local,
   Regiao,
   Sentido,
   Sobras,
   UsuarioDesconsiderado,
   Veiculo,
+  ViagemBase,
   ViagemDia,
   ViagemDiaPassageiro,
 } from "../api/types";
@@ -51,6 +62,20 @@ function primeiraHora(viagem: ViagemDia): string {
 function periodoDaViagem(viagem: ViagemDia): "Manha" | "Tarde" {
   return minutosDaHora(primeiraHora(viagem)) >= CORTE_TARDE_MINUTOS ? "Tarde" : "Manha";
 }
+
+function periodoDaViagemBase(viagem: ViagemBase): "Manha" | "Tarde" {
+  return minutosDaHora(viagem.hora) >= CORTE_TARDE_MINUTOS ? "Tarde" : "Manha";
+}
+
+// pointerWithin acerta o droppable que o cursor esta literalmente sobre
+// (respeita o aninhamento carro > viagem > passageiro); closestCenter entra
+// so de fallback quando o ponteiro sai de toda area droppable (ex: fora do
+// board) -- sem isso, um carro vazio/pequeno perde pra vizinhos maiores
+// mesmo com o cursor em cima dele.
+const collisionDetection: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  return pointerCollisions.length > 0 ? pointerCollisions : closestCenter(args);
+};
 
 function agruparPorCondutor(viagens: ViagemDia[]): ViagemDia[][] {
   const grupos = new Map<string, ViagemDia[]>();
@@ -160,6 +185,11 @@ export default function AgendamentoDiaPage() {
   });
   const removerMembroBase = useMutation({
     mutationFn: (membroId: number) => api.delete<EstruturaBase>(`/base/membros/${membroId}`),
+    onSuccess: atualizarEstruturaBase,
+  });
+  const alterarHoraViagemBase = useMutation({
+    mutationFn: ({ viagemId, hora }: { viagemId: number; hora: string }) =>
+      api.patch<EstruturaBase>(`/base/viagens/${viagemId}/hora`, { hora }),
     onSuccess: atualizarEstruturaBase,
   });
   const moverMembroBase = useMutation({
@@ -323,6 +353,10 @@ export default function AgendamentoDiaPage() {
   const viagensDoPeriodo = (viagensQuery.data ?? []).filter((v) => periodoDaViagem(v) === periodo);
   const gruposCondutor = agruparPorCondutor(viagensDoPeriodo);
 
+  const gruposBaseDoPeriodo: { grupo: GrupoBase; viagensExibir: ViagemBase[] }[] = (estruturaBaseQuery.data?.grupos ?? [])
+    .map((grupo) => ({ grupo, viagensExibir: grupo.viagens.filter((v) => periodoDaViagemBase(v) === periodo) }))
+    .filter(({ grupo, viagensExibir }) => viagensExibir.length > 0 || grupo.viagens.length === 0);
+
   return (
     <div>
       <h2>Agendamento do dia</h2>
@@ -443,28 +477,26 @@ export default function AgendamentoDiaPage() {
           </button>
         )}
 
-        {modo === "dia" && (
-          <div className="btn-group" style={{ marginLeft: "auto" }}>
-            <button
-              className={`btn btn-sm ${periodo === "Manha" ? "btn-group-ativo" : ""}`}
-              onClick={() => setPeriodo("Manha")}
-            >
-              Manha
-            </button>
-            <button
-              className={`btn btn-sm ${periodo === "Tarde" ? "btn-group-ativo" : ""}`}
-              onClick={() => setPeriodo("Tarde")}
-            >
-              Tarde
-            </button>
-          </div>
-        )}
+        <div className="btn-group" style={{ marginLeft: "auto" }}>
+          <button
+            className={`btn btn-sm ${periodo === "Manha" ? "btn-group-ativo" : ""}`}
+            onClick={() => setPeriodo("Manha")}
+          >
+            Manha
+          </button>
+          <button
+            className={`btn btn-sm ${periodo === "Tarde" ? "btn-group-ativo" : ""}`}
+            onClick={() => setPeriodo("Tarde")}
+          >
+            Tarde
+          </button>
+        </div>
       </div>
 
       {modo === "dia" && viagensQuery.isLoading && <p>Carregando...</p>}
       {modo === "base" && estruturaBaseQuery.isLoading && <p>Carregando molde...</p>}
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragEnd={handleDragEnd}>
         {modo === "dia" ? (
           <div className="board-layout">
             <div className="board">
@@ -505,11 +537,13 @@ export default function AgendamentoDiaPage() {
         ) : (
           <div className="board-layout">
             <div className="board">
-              {(estruturaBaseQuery.data?.grupos ?? []).map((grupo, indice) => (
+              {gruposBaseDoPeriodo.map(({ grupo, viagensExibir }, indice) => (
                 <CarroBaseCard
                   key={grupo.id}
                   grupo={grupo}
+                  viagensExibir={viagensExibir}
                   indice={indice}
+                  periodo={periodo}
                   locais={locais ?? []}
                   regioes={regioes ?? []}
                   onNovaViagem={(grupoId, sentido, hora) =>
@@ -532,6 +566,12 @@ export default function AgendamentoDiaPage() {
                     removerMembroBase.mutate(membroId, {
                       onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao tirar do carro")),
                     })
+                  }
+                  onAlterarHoraViagem={(viagemId, hora) =>
+                    alterarHoraViagemBase.mutate(
+                      { viagemId, hora: `${hora}:00` },
+                      { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao alterar horario da viagem")) },
+                    )
                   }
                 />
               ))}

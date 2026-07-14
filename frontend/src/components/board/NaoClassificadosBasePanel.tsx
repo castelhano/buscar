@@ -51,6 +51,14 @@ export default function NaoClassificadosBasePanel({ membros, locais, regioes }: 
     return true;
   });
 
+  const temFiltroAtivo = filtroNome !== "" || filtroRegiao !== "" || filtroDestino !== "";
+
+  function limparFiltros() {
+    setFiltroNome("");
+    setFiltroRegiao("");
+    setFiltroDestino("");
+  }
+
   return (
     <div className="painel sem-vaga-painel">
       <h3>Nao classificados ({membros.length})</h3>
@@ -80,6 +88,9 @@ export default function NaoClassificadosBasePanel({ membros, locais, regioes }: 
             </option>
           ))}
         </select>
+        <button className="btn btn-sm" onClick={limparFiltros} disabled={!temFiltroAtivo}>
+          Limpar filtros
+        </button>
       </div>
       <div className="sem-vaga-lista">
         {filtrados.map((m) => (

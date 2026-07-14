@@ -1,32 +1,38 @@
 import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
-import type { GrupoBase, Local, Regiao, Sentido } from "../../api/types";
+import type { GrupoBase, Local, Regiao, Sentido, ViagemBase } from "../../api/types";
 import ViagemBaseBlock from "./ViagemBaseBlock";
 
 interface Props {
   grupo: GrupoBase;
+  viagensExibir: ViagemBase[];
   indice: number;
+  periodo: "Manha" | "Tarde";
   locais: Local[];
   regioes: Regiao[];
   onNovaViagem: (grupoId: number, sentido: Sentido, hora: string) => void;
   onRemoverGrupo: (grupoId: number) => void;
   onRemoverViagem: (viagemId: number) => void;
   onRemoverMembro: (membroId: number) => void;
+  onAlterarHoraViagem: (viagemId: number, hora: string) => void;
 }
 
 export default function CarroBaseCard({
   grupo,
+  viagensExibir,
   indice,
+  periodo,
   locais,
   regioes,
   onNovaViagem,
   onRemoverGrupo,
   onRemoverViagem,
   onRemoverMembro,
+  onAlterarHoraViagem,
 }: Props) {
   const [novaViagem, setNovaViagem] = useState(false);
   const [sentido, setSentido] = useState<Sentido>("Ida");
-  const [hora, setHora] = useState("06:00");
+  const [hora, setHora] = useState(periodo === "Tarde" ? "14:00" : "06:00");
 
   const { setNodeRef, isOver } = useDroppable({
     id: `grupo-base-${grupo.id}`,
@@ -50,9 +56,22 @@ export default function CarroBaseCard({
         )}
       </div>
 
-      {grupo.viagens.map((viagem) => (
-        <ViagemBaseBlock key={viagem.id} viagem={viagem} locais={locais} onRemoverViagem={onRemoverViagem} onRemoverMembro={onRemoverMembro} />
+      {viagensExibir.map((viagem) => (
+        <ViagemBaseBlock
+          key={viagem.id}
+          viagem={viagem}
+          locais={locais}
+          onRemoverViagem={onRemoverViagem}
+          onRemoverMembro={onRemoverMembro}
+          onAlterarHora={onAlterarHoraViagem}
+        />
       ))}
+
+      {viagensExibir.length < grupo.viagens.length && (
+        <div className="meta" style={{ fontSize: "0.75rem" }}>
+          + {grupo.viagens.length - viagensExibir.length} viagem(ns) no outro periodo
+        </div>
+      )}
 
       {novaViagem ? (
         <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.3rem", alignItems: "center", flexWrap: "wrap" }}>

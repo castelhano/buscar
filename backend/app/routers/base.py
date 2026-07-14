@@ -5,6 +5,7 @@ from app import models, schemas
 from app.auth import obter_conta_atual
 from app.database import get_db
 from app.services.base import (
+    alterar_hora_viagem,
     criar_grupo,
     criar_viagem,
     mover_membro,
@@ -57,6 +58,19 @@ def remover_viagem_base(viagem_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=f"Viagem {viagem_id} nao encontrada")
     dia_semana = viagem.grupo.dia_semana
     remover_viagem(db, viagem_id)
+    return montar_estrutura_base(db, dia_semana)
+
+
+@router.patch("/viagens/{viagem_id}/hora", response_model=schemas.EstruturaBaseRead)
+def alterar_hora_viagem_base(viagem_id: int, payload: schemas.ViagemBaseAlterarHora, db: Session = Depends(get_db)):
+    viagem = db.get(models.ViagemBase, viagem_id)
+    if viagem is None:
+        raise HTTPException(status_code=404, detail=f"Viagem {viagem_id} nao encontrada")
+    dia_semana = viagem.grupo.dia_semana
+    try:
+        alterar_hora_viagem(db, viagem_id, payload.hora)
+    except ValueError as erro:
+        raise HTTPException(status_code=400, detail=str(erro)) from erro
     return montar_estrutura_base(db, dia_semana)
 
 

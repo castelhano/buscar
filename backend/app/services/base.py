@@ -130,6 +130,43 @@ def remover_viagem(db: Session, viagem_id: int) -> None:
     db.commit()
 
 
+def alterar_hora_viagem(db: Session, viagem_id: int, nova_hora: dt.time) -> DiaSemana:
+    """Muda o horario de uma `ViagemBase` e propaga pra agenda semanal de
+    cada membro (saida/retorno conforme o sentido) -- ao contrario de
+    `mover_membro`, aqui e o horario que muda pra bater com o carro, nao o
+    contrario.
+    """
+    viagem = db.get(ViagemBase, viagem_id)
+    if viagem is None:
+        raise ValueError("Viagem nao encontrada")
+    dia_semana = viagem.grupo.dia_semana
+    if viagem.hora == nova_hora:
+        return dia_semana
+
+    conflito = (
+        db.query(ViagemBase)
+        .filter(
+            ViagemBase.grupo_base_id == viagem.grupo_base_id,
+            ViagemBase.sentido == viagem.sentido,
+            ViagemBase.hora == nova_hora,
+            ViagemBase.id != viagem_id,
+        )
+        .first()
+    )
+    if conflito is not None:
+        raise ValueError("Ja existe uma viagem nesse sentido/horario nesse carro")
+
+    for membro in viagem.membros:
+        if viagem.sentido == Sentido.IDA:
+            membro.agenda.saida = nova_hora
+        else:
+            membro.agenda.retorno = nova_hora
+
+    viagem.hora = nova_hora
+    db.commit()
+    return dia_semana
+
+
 def _reindexar_viagem(db: Session, viagem_base_id: int) -> None:
     membros = (
         db.query(MembroViagemBase)
