@@ -232,6 +232,14 @@ export default function AgendamentoDiaPage() {
     },
     onSuccess: invalidarDia,
   });
+  const limparCondutorVeiculo = useMutation({
+    mutationFn: async (viagemIds: number[]) => {
+      for (const viagemId of viagemIds) {
+        await api.patch(`/viagens/${viagemId}/atribuir`, { limpar: true });
+      }
+    },
+    onSuccess: invalidarDia,
+  });
   const removerCarro = useMutation({
     mutationFn: (viagemId: number) => api.delete(`/viagens/${viagemId}`),
     onSuccess: invalidarDia,
@@ -544,6 +552,11 @@ export default function AgendamentoDiaPage() {
                   onCancelarPassageiro={setModalCancelar}
                   onEditarPassageiro={setModalEditarPassageiro}
                   onAtribuir={setModalAtribuir}
+                  onLimparCondutorVeiculo={(viagemIds) =>
+                    limparCondutorVeiculo.mutate(viagemIds, {
+                      onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao limpar condutor/veiculo")),
+                    })
+                  }
                   onRemoverCarro={(id) =>
                     removerCarro.mutate(id, {
                       onError: (e: unknown) => setErro(mensagemErro(e, "Nao foi possivel remover o carro")),

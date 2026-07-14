@@ -262,6 +262,14 @@ def limpar_dia(data: dt.date, db: Session = Depends(get_db)):
 @router.patch("/{viagem_id}/atribuir", response_model=schemas.ViagemDiaRead)
 def atribuir_condutor_veiculo(viagem_id: int, payload: schemas.ViagemDiaAtribuir, db: Session = Depends(get_db)):
     viagem = _get_viagem_ou_404(db, viagem_id)
+    if payload.limpar:
+        viagem.condutor_id = None
+        viagem.veiculo_id = None
+        viagem.empresa_id = None
+        db.commit()
+        db.refresh(viagem)
+        return _serializar_viagem(viagem, _construir_contexto_dia(db, viagem.data))
+
     dados = payload.model_dump(exclude_unset=True)
     if dados.get("veiculo_id") is not None:
         veiculo = db.get(models.Veiculo, dados["veiculo_id"])

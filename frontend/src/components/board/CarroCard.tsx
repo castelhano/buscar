@@ -15,6 +15,7 @@ interface Props {
   onCancelarPassageiro?: (id: number) => void;
   onEditarPassageiro?: (passageiro: ViagemDiaPassageiro) => void;
   onAtribuir?: (dados: { viagemIds: number[]; condutorAtualId: number | null; veiculoAtualId: number | null }) => void;
+  onLimparCondutorVeiculo?: (viagemIds: number[]) => void;
   onRemoverCarro?: (viagemId: number) => void;
 }
 
@@ -31,6 +32,7 @@ export default function CarroCard({
   onCancelarPassageiro,
   onEditarPassageiro,
   onAtribuir,
+  onLimparCondutorVeiculo,
   onRemoverCarro,
 }: Props) {
   const pernas = [...viagens].sort((a, b) => {
@@ -81,7 +83,7 @@ export default function CarroCard({
               Intervalo {primeira.intervalo_inicio.slice(0, 5)} - {primeira.intervalo_fim.slice(0, 5)}
             </div>
           )}
-          <div style={{ marginTop: "0.3rem" }}>
+          <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.3rem" }}>
             <button
               className="btn btn-sm"
               onClick={() =>
@@ -94,6 +96,15 @@ export default function CarroCard({
             >
               Condutor/veiculo
             </button>
+            {onLimparCondutorVeiculo && (primeira.condutor_id !== null || primeira.veiculo_id !== null) && (
+              <button
+                className="btn btn-sm"
+                title="Remove condutor e veiculo do carro, mantendo as viagens e passageiros"
+                onClick={() => onLimparCondutorVeiculo(pernas.map((v) => v.id))}
+              >
+                Limpar
+              </button>
+            )}
           </div>
         </>
       )}
