@@ -3,6 +3,7 @@ import datetime as dt
 import io
 import re
 import zipfile
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
@@ -27,6 +28,11 @@ from app.services.recursos import fim_turno_condutor, fim_viagem
 _ESTILOS = getSampleStyleSheet()
 _ESTILO_CABECALHO_DIA = ParagraphStyle("CabecalhoDia", parent=_ESTILOS["Normal"], fontName="Helvetica-Bold", fontSize=13, leading=16)
 _ESTILO_CABECALHO_CONDUTOR = ParagraphStyle("CabecalhoCondutor", parent=_ESTILOS["Normal"], fontName="Helvetica-Bold", fontSize=10.5, leading=13)
+# Celulas de texto longo (Usuario/Origem/Destino/Observacoes) usam Paragraph em
+# vez de string pura -- string pura e desenhada com drawString (uma linha so,
+# sem quebra), o texto longo vazava da celula. Com Paragraph o ReportLab quebra
+# respeitando a largura da coluna e a Table recalcula a altura da linha sozinha.
+_ESTILO_CELULA = ParagraphStyle("Celula", parent=_ESTILOS["Normal"], fontName="Helvetica", fontSize=9, leading=11)
 
 _DIAS_SEMANA_PT = {
     0: "segunda-feira",
@@ -41,6 +47,10 @@ _DIAS_SEMANA_PT = {
 
 def _nome_arquivo_seguro(nome: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "_", nome).strip("_") or "sem_nome"
+
+
+def _celula(texto: str) -> Paragraph:
+    return Paragraph(escape(texto), _ESTILO_CELULA)
 
 
 def _hora_referencia(viagem: ViagemDia) -> dt.time:
@@ -97,8 +107,8 @@ def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.tim
 
     empresa_garagem = veiculo.empresa.nome if veiculo and veiculo.empresa else (primeira.empresa.nome if primeira.empresa else "-")
 
-    linhas: list[list[str]] = [["Hora", "Usuario", "Sentido", "Origem", "Destino", "Observacoes"]]
-    linhas.append([hora_inicio, "--", "Acesso", empresa_garagem, "-", ""])
+    linhas: list[list] = [["Hora", "Usuario", "Sentido", "Origem", "Destino", "Observacoes"]]
+    linhas.append([hora_inicio, "--", "Acesso", _celula(empresa_garagem), "-", ""])
 
     limites_leg: list[int] = []
     linha_intervalo: int | None = None
@@ -120,11 +130,11 @@ def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.tim
             linhas.append(
                 [
                     passageiro.hora.strftime("%H:%M"),
-                    nome,
+                    _celula(nome),
                     passageiro.sentido.value,
-                    passageiro.origem or "-",
-                    passageiro.destino.nome if passageiro.destino else "-",
-                    observacoes,
+                    _celula(passageiro.origem or "-"),
+                    _celula(passageiro.destino.nome if passageiro.destino else "-"),
+                    _celula(observacoes) if observacoes else "",
                 ]
             )
 
