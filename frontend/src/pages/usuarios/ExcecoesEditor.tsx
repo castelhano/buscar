@@ -118,7 +118,7 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
 
   return (
     <div>
-      <h4>Excecoes pontuais</h4>
+      <h4>Exceções</h4>
       <p style={{ fontSize: "0.8rem", color: "var(--cor-texto-suave)", marginTop: 0 }}>
         Para um dia especifico: suspender o atendimento ou trocar horario/local so naquela data. Tambem serve pra um
         atendimento avulso (usuario sem agenda fixa nesse dia da semana): preenchendo horario/local aqui, a excecao
