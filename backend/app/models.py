@@ -290,6 +290,11 @@ class UsuarioExcecao(Base):
     atendimento (suspenso=True) por algum motivo isolado. Padroes recorrentes
     (ex: toda sexta e diferente) devem virar uma linha em UsuarioAgendaSemanal,
     nao uma excecao.
+
+    Tambem cobre o atendimento avulso (uma vez na vida, sem nenhuma linha em
+    UsuarioAgendaSemanal pro dia da semana): nesse caso a excecao sozinha
+    descreve o dia inteiro (ver `app.services.geracao._agendas_do_dia`), sem
+    precisar cadastrar um padrao semanal so pra uma unica ocorrencia.
     """
 
     __tablename__ = "usuario_excecao"
@@ -304,6 +309,7 @@ class UsuarioExcecao(Base):
     origem: Mapped[str | None] = mapped_column(String(200), nullable=True)
     regiao_origem_id: Mapped[int | None] = mapped_column(ForeignKey("regiao.id"), nullable=True)
     destino_id: Mapped[int | None] = mapped_column(ForeignKey("local.id"), nullable=True)
+    acompanhante: Mapped[bool | None] = mapped_column(nullable=True)
     motivo: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     usuario: Mapped["Usuario"] = relationship(back_populates="excecoes")

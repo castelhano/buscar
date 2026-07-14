@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { api } from "../api/client";
 import { useList } from "../api/hooks";
-import { DIAS_SEMANA, DIAS_SEMANA_LABEL } from "../api/types";
+import { DIAS_SEMANA, DIAS_SEMANA_LABEL, diaSemanaFromData } from "../api/types";
 import type {
   Condutor,
   DiaSemana,
@@ -600,6 +600,7 @@ export default function AgendamentoDiaPage() {
 
       {modalAdicionar !== null && (
         <AdicionarPassageiroModal
+          diaSemana={diaSemanaFromData(data)}
           onFechar={() => setModalAdicionar(null)}
           onConfirmar={(dados) => {
             adicionarPassageiro.mutate(
@@ -695,6 +696,7 @@ export default function AgendamentoDiaPage() {
         <AdicionarPassageiroModal
           titulo="Editar atendimento"
           textoConfirmar="Salvar edicao"
+          diaSemana={diaSemanaFromData(data)}
           usuarioFixo={{ id: modalEditarPassageiro.usuario_id, nome: modalEditarPassageiro.usuario.nome }}
           valoresIniciais={{
             sentido: modalEditarPassageiro.sentido,

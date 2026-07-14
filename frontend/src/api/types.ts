@@ -23,6 +23,15 @@ export const DIAS_SEMANA_LABEL: Record<DiaSemana, string> = {
   DOM: "Domingo",
 };
 
+const DIA_SEMANA_POR_WEEKDAY_JS: DiaSemana[] = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SAB"];
+
+/** `data` no formato YYYY-MM-DD, interpretada como data local (nao UTC) pra
+ * bater com `dia_semana_from_date` do backend. */
+export function diaSemanaFromData(data: string): DiaSemana {
+  const [ano, mes, dia] = data.split("-").map(Number);
+  return DIA_SEMANA_POR_WEEKDAY_JS[new Date(ano, mes - 1, dia).getDay()];
+}
+
 export interface Regiao {
   id: number;
   nome: string;
@@ -114,6 +123,7 @@ export interface UsuarioExcecao {
   origem: string | null;
   regiao_origem_id: number | null;
   destino_id: number | null;
+  acompanhante: boolean | null;
   motivo: string | null;
 }
 

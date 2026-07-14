@@ -177,6 +177,7 @@ class UsuarioExcecaoCreate(BaseModel):
     origem: str | None = None
     regiao_origem_id: int | None = None
     destino_id: int | None = None
+    acompanhante: bool | None = None
     motivo: str | None = None
 
 
@@ -191,6 +192,7 @@ class UsuarioExcecaoRead(ORMModel):
     origem: str | None
     regiao_origem_id: int | None
     destino_id: int | None
+    acompanhante: bool | None
     motivo: str | None
 
 

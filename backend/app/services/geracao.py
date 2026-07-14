@@ -49,7 +49,7 @@ def _periodo_da_viagem(viagem: ViagemDia) -> PeriodoCondutor:
 def agendas_fixo_da_semana(db: Session, dia_semana: DiaSemana) -> list[UsuarioAgendaSemanal]:
     """Agendas Fixo/ativas de um dia da semana generico, sem excecao pontual
     nem recesso (so existem pra uma data especifica) -- base tanto do modo
-    Base (`app.services.base`) quanto de `_agendas_fixo_do_dia` pra data real.
+    Base (`app.services.base`) quanto de `_agendas_do_dia` pra data real.
     """
     return (
         db.query(UsuarioAgendaSemanal)
@@ -66,19 +66,22 @@ def agendas_fixo_da_semana(db: Session, dia_semana: DiaSemana) -> list[UsuarioAg
     )
 
 
-def _agendas_fixo_do_dia(db: Session, data: dt.date):
-    """Agendas Fixo/ativas do dia da semana de `data`, com as excecoes pontuais
-    (por usuario) e os locais em recesso vigentes nessa data -- base comum
-    usada tanto pela geracao quanto pelo diagnostico de desconsiderados.
+def _agendas_do_dia(db: Session, data: dt.date):
+    """Agendas Fixo/ativas do dia da semana de `data` mais TODAS as
+    `UsuarioExcecao` cadastradas pra essa data -- inclusive de usuarios sem
+    nenhuma linha de agenda nesse dia da semana (atendimento avulso, ver
+    `montar_pernas`) -- com os locais em recesso vigentes nessa data. Base
+    comum usada tanto pela geracao quanto pelo diagnostico de
+    desconsiderados.
     """
     dia_semana = dia_semana_from_date(data)
     agendas = agendas_fixo_da_semana(db, dia_semana)
-    usuario_ids = [a.usuario_id for a in agendas]
     excecoes = {
         e.usuario_id: e
-        for e in db.query(UsuarioExcecao).filter(
-            UsuarioExcecao.data == data, UsuarioExcecao.usuario_id.in_(usuario_ids)
-        )
+        for e in db.query(UsuarioExcecao)
+        .join(Usuario, UsuarioExcecao.usuario_id == Usuario.id)
+        .options(joinedload(UsuarioExcecao.usuario))
+        .filter(UsuarioExcecao.data == data, Usuario.status == StatusAtivoInativo.ATIVO)
     }
     locais_em_recesso = {
         row[0]
@@ -90,22 +93,25 @@ def _agendas_fixo_do_dia(db: Session, data: dt.date):
 
 
 def _motivo_desconsideracao(
-    agenda: UsuarioAgendaSemanal, excecao: UsuarioExcecao | None, locais_em_recesso: set[int]
+    agenda: UsuarioAgendaSemanal | None, excecao: UsuarioExcecao | None, locais_em_recesso: set[int]
 ) -> str | None:
     """Motivo pelo qual esse usuario nao entra na geracao do dia, ou None se
     elegivel (ainda pode ficar de fora depois por falta de veiculo/frota --
     isso e um problema de escala, tratado a parte no painel de Sobras, nao
-    aqui).
+    aqui). `agenda` pode ser None no atendimento avulso (so excecao, sem
+    nenhuma linha de agenda pro dia da semana).
     """
     if excecao and excecao.suspenso:
         return f"Excecao de usuario: suspenso nesse dia ({excecao.motivo})" if excecao.motivo else "Excecao de usuario: suspenso nesse dia"
 
-    destino_id = excecao.destino_id if excecao and excecao.destino_id else agenda.destino_id
+    destino_id = excecao.destino_id if excecao and excecao.destino_id else (agenda.destino_id if agenda else None)
     if destino_id is not None and destino_id in locais_em_recesso:
         return "Local de destino em recesso"
 
     regiao_origem_id = (
-        excecao.regiao_origem_id if excecao and excecao.regiao_origem_id else agenda.regiao_origem_id
+        excecao.regiao_origem_id
+        if excecao and excecao.regiao_origem_id
+        else (agenda.regiao_origem_id if agenda else None)
     )
     if regiao_origem_id is None:
         return "Sem regiao de origem cadastrada"
@@ -114,16 +120,25 @@ def _motivo_desconsideracao(
 
 
 def listar_desconsiderados_dia(db: Session, data: dt.date) -> list[dict]:
-    """Usuarios com atendimento Fixo previsto pra essa data que ficam de fora
-    da geracao (suspenso, local em recesso, sem regiao de origem), com o
-    motivo -- pra alertar na tela de agendamento do dia.
+    """Usuarios com atendimento previsto pra essa data (Fixo, ou avulso via
+    excecao) que ficam de fora da geracao (suspenso, local em recesso, sem
+    regiao de origem), com o motivo -- pra alertar na tela de agendamento do
+    dia.
     """
-    _, agendas, excecoes, locais_em_recesso = _agendas_fixo_do_dia(db, data)
+    _, agendas, excecoes, locais_em_recesso = _agendas_do_dia(db, data)
     desconsiderados = []
+    usuarios_com_agenda: set[int] = set()
     for agenda in agendas:
+        usuarios_com_agenda.add(agenda.usuario_id)
         motivo = _motivo_desconsideracao(agenda, excecoes.get(agenda.usuario_id), locais_em_recesso)
         if motivo is not None:
             desconsiderados.append({"usuario_id": agenda.usuario_id, "usuario_nome": agenda.usuario.nome, "motivo": motivo})
+    for usuario_id, excecao in excecoes.items():
+        if usuario_id in usuarios_com_agenda:
+            continue
+        motivo = _motivo_desconsideracao(None, excecao, locais_em_recesso)
+        if motivo is not None:
+            desconsiderados.append({"usuario_id": usuario_id, "usuario_nome": excecao.usuario.nome, "motivo": motivo})
     return desconsiderados
 
 
@@ -137,55 +152,94 @@ def regiao_alocacao(sentido: Sentido, regiao_origem_id: int, regiao_destino_id: 
     return regiao_origem_id
 
 
+def _adicionar_pernas(
+    pernas_por_regiao: dict[int, list[dict]],
+    agenda_id: int,
+    usuario: Usuario,
+    agenda: UsuarioAgendaSemanal | None,
+    excecao: UsuarioExcecao | None,
+    locais_regiao: dict[int, int],
+) -> None:
+    """Monta as pernas (Ida/Retorno) de um usuario nesse dia. Quando ha
+    excecao ela e a fonte de verdade (substitui o Fixo campo a campo onde
+    estiver preenchida) -- inclusive sozinha, sem nenhuma `agenda` (Fixo)
+    por tras, no atendimento avulso.
+    """
+    origem = excecao.origem if excecao and excecao.origem else (agenda.origem if agenda else None)
+    regiao_origem_id = (
+        excecao.regiao_origem_id
+        if excecao and excecao.regiao_origem_id
+        else (agenda.regiao_origem_id if agenda else None)
+    )
+    destino_id = excecao.destino_id if excecao and excecao.destino_id else (agenda.destino_id if agenda else None)
+    regiao_destino_id = locais_regiao.get(destino_id) if destino_id else None
+    acompanhante = (
+        excecao.acompanhante
+        if excecao and excecao.acompanhante is not None
+        else (agenda.acompanhante if agenda else False)
+    )
+
+    pernas = (
+        (Sentido.IDA, agenda.saida if agenda else None, excecao.saida if excecao else None),
+        (Sentido.RETORNO, agenda.retorno if agenda else None, excecao.retorno if excecao else None),
+    )
+    for sentido, hora_padrao, hora_excecao in pernas:
+        hora = hora_excecao or hora_padrao
+        if hora is None:
+            continue
+        regiao_alocacao_id = regiao_alocacao(sentido, regiao_origem_id, regiao_destino_id)
+        pernas_por_regiao[regiao_alocacao_id].append(
+            {
+                "agenda_id": agenda_id,
+                "usuario_id": usuario.id,
+                "usuario": usuario,
+                "sentido": sentido,
+                "hora": hora,
+                "origem": origem,
+                "regiao_origem_id": regiao_origem_id,
+                "destino_id": destino_id,
+                "regiao_destino_id": regiao_destino_id,
+                "acompanhante": acompanhante,
+            }
+        )
+
+
 def montar_pernas(
     agendas: list[UsuarioAgendaSemanal],
     excecoes: dict[int, UsuarioExcecao],
     locais_em_recesso: set[int],
     locais_regiao: dict[int, int],
 ) -> dict[int, list[dict]]:
-    """Monta as pernas (Ida/Retorno) de cada agenda elegivel, agrupadas por
-    regiao de alocacao -- usado tanto pela geracao real (com excecao/recesso
-    de uma data) quanto pela leitura do modo Base (sem excecao/recesso, que so
-    existem pra uma data especifica).
+    """Monta as pernas (Ida/Retorno) de cada usuario elegivel nesse dia,
+    agrupadas por regiao de alocacao -- usado tanto pela geracao real (com
+    excecao/recesso de uma data) quanto pela leitura do modo Base (sem
+    excecao/recesso, que so existem pra uma data especifica).
+
+    Usuario com excecao pra essa data e tratado por ela (ver
+    `_adicionar_pernas`), mesmo sem ter nenhuma linha de `UsuarioAgendaSemanal`
+    nesse dia da semana -- cobre o atendimento avulso (uma vez na vida) sem
+    precisar cadastrar um padrao semanal so pra essa ocorrencia.
     """
     pernas_por_regiao: dict[int, list[dict]] = defaultdict(list)
+    usuarios_com_agenda: set[int] = set()
+
     for agenda in agendas:
+        usuarios_com_agenda.add(agenda.usuario_id)
         excecao = excecoes.get(agenda.usuario_id)
         motivo = _motivo_desconsideracao(agenda, excecao, locais_em_recesso)
         if motivo is not None:
             print(f"[geracao] usuario_id={agenda.usuario_id}: {motivo}, ficou de fora")
             continue
+        _adicionar_pernas(pernas_por_regiao, agenda.id, agenda.usuario, agenda, excecao, locais_regiao)
 
-        origem = excecao.origem if excecao and excecao.origem else agenda.origem
-        regiao_origem_id = (
-            excecao.regiao_origem_id if excecao and excecao.regiao_origem_id else agenda.regiao_origem_id
-        )
-        destino_id = excecao.destino_id if excecao and excecao.destino_id else agenda.destino_id
-        regiao_destino_id = locais_regiao.get(destino_id) if destino_id else None
-
-        pernas = (
-            (Sentido.IDA, agenda.saida, excecao.saida if excecao else None),
-            (Sentido.RETORNO, agenda.retorno, excecao.retorno if excecao else None),
-        )
-        for sentido, hora_padrao, hora_excecao in pernas:
-            hora = hora_excecao or hora_padrao
-            if hora is None:
-                continue
-            regiao_alocacao_id = regiao_alocacao(sentido, regiao_origem_id, regiao_destino_id)
-            pernas_por_regiao[regiao_alocacao_id].append(
-                {
-                    "agenda_id": agenda.id,
-                    "usuario_id": agenda.usuario_id,
-                    "usuario": agenda.usuario,
-                    "sentido": sentido,
-                    "hora": hora,
-                    "origem": origem,
-                    "regiao_origem_id": regiao_origem_id,
-                    "destino_id": destino_id,
-                    "regiao_destino_id": regiao_destino_id,
-                    "acompanhante": agenda.acompanhante,
-                }
-            )
+    for usuario_id, excecao in excecoes.items():
+        if usuario_id in usuarios_com_agenda:
+            continue
+        motivo = _motivo_desconsideracao(None, excecao, locais_em_recesso)
+        if motivo is not None:
+            print(f"[geracao] usuario_id={usuario_id}: {motivo}, ficou de fora (avulso)")
+            continue
+        _adicionar_pernas(pernas_por_regiao, -excecao.id, excecao.usuario, None, excecao, locais_regiao)
 
     print(f"[geracao] pernas por regiao: { {k: len(v) for k, v in pernas_por_regiao.items()} }")
     return pernas_por_regiao
@@ -247,8 +301,10 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     if existentes:
         return existentes
 
-    dia_semana, agendas, excecoes, locais_em_recesso = _agendas_fixo_do_dia(db, data)
-    print(f"[geracao] {data} ({dia_semana.name}): {len(agendas)} agendas FIXO/ativas encontradas")
+    dia_semana, agendas, excecoes, locais_em_recesso = _agendas_do_dia(db, data)
+    print(
+        f"[geracao] {data} ({dia_semana.name}): {len(agendas)} agendas Fixo + {len(excecoes)} excecoes encontradas"
+    )
     locais_regiao = dict(db.query(Local.id, Local.regiao_id).all())
     ultimos_usos_veiculo = _ultimos_usos(db, ViagemDia.veiculo_id, data)
     ultimos_usos_condutor = _ultimos_usos(db, ViagemDia.condutor_id, data)

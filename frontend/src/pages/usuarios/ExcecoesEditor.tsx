@@ -20,6 +20,7 @@ interface FormState {
   origem: string;
   regiao_origem_id: number | "";
   destino_id: number | "";
+  acompanhante: boolean;
   motivo: string;
 }
 
@@ -31,6 +32,7 @@ const vazio: FormState = {
   origem: "",
   regiao_origem_id: "",
   destino_id: "",
+  acompanhante: false,
   motivo: "",
 };
 
@@ -55,6 +57,7 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
       origem: form.suspenso ? null : form.origem || null,
       regiao_origem_id: form.suspenso || form.regiao_origem_id === "" ? null : form.regiao_origem_id,
       destino_id: form.suspenso || form.destino_id === "" ? null : form.destino_id,
+      acompanhante: form.suspenso ? null : form.acompanhante,
       motivo: form.motivo || null,
     };
   }
@@ -88,6 +91,7 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
       origem: e.origem ?? "",
       regiao_origem_id: e.regiao_origem_id ?? "",
       destino_id: e.destino_id ?? "",
+      acompanhante: e.acompanhante ?? false,
       motivo: e.motivo ?? "",
     });
   }
@@ -116,7 +120,9 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
     <div>
       <h4>Excecoes pontuais</h4>
       <p style={{ fontSize: "0.8rem", color: "var(--cor-texto-suave)", marginTop: 0 }}>
-        Para um dia especifico: suspender o atendimento ou trocar horario/local so naquela data.
+        Para um dia especifico: suspender o atendimento ou trocar horario/local so naquela data. Tambem serve pra um
+        atendimento avulso (usuario sem agenda fixa nesse dia da semana): preenchendo horario/local aqui, a excecao
+        sozinha ja garante a geracao naquela data, sem precisar cadastrar agenda semanal pra isso.
       </p>
       {!somenteLeitura && (
         <div className="linha-toolbar">
@@ -152,6 +158,14 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
                   </option>
                 ))}
               </select>
+              <label style={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={form.acompanhante}
+                  onChange={(e) => setForm({ ...form, acompanhante: e.target.checked })}
+                />
+                Acompanhante
+              </label>
             </>
           )}
           <input placeholder="Motivo" value={form.motivo} onChange={(e) => setForm({ ...form, motivo: e.target.value })} />

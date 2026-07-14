@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "../../api/client";
 import { useList } from "../../api/hooks";
-import type { Local, Regiao, Sentido, Usuario } from "../../api/types";
+import type { DiaSemana, Local, Regiao, Sentido, Usuario, UsuarioAgendaSemanal } from "../../api/types";
 import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
 
 export interface PassageiroFormValores {
@@ -31,6 +33,8 @@ interface Props {
   /** Quando informado, o usuario nao pode ser trocado (usado ao editar um atendimento ja lancado). */
   usuarioFixo?: { id: number; nome: string };
   valoresIniciais?: Partial<PassageiroFormValores>;
+  /** Dia da semana da viagem, pra sugerir os dados do Eventual cadastrado do usuario (so na insercao nova). */
+  diaSemana: DiaSemana;
 }
 
 export default function AdicionarPassageiroModal({
@@ -40,6 +44,7 @@ export default function AdicionarPassageiroModal({
   textoConfirmar = "Adicionar",
   usuarioFixo,
   valoresIniciais,
+  diaSemana,
 }: Props) {
   useLockBodyScroll();
   const { data: usuarios } = useList<Usuario>("usuarios", "/usuarios", { status: "Ativo" });
@@ -54,6 +59,22 @@ export default function AdicionarPassageiroModal({
   const [destinoId, setDestinoId] = useState<number | "">(valoresIniciais?.destino_id ?? "");
   const [acompanhante, setAcompanhante] = useState(valoresIniciais?.acompanhante ?? false);
   const [observacoes, setObservacoes] = useState(valoresIniciais?.observacoes ?? "");
+
+  const eventuaisQuery = useQuery({
+    queryKey: ["usuario-agenda-semanal", usuarioId],
+    queryFn: () => api.get<UsuarioAgendaSemanal[]>(`/usuarios/${usuarioId}/agenda-semanal`),
+    enabled: !usuarioFixo && usuarioId !== "",
+  });
+  const eventuais = (eventuaisQuery.data ?? []).filter((a) => a.tipo === "Eventual" && a.dia_semana === diaSemana);
+
+  function usarEventual(ev: UsuarioAgendaSemanal) {
+    const horaEventual = sentido === "Ida" ? ev.saida : ev.retorno;
+    if (horaEventual) setHora(horaEventual.slice(0, 5));
+    setOrigem(ev.origem ?? "");
+    setRegiaoOrigemId(ev.regiao_origem_id ?? "");
+    setDestinoId(ev.destino_id ?? "");
+    setAcompanhante(ev.acompanhante);
+  }
 
   function confirmar() {
     if (usuarioId === "" || !hora) return;
@@ -98,6 +119,19 @@ export default function AdicionarPassageiroModal({
               <option value="Retorno">Retorno</option>
             </select>
           </div>
+          {eventuais.length > 0 && (
+            <div className="campo">
+              <label>Eventual cadastrado pra esse dia</label>
+              <div style={{ display: "flex", gap: "0.3rem", flexWrap: "wrap" }}>
+                {eventuais.map((ev) => (
+                  <button key={ev.id} type="button" className="btn btn-sm" onClick={() => usarEventual(ev)}>
+                    Usar {ev.saida?.slice(0, 5) ?? "-"} / {ev.retorno?.slice(0, 5) ?? "-"} ·{" "}
+                    {locais?.find((l) => l.id === ev.destino_id)?.nome ?? "sem destino"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="campo">
             <label>Hora</label>
             <input type="time" value={hora} onChange={(e) => setHora(e.target.value)} />
