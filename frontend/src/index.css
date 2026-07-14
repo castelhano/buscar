@@ -340,6 +340,22 @@ th {
   border-left: 3px solid var(--cor-primaria);
 }
 
+.passageiro-card.eventual {
+  background: #eef4ff;
+  border-color: #adc6f5;
+}
+
+.tag-eventual {
+  display: inline-block;
+  margin: 0.2rem 0;
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #3159a8;
+  background: #d7e3fb;
+}
+
 .tag-acompanhante {
   display: inline-block;
   margin: 0.2rem 0;

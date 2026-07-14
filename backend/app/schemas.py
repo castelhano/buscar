@@ -198,6 +198,7 @@ class UsuarioCreate(BaseModel):
     abbr: str
     status: StatusAtivoInativo = StatusAtivoInativo.ATIVO
     detalhe: str | None = None
+    observacao: str | None = None
 
 
 class UsuarioRead(ORMModel):
@@ -207,6 +208,7 @@ class UsuarioRead(ORMModel):
     data_cadastro: dt.date
     status: StatusAtivoInativo
     detalhe: str | None
+    observacao: str | None
 
 
 class UsuarioComAgendaRead(UsuarioRead):
@@ -233,6 +235,7 @@ class ViagemDiaPassageiroRead(ORMModel):
     ordem: int
     status: StatusAtendimentoDia
     observacoes: str | None
+    fixo: bool
     irregular: bool = False
     motivo_irregular: str | None = None
 

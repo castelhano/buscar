@@ -309,7 +309,9 @@ def adicionar_passageiro(viagem_id: int, payload: schemas.ViagemDiaPassageiroCre
         raise HTTPException(status_code=404, detail=f"Usuario {payload.usuario_id} nao encontrado")
     _verificar_conflito(db, viagem_id, payload.usuario_id, payload.sentido)
     maior_ordem = max((p.ordem for p in viagem.passageiros), default=-1)
-    passageiro = models.ViagemDiaPassageiro(viagem_dia_id=viagem_id, ordem=maior_ordem + 1, **payload.model_dump())
+    passageiro = models.ViagemDiaPassageiro(
+        viagem_dia_id=viagem_id, ordem=maior_ordem + 1, fixo=False, **payload.model_dump()
+    )
     db.add(passageiro)
     db.commit()
     db.refresh(viagem)

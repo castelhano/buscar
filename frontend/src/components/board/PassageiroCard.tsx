@@ -28,6 +28,7 @@ export default function PassageiroCard({ viagemId, passageiro, destinoNome, onRe
   if (passageiro.irregular) classes.push("irregular");
   if (cancelado) classes.push("cancelado");
   if (passageiro.acompanhante) classes.push("com-acompanhante");
+  if (!passageiro.fixo) classes.push("eventual");
 
   return (
     <div ref={setNodeRef} style={style} className={classes.join(" ")} {...attributes} {...listeners}>
@@ -53,6 +54,11 @@ export default function PassageiroCard({ viagemId, passageiro, destinoNome, onRe
       {passageiro.acompanhante && (
         <div className="tag-acompanhante" title="Usuario leva acompanhante: ocupa 2 lugares no veiculo">
           Com acompanhante · 2 lugares
+        </div>
+      )}
+      {!passageiro.fixo && (
+        <div className="tag-eventual" title="Atendimento eventual: inserido manualmente, nao faz parte da Base">
+          Eventual
         </div>
       )}
       <div className="linha-2 linha-origem-destino">

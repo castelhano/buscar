@@ -93,6 +93,7 @@ export interface Usuario {
   data_cadastro: string;
   status: StatusAtivoInativo;
   detalhe: string | null;
+  observacao: string | null;
 }
 
 export interface UsuarioAgendaSemanal {
@@ -145,6 +146,7 @@ export interface ViagemDiaPassageiro {
   ordem: number;
   status: StatusAtendimentoDia;
   observacoes: string | null;
+  fixo: boolean;
   irregular: boolean;
   motivo_irregular: string | null;
 }

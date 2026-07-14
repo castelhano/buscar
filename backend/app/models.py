@@ -235,6 +235,7 @@ class Usuario(Base):
     data_cadastro: Mapped[dt.date] = mapped_column(Date, default=dt.date.today)
     status: Mapped[StatusAtivoInativo] = mapped_column(_enum(StatusAtivoInativo), default=StatusAtivoInativo.ATIVO)
     detalhe: Mapped[str | None] = mapped_column(Text, nullable=True)
+    observacao: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     agenda_semanal: Mapped[list["UsuarioAgendaSemanal"]] = relationship(back_populates="usuario")
     excecoes: Mapped[list["UsuarioExcecao"]] = relationship(back_populates="usuario")
@@ -448,6 +449,7 @@ class ViagemDiaPassageiro(Base):
     ordem: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[StatusAtendimentoDia] = mapped_column(_enum(StatusAtendimentoDia), default=StatusAtendimentoDia.AGENDADO)
     observacoes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fixo: Mapped[bool] = mapped_column(default=True)
 
     viagem_dia: Mapped["ViagemDia | None"] = relationship(back_populates="passageiros")
     usuario: Mapped["Usuario"] = relationship()

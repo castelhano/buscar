@@ -13,9 +13,10 @@ interface FormState {
   abbr: string;
   status: StatusAtivoInativo;
   detalhe: string;
+  observacao: string;
 }
 
-const vazio: FormState = { nome: "", abbr: "", status: "Ativo", detalhe: "" };
+const vazio: FormState = { nome: "", abbr: "", status: "Ativo", detalhe: "", observacao: "" };
 
 export default function UsuariosPage() {
   const { isAdmin } = useAuth();
@@ -74,6 +75,7 @@ export default function UsuariosPage() {
         abbr: detalhe.data.abbr,
         status: detalhe.data.status,
         detalhe: detalhe.data.detalhe ?? "",
+        observacao: detalhe.data.observacao ?? "",
       });
     }
   }, [detalhe.data]);
@@ -92,7 +94,13 @@ export default function UsuariosPage() {
   function salvarNovo() {
     if (!form.nome.trim() || !form.abbr.trim()) return;
     criar.mutate(
-      { nome: form.nome, abbr: form.abbr, status: form.status, detalhe: form.detalhe || null },
+      {
+        nome: form.nome,
+        abbr: form.abbr,
+        status: form.status,
+        detalhe: form.detalhe || null,
+        observacao: form.observacao || null,
+      },
       {
         onSuccess: (usuario) => {
           setNovo(false);
@@ -107,7 +115,13 @@ export default function UsuariosPage() {
     atualizar.mutate(
       {
         id: detalhe.data.id,
-        body: { nome: basico.nome, abbr: basico.abbr, status: basico.status, detalhe: basico.detalhe || null },
+        body: {
+          nome: basico.nome,
+          abbr: basico.abbr,
+          status: basico.status,
+          detalhe: basico.detalhe || null,
+          observacao: basico.observacao || null,
+        },
       },
       { onSuccess: () => queryClient.invalidateQueries({ queryKey: ["usuario", detalhe.data!.id] }) },
     );
@@ -188,6 +202,12 @@ export default function UsuariosPage() {
                 Salvar
               </button>
             </div>
+            <div className="linha-toolbar">
+              <div className="campo" style={{ flex: 1 }}>
+                <label>Observacao</label>
+                <input value={form.observacao} onChange={(e) => setForm({ ...form, observacao: e.target.value })} />
+              </div>
+            </div>
           </div>
         )}
 
@@ -246,6 +266,16 @@ export default function UsuariosPage() {
                     </button>
                   </>
                 )}
+              </div>
+              <div className="linha-toolbar">
+                <div className="campo" style={{ flex: 1 }}>
+                  <label>Observacao</label>
+                  <input
+                    value={basico.observacao}
+                    onChange={(e) => setBasico({ ...basico, observacao: e.target.value })}
+                    disabled={!isAdmin}
+                  />
+                </div>
               </div>
               {erroRemocao && (
                 <div className="erro-box" onClick={() => setErroRemocao(null)} style={{ cursor: "pointer" }}>
