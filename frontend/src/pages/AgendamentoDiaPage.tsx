@@ -528,6 +528,7 @@ export default function AgendamentoDiaPage() {
               <SemVagaPanel
                 passageiros={semVagaQuery.data}
                 locais={locais ?? []}
+                regioes={regioes ?? []}
                 onRemover={setModalRemoverPassageiro}
                 onCancelar={setModalCancelar}
                 onEditar={setModalEditarPassageiro}

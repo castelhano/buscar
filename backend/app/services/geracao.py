@@ -292,10 +292,10 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     gera alerta visual (lugares ocupados acima da capacidade), nunca remove
     ninguem.
 
-    Quem nao esta em nenhum grupo (ou caiu fora por excecao pontual do dia)
-    tenta uma vaga num carro que veio da Base pro mesmo sentido/horario antes
-    de abrir carro novo -- sempre de uma unica regiao por horario, do jeito
-    que a geracao ja funcionava antes do modo Base existir.
+    Quem nao esta em nenhum grupo (ou caiu fora por excecao pontual do dia,
+    ex: horario mudou e nao bate mais com a viagem_base) nao entra em carro
+    nenhum automaticamente -- vira "orfao" pra alocacao manual (painel "Sem
+    vaga" na tela do dia), igual a quem ficou sem vaga por falta de frota.
     """
     existentes = db.query(ViagemDia).filter(ViagemDia.data == data).all()
     if existentes:
@@ -351,19 +351,7 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
 
     pernas_residuais = [perna for chave, perna in pernas_por_agenda_sentido.items() if chave not in consumidos]
     pernas_residuais.sort(key=lambda p: (p["sentido"].value, p["hora"]))
-    _preencher_residual(
-        db,
-        pernas_residuais,
-        data,
-        todas_viagens,
-        janelas,
-        ocupacao,
-        regioes_por_viagem,
-        proximo_ordem,
-        avisos_emitidos,
-        ultimos_usos_veiculo,
-        empresas_por_regiao,
-    )
+    _deixar_para_alocacao_manual(db, pernas_residuais, data)
 
     db.flush()
     _atribuir_condutores(db, todas_viagens, data, ultimos_usos_condutor, empresas_por_regiao)
@@ -505,163 +493,18 @@ def _gerar_carro_do_grupo_base(
         proximo_ordem[viagem.id] = len(membros)
 
 
-def _preencher_residual(
-    db: Session,
-    pernas: list[dict],
-    data: dt.date,
-    todas_viagens: list[ViagemDia],
-    janelas: dict[int, tuple[dt.time, dt.time]],
-    ocupacao: dict[tuple[int, Sentido, dt.time], int],
-    regioes_por_viagem: dict[int, set[int]],
-    proximo_ordem: dict[int, int],
-    avisos_emitidos: set[tuple],
-    ultimos_usos_veiculo: dict[int, dt.date],
-    empresas_por_regiao: dict[int, list[int]],
-) -> None:
-    """Encaixa quem nao esta em nenhum grupo_base (ou caiu fora por excecao
-    pontual do dia): primeiro tenta vaga num carro que ja veio da Base pro
-    mesmo sentido/horario -- respeitando a empresa dele se resolvida (precisa
-    atender a regiao da pessoa e ter lugar), ou so aceitando quem ja tem a
-    mesma regiao presente ali se o carro ficou sem empresa (inviavel). O que
-    sobra abre carro novo, sempre de uma unica regiao por horario, igual a
-    geracao ja fazia antes do modo Base existir. Prioridade entre os
-    residuais e irrelevante (nao ha ordem curada pra eles) -- so processa na
-    ordem em que chegam.
+def _deixar_para_alocacao_manual(db: Session, pernas: list[dict], data: dt.date) -> None:
+    """Quem nao esta em nenhum grupo_base (ou caiu fora por excecao pontual do
+    dia, ex: horario mudou e nao bate mais com a viagem_base) nao entra em
+    nenhum carro automaticamente -- vira "orfao" (`viagem_dia_id=None`) direto,
+    igual a quem ficou sem vaga por falta de frota, pra alocacao manual na
+    tela do dia (painel "Sem vaga", arrastando pra um carro).
     """
-    viagens_por_id = {v.id: v for v in todas_viagens}
-    viagens_por_sentido_hora: dict[tuple[Sentido, dt.time], list[ViagemDia]] = defaultdict(list)
-    for viagem_id, sentido, hora in ocupacao:
-        viagem = viagens_por_id.get(viagem_id)
-        if viagem is not None and viagem not in viagens_por_sentido_hora[(sentido, hora)]:
-            viagens_por_sentido_hora[(sentido, hora)].append(viagem)
-
-    residuais_por_regiao: dict[int, list[dict]] = defaultdict(list)
-
     for perna in pernas:
-        chave = (perna["sentido"], perna["hora"])
-        lugares = 2 if perna["acompanhante"] else 1
-        regiao_pessoa = regiao_alocacao(perna["sentido"], perna["regiao_origem_id"], perna["regiao_destino_id"])
-
-        viagem_encontrada = None
-        for viagem in viagens_por_sentido_hora.get(chave, []):
-            if viagem.empresa_id is not None:
-                cabe = ocupacao[(viagem.id, *chave)] + lugares <= viagem.capacidade
-                empresa_atende = viagem.empresa_id in empresas_por_regiao.get(regiao_pessoa, [])
-                if cabe and empresa_atende:
-                    viagem_encontrada = viagem
-                    break
-            elif regiao_pessoa in regioes_por_viagem.get(viagem.id, set()):
-                viagem_encontrada = viagem
-                break
-
-        if viagem_encontrada is not None:
-            ordem = proximo_ordem.get(viagem_encontrada.id, 0)
-            db.add(
-                ViagemDiaPassageiro(
-                    viagem_dia_id=viagem_encontrada.id,
-                    usuario_id=perna["usuario_id"],
-                    sentido=perna["sentido"],
-                    hora=perna["hora"],
-                    origem=perna["origem"],
-                    regiao_origem_id=perna["regiao_origem_id"],
-                    destino_id=perna["destino_id"],
-                    regiao_destino_id=perna["regiao_destino_id"],
-                    acompanhante=perna["acompanhante"],
-                    ordem=ordem,
-                )
-            )
-            proximo_ordem[viagem_encontrada.id] = ordem + 1
-            ocupacao[(viagem_encontrada.id, *chave)] += lugares
-            regioes_por_viagem[viagem_encontrada.id].add(regiao_pessoa)
-            continue
-
-        residuais_por_regiao[regiao_pessoa].append(perna)
-
-    for regiao_id, pernas_regiao in residuais_por_regiao.items():
-        pernas_regiao.sort(key=lambda p: (p["sentido"].value, p["hora"]))
-        _preencher_regiao(
-            db,
-            regiao_id,
-            pernas_regiao,
-            data,
-            todas_viagens,
-            janelas,
-            avisos_emitidos,
-            ultimos_usos_veiculo,
-            empresas_por_regiao.get(regiao_id, []),
-        )
-
-
-def _preencher_regiao(
-    db: Session,
-    regiao_id: int,
-    pernas: list[dict],
-    data: dt.date,
-    todas_viagens: list[ViagemDia],
-    janelas: dict[int, tuple[dt.time, dt.time]],
-    avisos_emitidos: set[tuple],
-    ultimos_usos_veiculo: dict[int, dt.date],
-    empresa_ids: list[int],
-) -> None:
-    """Preenche os carros de uma regiao na ordem em que as pernas chegam,
-    abrindo um novo carro (leg) sempre que o sentido/horario atual estoura a
-    capacidade dos carros ja abertos para esse mesmo sentido/horario. Usado
-    so pro residual (quem nao esta em nenhum grupo_base) -- essas pernas ja
-    sao de uma unica regiao (`_preencher_residual` separa por
-    `regiao_alocacao` antes de chamar).
-
-    Um usuario com acompanhante ocupa 2 lugares no veiculo em vez de 1.
-    """
-    ocupacao: dict[tuple[int, Sentido, dt.time], int] = defaultdict(int)
-    abertos_por_perna: dict[tuple[Sentido, dt.time], list[ViagemDia]] = defaultdict(list)
-
-    for perna in pernas:
-        perna_chave = (perna["sentido"], perna["hora"])
-        lugares = 2 if perna["acompanhante"] else 1
-        viagem = next(
-            (
-                v
-                for v in abertos_por_perna[perna_chave]
-                if ocupacao[(v.id, *perna_chave)] + lugares <= v.capacidade
-            ),
-            None,
-        )
-        if viagem is None:
-            viagem = _abrir_carro(
-                db,
-                regiao_id,
-                perna["hora"],
-                data,
-                todas_viagens,
-                janelas,
-                avisos_emitidos,
-                ultimos_usos_veiculo,
-                empresa_ids,
-            )
-            if viagem is None:
-                # sem veiculo disponivel na regiao/horario -- fica "orfao" (sem
-                # carro) no container "Sem vaga" da tela do dia, pra alocacao manual
-                db.add(
-                    ViagemDiaPassageiro(
-                        viagem_dia_id=None,
-                        data=data,
-                        usuario_id=perna["usuario_id"],
-                        sentido=perna["sentido"],
-                        hora=perna["hora"],
-                        origem=perna["origem"],
-                        regiao_origem_id=perna["regiao_origem_id"],
-                        destino_id=perna["destino_id"],
-                        regiao_destino_id=perna["regiao_destino_id"],
-                        acompanhante=perna["acompanhante"],
-                    )
-                )
-                continue
-            abertos_por_perna[perna_chave].append(viagem)
-            todas_viagens.append(viagem)
-
         db.add(
             ViagemDiaPassageiro(
-                viagem_dia_id=viagem.id,
+                viagem_dia_id=None,
+                data=data,
                 usuario_id=perna["usuario_id"],
                 sentido=perna["sentido"],
                 hora=perna["hora"],
@@ -672,7 +515,6 @@ def _preencher_regiao(
                 acompanhante=perna["acompanhante"],
             )
         )
-        ocupacao[(viagem.id, *perna_chave)] += lugares
 
 
 def _veiculo_se_livre(

@@ -449,9 +449,9 @@ def desconsiderados(data: dt.date, db: Session = Depends(get_db)):
 
 @router.get("/sem-vaga", response_model=list[schemas.ViagemDiaPassageiroRead])
 def listar_sem_vaga(data: dt.date, db: Session = Depends(get_db)):
-    """Usuarios que ficaram sem carro na geracao (frota esgotada) -- ficam
-    "orfaos" (viagem_dia_id nulo) pra alocacao manual, arrastando pra um carro
-    na tela do dia.
+    """Usuarios que ficaram sem carro na geracao (fora da Base, excecao de
+    horario, ou frota esgotada) -- ficam "orfaos" (viagem_dia_id nulo) pra
+    alocacao manual, arrastando pra um carro na tela do dia.
     """
     passageiros = (
         db.query(models.ViagemDiaPassageiro)
