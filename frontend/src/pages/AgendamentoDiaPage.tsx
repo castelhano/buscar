@@ -77,10 +77,10 @@ const collisionDetection: CollisionDetection = (args) => {
   return pointerCollisions.length > 0 ? pointerCollisions : closestCenter(args);
 };
 
-function agruparPorCondutor(viagens: ViagemDia[]): ViagemDia[][] {
-  const grupos = new Map<string, ViagemDia[]>();
+function agruparPorBloco(viagens: ViagemDia[]): ViagemDia[][] {
+  const grupos = new Map<number, ViagemDia[]>();
   for (const viagem of viagens) {
-    const chave = viagem.condutor_id !== null ? `c${viagem.condutor_id}` : `v${viagem.id}`;
+    const chave = viagem.grupo_viagem_id ?? viagem.id;
     const grupo = grupos.get(chave);
     if (grupo) grupo.push(viagem);
     else grupos.set(chave, [viagem]);
@@ -89,7 +89,18 @@ function agruparPorCondutor(viagens: ViagemDia[]): ViagemDia[][] {
   for (const grupo of lista) {
     grupo.sort((a, b) => primeiraHora(a).localeCompare(primeiraHora(b)));
   }
-  lista.sort((a, b) => primeiraHora(a[0]).localeCompare(primeiraHora(b[0])));
+  // Reproduz a ordem definida na tela Base (GrupoBase.ordem_exibicao,
+  // gravada na ancora do bloco na geracao) em vez de reordenar por horario;
+  // carros sem ordem (abertos manualmente) vao pro fim, por horario.
+  const ordemDoBloco = (grupo: ViagemDia[]) => grupo.find((v) => v.grupo_viagem_id === null)?.ordem_exibicao ?? null;
+  lista.sort((a, b) => {
+    const ordemA = ordemDoBloco(a);
+    const ordemB = ordemDoBloco(b);
+    if (ordemA !== null && ordemB !== null) return ordemA - ordemB;
+    if (ordemA !== null) return -1;
+    if (ordemB !== null) return 1;
+    return primeiraHora(a[0]).localeCompare(primeiraHora(b[0]));
+  });
   return lista;
 }
 
@@ -351,7 +362,7 @@ export default function AgendamentoDiaPage() {
   }
 
   const viagensDoPeriodo = (viagensQuery.data ?? []).filter((v) => periodoDaViagem(v) === periodo);
-  const gruposCondutor = agruparPorCondutor(viagensDoPeriodo);
+  const gruposBloco = agruparPorBloco(viagensDoPeriodo);
 
   const gruposBaseDoPeriodo: { grupo: GrupoBase; viagensExibir: ViagemBase[] }[] = (estruturaBaseQuery.data?.grupos ?? [])
     .map((grupo) => ({ grupo, viagensExibir: grupo.viagens.filter((v) => periodoDaViagemBase(v) === periodo) }))
@@ -500,7 +511,7 @@ export default function AgendamentoDiaPage() {
         {modo === "dia" ? (
           <div className="board-layout">
             <div className="board">
-              {gruposCondutor.map((grupo) => (
+              {gruposBloco.map((grupo) => (
                 <CarroCard
                   key={grupo[0].condutor_id !== null ? `c${grupo[0].condutor_id}` : `v${grupo[0].id}`}
                   viagens={grupo}

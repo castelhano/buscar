@@ -431,6 +431,7 @@ def _gerar_carro_do_grupo_base(
 
     rotulo_regiao = min(regioes) if regioes else None
     veiculo_do_grupo: int | None = None
+    ancora_id: int | None = None
 
     for viagem_base, membros in viagens_membros:
         viagem = None
@@ -468,6 +469,15 @@ def _gerar_carro_do_grupo_base(
             db.add(viagem)
             db.flush()
             todas_viagens.append(viagem)
+
+        # A primeira perna aberta pro grupo vira a ancora do bloco; as
+        # seguintes (ex: retorno da tarde) apontam pra ela via grupo_viagem_id,
+        # independente de condutor/veiculo terem sido atribuidos.
+        if ancora_id is None:
+            ancora_id = viagem.id
+            viagem.ordem_exibicao = grupo.ordem_exibicao
+        elif viagem.grupo_viagem_id is None:
+            viagem.grupo_viagem_id = ancora_id
 
         for indice, perna in enumerate(membros):
             db.add(

@@ -251,6 +251,8 @@ class ViagemDiaRead(ORMModel):
     capacidade: int
     status: StatusViagemDia
     observacoes: str | None
+    grupo_viagem_id: int | None
+    ordem_exibicao: int | None
     passageiros: list[ViagemDiaPassageiroRead] = []
     condutor_em_ferias: bool = False
     conflito_horario: bool = False

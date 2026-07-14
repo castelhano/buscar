@@ -162,6 +162,8 @@ export interface ViagemDia {
   capacidade: number;
   status: StatusViagemDia;
   observacoes: string | null;
+  grupo_viagem_id: number | null;
+  ordem_exibicao: number | null;
   passageiros: ViagemDiaPassageiro[];
   condutor_em_ferias: boolean;
   conflito_horario: boolean;

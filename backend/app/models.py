@@ -406,6 +406,16 @@ class ViagemDia(Base):
     capacidade: Mapped[int] = mapped_column(Integer)
     status: Mapped[StatusViagemDia] = mapped_column(_enum(StatusViagemDia), default=StatusViagemDia.PLANEJADA)
     observacoes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Amarra pernas (ida/volta/varios horarios) que formam um unico carro real ao
+    # longo do dia, apontando pro id da primeira perna aberta (a "ancora", que
+    # fica com grupo_viagem_id nulo) -- assim o bloco na tela do dia nao depende
+    # de condutor_id/veiculo_id, que podem ficar nulos ou ser reatribuidos.
+    grupo_viagem_id: Mapped[int | None] = mapped_column(ForeignKey("viagem_dia.id"), nullable=True)
+    # Copia do GrupoBase.ordem_exibicao no momento da geracao, gravada so na
+    # ancora do bloco -- deixa a tela do dia reproduzir a ordem definida na
+    # Base em vez de reordenar por horario. Nulo pra carros abertos manualmente
+    # (esses ficam no fim, ordenados por horario).
+    ordem_exibicao: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     regiao: Mapped["Regiao"] = relationship()
     empresa: Mapped["Empresa | None"] = relationship()
