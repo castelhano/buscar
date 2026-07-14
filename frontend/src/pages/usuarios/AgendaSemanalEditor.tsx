@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { api } from "../../api/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { DIAS_SEMANA, DIAS_SEMANA_LABEL } from "../../api/types";
-import type { DiaSemana, Local, Modalidade, Regiao, TipoAtendimento, UsuarioAgendaSemanal } from "../../api/types";
+import type { DiaSemana, Local, Regiao, TipoAtendimento, UsuarioAgendaSemanal } from "../../api/types";
 import ReplicarModal from "./ReplicarModal";
 
 interface Props {
@@ -16,7 +16,6 @@ interface Props {
 
 interface FormState {
   tipo: TipoAtendimento;
-  modalidade: Modalidade;
   acompanhante: boolean;
   saida: string;
   retorno: string;
@@ -28,7 +27,6 @@ interface FormState {
 
 const formVazio: FormState = {
   tipo: "Fixo",
-  modalidade: "Ida e Volta",
   acompanhante: false,
   saida: "",
   retorno: "",
@@ -69,7 +67,6 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
       existente
         ? {
             tipo: existente.tipo,
-            modalidade: existente.modalidade,
             acompanhante: existente.acompanhante,
             saida: existente.saida ?? "",
             retorno: existente.retorno ?? "",
@@ -86,7 +83,6 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
     return {
       dia_semana: dia,
       tipo: form.tipo,
-      modalidade: form.modalidade,
       acompanhante: form.acompanhante,
       saida: form.saida || null,
       retorno: form.retorno || null,
@@ -117,7 +113,6 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
     return {
       dia_semana: dia,
       tipo: existente.tipo,
-      modalidade: existente.modalidade,
       acompanhante: existente.acompanhante,
       saida: existente.saida,
       retorno: existente.retorno,
@@ -155,7 +150,7 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
   function linhaFormulario(dia: DiaSemana, key: string) {
     return (
       <tr key={key}>
-        <td colSpan={9}>
+        <td colSpan={8}>
           <div className="linha-toolbar" style={{ margin: 0 }}>
             <strong>{DIAS_SEMANA_LABEL[dia]}</strong>
             <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value as TipoAtendimento })}>
@@ -189,13 +184,6 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
               ))}
             </select>
             <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexBasis: "100%" }}>
-              <select
-                value={form.modalidade}
-                onChange={(e) => setForm({ ...form, modalidade: e.target.value as Modalidade })}
-              >
-                <option value="Somente Ida">Somente Ida</option>
-                <option value="Ida e Volta">Ida e Volta</option>
-              </select>
               <label style={{ display: "flex", gap: "0.25rem", alignItems: "center", fontWeight: "normal" }}>
                 <input
                   type="checkbox"
@@ -238,7 +226,6 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
             <th>Retorno</th>
             <th>Regiao</th>
             <th>Destino</th>
-            <th>Modal</th>
             <th>Acomp</th>
             <th></th>
           </tr>
@@ -265,9 +252,6 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
                   <td>{existente.retorno ?? "-"}</td>
                   <td>{existente.regiao_origem_id ? regioes.find((r) => r.id === existente.regiao_origem_id)?.nome ?? "-" : "-"}</td>
                   <td>{existente.destino_id ? locais.find((l) => l.id === existente.destino_id)?.nome ?? "-" : "-"}</td>
-                  <td>
-                    <span className="tag">{existente.modalidade}</span>
-                  </td>
                   <td>{existente.acompanhante ? "Sim" : "Nao"}</td>
                   <td>
                     {!somenteLeitura && (
@@ -310,7 +294,7 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
               linhas.push(
                 <tr key={dia}>
                   <td>{DIAS_SEMANA_LABEL[dia]}</td>
-                  <td colSpan={7}>-</td>
+                  <td colSpan={6}>-</td>
                   <td>
                     {!somenteLeitura && (
                       <button className="btn btn-sm" onClick={() => abrirEdicao(dia, null)}>

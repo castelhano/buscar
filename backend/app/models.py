@@ -79,11 +79,6 @@ class Sentido(str, enum.Enum):
     RETORNO = "Retorno"
 
 
-class Modalidade(str, enum.Enum):
-    SOMENTE_IDA = "Somente Ida"
-    IDA_E_VOLTA = "Ida e Volta"
-
-
 class StatusViagemDia(str, enum.Enum):
     PLANEJADA = "Planejada"
     CONFIRMADA = "Confirmada"
@@ -262,7 +257,6 @@ class UsuarioAgendaSemanal(Base):
     usuario_id: Mapped[int] = mapped_column(ForeignKey("usuario.id"))
     dia_semana: Mapped[DiaSemana] = mapped_column(_enum(DiaSemana), index=True)
     tipo: Mapped[TipoAtendimento] = mapped_column(_enum(TipoAtendimento))
-    modalidade: Mapped[Modalidade] = mapped_column(_enum(Modalidade), default=Modalidade.IDA_E_VOLTA)
     acompanhante: Mapped[bool] = mapped_column(default=False)
     saida: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
     retorno: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
