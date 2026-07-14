@@ -15,6 +15,7 @@ import { useList } from "../api/hooks";
 import { DIAS_SEMANA, DIAS_SEMANA_LABEL, diaSemanaFromData } from "../api/types";
 import type {
   Condutor,
+  CondutorFerias,
   DiaSemana,
   EstruturaBase,
   Empresa,
@@ -116,6 +117,7 @@ export default function AgendamentoDiaPage() {
   const { data: veiculos } = useList<Veiculo>("veiculos", "/veiculos");
   const { data: condutores } = useList<Condutor>("condutores", "/condutores");
   const { data: locais } = useList<Local>("locais", "/locais");
+  const { data: ferias } = useList<CondutorFerias>("ferias", "/ferias");
 
   const viagensQuery = useQuery({
     queryKey: ["viagens", data],
@@ -225,11 +227,12 @@ export default function AgendamentoDiaPage() {
     onSuccess: atualizarEstruturaBase,
   });
   const atribuir = useMutation({
-    mutationFn: async ({ viagemIds, body }: { viagemIds: number[]; body: unknown }) => {
-      for (const viagemId of viagemIds) {
-        await api.patch(`/viagens/${viagemId}/atribuir`, body);
-      }
-    },
+    mutationFn: (dados: { viagemIds: number[]; condutor_id: number | null; veiculo_id: number | null }) =>
+      api.patch("/viagens/atribuir-bloco", {
+        viagem_ids: dados.viagemIds,
+        condutor_id: dados.condutor_id,
+        veiculo_id: dados.veiculo_id,
+      }),
     onSuccess: invalidarDia,
   });
   const limparCondutorVeiculo = useMutation({
@@ -240,7 +243,7 @@ export default function AgendamentoDiaPage() {
     },
     onSuccess: invalidarDia,
   });
-  const removerCarro = useMutation({
+  const removerViagem = useMutation({
     mutationFn: (viagemId: number) => api.delete(`/viagens/${viagemId}`),
     onSuccess: invalidarDia,
   });
@@ -389,6 +392,10 @@ export default function AgendamentoDiaPage() {
 
   const viagensDoPeriodo = (viagensQuery.data ?? []).filter((v) => periodoDaViagem(v) === periodo);
   const gruposBloco = agruparPorBloco(viagensDoPeriodo);
+
+  const condutoresFeriasIds = new Set(
+    (ferias ?? []).filter((f) => f.data_inicio <= data && f.data_fim >= data).map((f) => f.condutor_id),
+  );
 
   const gruposBaseDoPeriodo: { grupo: GrupoBase; viagensExibir: ViagemBase[] }[] = (estruturaBaseQuery.data?.grupos ?? [])
     .map((grupo) => ({ grupo, viagensExibir: grupo.viagens.filter((v) => periodoDaViagemBase(v) === periodo) }))
@@ -557,9 +564,9 @@ export default function AgendamentoDiaPage() {
                       onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao limpar condutor/veiculo")),
                     })
                   }
-                  onRemoverCarro={(id) =>
-                    removerCarro.mutate(id, {
-                      onError: (e: unknown) => setErro(mensagemErro(e, "Nao foi possivel remover o carro")),
+                  onRemoverViagem={(id) =>
+                    removerViagem.mutate(id, {
+                      onError: (e: unknown) => setErro(mensagemErro(e, "Nao foi possivel remover a viagem")),
                     })
                   }
                 />
@@ -661,12 +668,29 @@ export default function AgendamentoDiaPage() {
         <AtribuirModal
           condutores={(condutores ?? []).filter((c) => c.status === "Ativo")}
           veiculos={(veiculos ?? []).filter((v) => v.status === "Ativo")}
+          empresas={empresas ?? []}
           condutorAtualId={modalAtribuir.condutorAtualId}
           veiculoAtualId={modalAtribuir.veiculoAtualId}
+          periodo={periodo}
+          veiculosEscaladosIds={
+            new Set(
+              viagensDoPeriodo
+                .filter((v) => !modalAtribuir.viagemIds.includes(v.id) && v.veiculo_id !== null)
+                .map((v) => v.veiculo_id as number),
+            )
+          }
+          condutoresEscaladosIds={
+            new Set(
+              (viagensQuery.data ?? [])
+                .filter((v) => !modalAtribuir.viagemIds.includes(v.id) && v.condutor_id !== null)
+                .map((v) => v.condutor_id as number),
+            )
+          }
+          condutoresFeriasIds={condutoresFeriasIds}
           onFechar={() => setModalAtribuir(null)}
           onConfirmar={(dados) =>
             atribuir.mutate(
-              { viagemIds: modalAtribuir.viagemIds, body: dados },
+              { viagemIds: modalAtribuir.viagemIds, ...dados },
               {
                 onSuccess: () => setModalAtribuir(null),
                 onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao atribuir condutor/veiculo")),

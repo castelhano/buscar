@@ -11,7 +11,7 @@ interface Props {
   onRemoverPassageiro?: (id: number) => void;
   onCancelarPassageiro?: (id: number) => void;
   onEditarPassageiro?: (passageiro: ViagemDiaPassageiro) => void;
-  onRemoverCarro?: (viagemId: number) => void;
+  onRemoverViagem?: (viagemId: number) => void;
 }
 
 export default function LegBlock({
@@ -22,7 +22,7 @@ export default function LegBlock({
   onRemoverPassageiro,
   onCancelarPassageiro,
   onEditarPassageiro,
-  onRemoverCarro,
+  onRemoverViagem,
 }: Props) {
   const { setNodeRef, isOver } = useDroppable({ id: `carro-${viagem.id}`, data: { viagemId: viagem.id } });
 
@@ -60,10 +60,10 @@ export default function LegBlock({
             ⚠ {aviso}
           </div>
         ))}
-        {viagem.passageiros.length === 0 && onRemoverCarro && (
+        {viagem.passageiros.length === 0 && onRemoverViagem && (
           <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.3rem" }}>
-            <button className="btn btn-sm btn-perigo" onClick={() => onRemoverCarro(viagem.id)}>
-              Remover carro
+            <button className="btn btn-sm btn-perigo" onClick={() => onRemoverViagem(viagem.id)}>
+              Remover viagem
             </button>
           </div>
         )}

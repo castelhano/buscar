@@ -489,3 +489,55 @@ th {
   font-size: 0.85rem;
   margin-bottom: 1rem;
 }
+
+.modal-lg {
+  min-width: 520px;
+  width: 640px;
+}
+
+.badge-grade {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+}
+
+.badge-selecao {
+  border: 1px solid var(--cor-borda);
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+  background: var(--cor-superficie);
+  color: var(--cor-texto);
+}
+
+.badge-selecao-livre {
+  background: #edf2f7;
+  color: var(--cor-texto-suave);
+}
+
+.badge-selecao-escalado {
+  background: color-mix(in srgb, var(--cor-primaria) 15%, transparent);
+  color: var(--cor-primaria);
+}
+
+.badge-selecao-atual {
+  background: var(--cor-primaria);
+  color: #fff;
+  font-weight: 600;
+}
+
+.aviso-discreto {
+  color: var(--cor-alerta-borda);
+  font-size: 0.8rem;
+}
+
+.badge-legenda {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  padding: 0;
+  margin-right: 0.3rem;
+  vertical-align: middle;
+  pointer-events: none;
+}

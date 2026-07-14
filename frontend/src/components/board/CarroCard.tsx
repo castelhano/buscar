@@ -16,7 +16,7 @@ interface Props {
   onEditarPassageiro?: (passageiro: ViagemDiaPassageiro) => void;
   onAtribuir?: (dados: { viagemIds: number[]; condutorAtualId: number | null; veiculoAtualId: number | null }) => void;
   onLimparCondutorVeiculo?: (viagemIds: number[]) => void;
-  onRemoverCarro?: (viagemId: number) => void;
+  onRemoverViagem?: (viagemId: number) => void;
 }
 
 export default function CarroCard({
@@ -33,7 +33,7 @@ export default function CarroCard({
   onEditarPassageiro,
   onAtribuir,
   onLimparCondutorVeiculo,
-  onRemoverCarro,
+  onRemoverViagem,
 }: Props) {
   const pernas = [...viagens].sort((a, b) => {
     const horaA = a.passageiros[0]?.hora ?? a.horario_saida;
@@ -119,7 +119,7 @@ export default function CarroCard({
           onRemoverPassageiro={onRemoverPassageiro}
           onCancelarPassageiro={onCancelarPassageiro}
           onEditarPassageiro={onEditarPassageiro}
-          onRemoverCarro={onRemoverCarro}
+          onRemoverViagem={onRemoverViagem}
         />
       ))}
     </div>

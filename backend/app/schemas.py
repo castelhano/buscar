@@ -299,6 +299,12 @@ class ViagemDiaAtribuir(BaseModel):
     limpar: bool = False
 
 
+class ViagemDiaAtribuirBloco(BaseModel):
+    viagem_ids: list[int]
+    condutor_id: int | None = None
+    veiculo_id: int | None = None
+
+
 # --------------------------------------------------------------------------
 # Modo Base (molde por dia da semana): grupos/viagens/membros curados
 # manualmente -- a geracao real tenta materializar cada grupo como um carro

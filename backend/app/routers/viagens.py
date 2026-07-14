@@ -11,7 +11,7 @@ from app.auth import obter_conta_atual
 from app.database import get_db
 from app.services.exportacao import gerar_pdf_resumo_dia, gerar_zip_agendamentos
 from app.services.frequencia import INTERVALO_PADRAO_POR_PERIODO
-from app.services.geracao import gerar_agendamento_dia, horario_garagem, listar_desconsiderados_dia
+from app.services.geracao import _periodo_da_viagem, gerar_agendamento_dia, horario_garagem, listar_desconsiderados_dia
 from app.services.recursos import fim_viagem, janelas_sobrepoem
 
 router = APIRouter(prefix="/viagens", tags=["viagens"], dependencies=[Depends(obter_conta_atual)])
@@ -288,6 +288,74 @@ def atribuir_condutor_veiculo(viagem_id: int, payload: schemas.ViagemDiaAtribuir
     return _serializar_viagem(viagem, _construir_contexto_dia(db, viagem.data))
 
 
+@router.patch("/atribuir-bloco", response_model=list[schemas.ViagemDiaRead])
+def atribuir_condutor_veiculo_bloco(payload: schemas.ViagemDiaAtribuirBloco, db: Session = Depends(get_db)):
+    """Atribui condutor/veiculo a todas as pernas de um bloco (carro) de uma vez.
+
+    Se o condutor/veiculo escolhido ja estiver escalado em outro bloco do
+    mesmo dia, troca os dois -- o outro bloco herda o condutor/veiculo que
+    este bloco tinha antes (ou fica sem, se este bloco tambem nao tinha) --
+    sem mexer em viagens nem em passageiros.
+    """
+    viagens_bloco = db.query(models.ViagemDia).filter(models.ViagemDia.id.in_(payload.viagem_ids)).all()
+    if len(viagens_bloco) != len(set(payload.viagem_ids)):
+        raise HTTPException(status_code=404, detail="Uma ou mais viagens do bloco nao foram encontradas")
+    if not viagens_bloco:
+        raise HTTPException(status_code=400, detail="Nenhuma viagem informada")
+
+    data = viagens_bloco[0].data
+    atual_veiculo_id = viagens_bloco[0].veiculo_id
+    atual_empresa_id = viagens_bloco[0].empresa_id
+    atual_condutor_id = viagens_bloco[0].condutor_id
+    # Carro e identificado por periodo (Manha/Tarde): um veiculo usado so de
+    # manha esta livre pra ser escalado a tarde, entao a troca so deve
+    # considerar outro bloco escalado no mesmo periodo do bloco atual.
+    periodo_bloco = _periodo_da_viagem(viagens_bloco[0])
+
+    def _outro_bloco(filtro_coluna, valor, mesmo_periodo=False):
+        outras = (
+            db.query(models.ViagemDia)
+            .filter(models.ViagemDia.data == data, filtro_coluna == valor, models.ViagemDia.id.notin_(payload.viagem_ids))
+            .all()
+        )
+        if mesmo_periodo:
+            outras = [v for v in outras if _periodo_da_viagem(v) == periodo_bloco]
+        if not outras:
+            return []
+        ancoras = list({v.grupo_viagem_id or v.id for v in outras})
+        return (
+            db.query(models.ViagemDia)
+            .filter((models.ViagemDia.id.in_(ancoras)) | (models.ViagemDia.grupo_viagem_id.in_(ancoras)))
+            .all()
+        )
+
+    if payload.veiculo_id is not None and payload.veiculo_id != atual_veiculo_id:
+        veiculo = db.get(models.Veiculo, payload.veiculo_id)
+        if veiculo is None:
+            raise HTTPException(status_code=404, detail=f"Veiculo {payload.veiculo_id} nao encontrado")
+        for v in _outro_bloco(models.ViagemDia.veiculo_id, payload.veiculo_id, mesmo_periodo=True):
+            v.veiculo_id = atual_veiculo_id
+            v.empresa_id = atual_empresa_id
+        for v in viagens_bloco:
+            v.veiculo_id = veiculo.id
+            v.empresa_id = veiculo.empresa_id
+
+    if payload.condutor_id is not None and payload.condutor_id != atual_condutor_id:
+        condutor = db.get(models.Condutor, payload.condutor_id)
+        if condutor is None:
+            raise HTTPException(status_code=404, detail=f"Condutor {payload.condutor_id} nao encontrado")
+        for v in _outro_bloco(models.ViagemDia.condutor_id, payload.condutor_id):
+            v.condutor_id = atual_condutor_id
+        for v in viagens_bloco:
+            v.condutor_id = condutor.id
+
+    db.commit()
+    for v in viagens_bloco:
+        db.refresh(v)
+    contexto = _construir_contexto_dia(db, data)
+    return [_serializar_viagem(v, contexto) for v in viagens_bloco]
+
+
 @router.patch("/{viagem_id}/status", response_model=schemas.ViagemDiaRead)
 def alterar_status_viagem(viagem_id: int, status: models.StatusViagemDia, db: Session = Depends(get_db)):
     viagem = _get_viagem_ou_404(db, viagem_id)
@@ -301,7 +369,16 @@ def alterar_status_viagem(viagem_id: int, status: models.StatusViagemDia, db: Se
 def remover_viagem(viagem_id: int, db: Session = Depends(get_db)):
     viagem = _get_viagem_ou_404(db, viagem_id)
     if viagem.passageiros:
-        raise HTTPException(status_code=409, detail="Mova ou remova os passageiros antes de remover o carro")
+        raise HTTPException(status_code=409, detail="Mova ou remova os passageiros antes de remover a viagem")
+    # Se a viagem removida for a ancora do grupo (grupo_viagem_id nulo), as
+    # pernas irmas que apontam pra ela via grupo_viagem_id ficariam com FK
+    # orfa -- reancora essas pernas na primeira irma restante antes de deletar.
+    irmas = db.query(models.ViagemDia).filter(models.ViagemDia.grupo_viagem_id == viagem.id).all()
+    if irmas:
+        nova_ancora = irmas[0]
+        nova_ancora.grupo_viagem_id = None
+        for irma in irmas[1:]:
+            irma.grupo_viagem_id = nova_ancora.id
     db.delete(viagem)
     db.commit()
 
