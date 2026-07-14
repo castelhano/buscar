@@ -124,9 +124,9 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
   }
 
   const replicarMutation = useMutation({
-    mutationFn: (dias: DiaSemana[]) => {
-      if (!replicando) return Promise.resolve();
-      return Promise.all(dias.map((dia) => api.post(`/usuarios/${usuarioId}/agenda-semanal`, payloadDeEntrada(replicando, dia))));
+    mutationFn: async (dias: DiaSemana[]) => {
+      if (!replicando) return;
+      await Promise.all(dias.map((dia) => api.post(`/usuarios/${usuarioId}/agenda-semanal`, payloadDeEntrada(replicando, dia))));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: chaveDetalhe });
