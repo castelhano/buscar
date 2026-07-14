@@ -8,7 +8,16 @@ import datetime as dt
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import DiaSemana, GrupoBase, Local, MembroViagemBase, Sentido, UsuarioAgendaSemanal, ViagemBase
+from app.models import (
+    DiaSemana,
+    GrupoBase,
+    Local,
+    MembroViagemBase,
+    Sentido,
+    StatusAtivoInativo,
+    UsuarioAgendaSemanal,
+    ViagemBase,
+)
 from app.services.geracao import agendas_fixo_da_semana, montar_pernas
 
 
@@ -26,7 +35,12 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
 
     grupos_db = (
         db.query(GrupoBase)
-        .options(joinedload(GrupoBase.viagens).joinedload(ViagemBase.membros))
+        .options(
+            joinedload(GrupoBase.viagens)
+            .joinedload(ViagemBase.membros)
+            .joinedload(MembroViagemBase.agenda)
+            .joinedload(UsuarioAgendaSemanal.usuario)
+        )
         .filter(GrupoBase.dia_semana == dia_semana)
         .order_by(GrupoBase.ordem_exibicao, GrupoBase.id)
         .all()
@@ -37,11 +51,30 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
             "usuario_id": perna["usuario_id"],
             "usuario_nome": perna["usuario"].nome,
             "usuario_abbr": perna["usuario"].abbr,
+            "usuario_ativo": perna["usuario"].status == StatusAtivoInativo.ATIVO,
             "origem": perna["origem"],
             "regiao_origem_id": perna["regiao_origem_id"],
             "destino_id": perna["destino_id"],
             "regiao_destino_id": perna["regiao_destino_id"],
             "acompanhante": perna["acompanhante"],
+        }
+
+    def _perna_do_usuario_inativo(agenda: UsuarioAgendaSemanal) -> dict:
+        """Reconstroi os dados de exibicao direto da agenda (sem excecao/
+        recesso, que nao existem no modo Base) pra usuario que ficou Inativo
+        -- mantem o card visivel (com destaque) em vez de sumir, ja que o
+        vinculo (MembroViagemBase) continua no banco ate o usuario decidir
+        remover.
+        """
+        destino_id = agenda.destino_id
+        return {
+            "usuario_id": agenda.usuario_id,
+            "usuario": agenda.usuario,
+            "origem": agenda.origem,
+            "regiao_origem_id": agenda.regiao_origem_id,
+            "destino_id": destino_id,
+            "regiao_destino_id": locais_regiao.get(destino_id) if destino_id else None,
+            "acompanhante": agenda.acompanhante,
         }
 
     classificados: set[tuple[int, Sentido]] = set()
@@ -52,9 +85,12 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
             membros_saida = []
             for membro in sorted(viagem.membros, key=lambda m: m.ordem):
                 perna = pernas_por_agenda_sentido.get((membro.agenda_id, viagem.sentido))
-                if perna is None:
-                    continue  # agenda nao elegivel mais (removida/inativa) -- nao aparece
-                classificados.add((membro.agenda_id, viagem.sentido))
+                if perna is not None:
+                    classificados.add((membro.agenda_id, viagem.sentido))
+                elif membro.agenda.usuario.status == StatusAtivoInativo.ATIVO:
+                    continue  # agenda nao elegivel por outro motivo (removida/suspensa/sem regiao) -- nao aparece
+                else:
+                    perna = _perna_do_usuario_inativo(membro.agenda)
                 membros_saida.append(
                     {"id": membro.id, "agenda_id": membro.agenda_id, "ordem": membro.ordem, **_serializar_perna(perna)}
                 )

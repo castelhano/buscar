@@ -335,6 +335,23 @@ th {
   text-decoration: line-through;
 }
 
+.passageiro-card.usuario-inativo {
+  background: var(--cor-perigo-fundo);
+  border-color: var(--cor-perigo);
+}
+
+.passageiro-card.usuario-inativo::after {
+  content: "";
+  position: absolute;
+  left: 0.3rem;
+  right: 0.3rem;
+  top: 50%;
+  height: 2px;
+  background: var(--cor-perigo);
+  transform: translateY(-50%) rotate(-4deg);
+  pointer-events: none;
+}
+
 .passageiro-card.com-acompanhante {
   padding: 0.55rem 0.55rem 0.6rem;
   border-left: 3px solid var(--cor-primaria);

@@ -183,6 +183,7 @@ export interface MembroBase {
   usuario_id: number;
   usuario_nome: string;
   usuario_abbr: string;
+  usuario_ativo: boolean;
   origem: string | null;
   regiao_origem_id: number | null;
   destino_id: number | null;

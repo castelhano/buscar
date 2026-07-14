@@ -318,6 +318,7 @@ class MembroBaseRead(BaseModel):
     usuario_id: int
     usuario_nome: str
     usuario_abbr: str
+    usuario_ativo: bool
     origem: str | None
     regiao_origem_id: int | None
     destino_id: int | None

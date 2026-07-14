@@ -24,8 +24,17 @@ export default function MembroBaseCard({ viagemBaseId, grupoBaseId, sentido, hor
     opacity: isDragging ? 0.4 : 1,
   };
 
+  const inativo = !membro.usuario_ativo;
+
   return (
-    <div ref={setNodeRef} style={style} className={`passageiro-card ${membro.acompanhante ? "com-acompanhante" : ""}`} {...attributes} {...listeners}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`passageiro-card ${membro.acompanhante ? "com-acompanhante" : ""} ${inativo ? "usuario-inativo" : ""}`}
+      title={inativo ? "Usuario inativo -- nao conta na ocupacao do veiculo" : undefined}
+      {...attributes}
+      {...listeners}
+    >
       <button
         className="remover"
         title="Tirar do carro (volta pra nao classificados)"
@@ -39,6 +48,7 @@ export default function MembroBaseCard({ viagemBaseId, grupoBaseId, sentido, hor
       </button>
       <div className="linha-1">
         <span>{membro.usuario_abbr || membro.usuario_nome}</span>
+        {inativo && <span className="tag tag-inativo" style={{ marginLeft: "0.4rem" }}>Inativo</span>}
       </div>
       {membro.acompanhante && (
         <div className="tag-acompanhante" title="Usuario leva acompanhante: ocupa 2 lugares no veiculo">
