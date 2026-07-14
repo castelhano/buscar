@@ -70,6 +70,7 @@ export default function NaoClassificadosBasePanel({ membros, locais, regioes }: 
           placeholder="Filtrar por nome"
           value={filtroNome}
           onChange={(e) => setFiltroNome(e.target.value)}
+          onFocus={(e) => e.target.select()}
           style={{ flex: 1, minWidth: "8rem" }}
         />
         <select value={filtroRegiao} onChange={(e) => setFiltroRegiao(e.target.value ? Number(e.target.value) : "")}>

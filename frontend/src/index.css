@@ -71,7 +71,7 @@ button {
 .app-content {
   flex: 1;
   padding: 1.5rem 2rem;
-  overflow-x: auto;
+  min-width: 0;
 }
 
 .painel {
