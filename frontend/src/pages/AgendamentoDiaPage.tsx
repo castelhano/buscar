@@ -177,6 +177,11 @@ export default function AgendamentoDiaPage() {
       api.patch(`/viagens/passageiros/${id}/mover`, { viagem_dia_destino_id, ordem }),
     onSuccess: invalidarDia,
   });
+  const moverPassageiroBloco = useMutation({
+    mutationFn: ({ id, bloco_id }: { id: number; bloco_id: number }) =>
+      api.patch(`/viagens/passageiros/${id}/mover-bloco`, { bloco_id }),
+    onSuccess: invalidarDia,
+  });
   const criarGrupoBase = useMutation({
     mutationFn: () => api.post<EstruturaBase>(`/base/${diaSemanaBase}/grupos`),
     onSuccess: atualizarEstruturaBase,
@@ -355,6 +360,19 @@ export default function AgendamentoDiaPage() {
 
     const activeData = active.data.current as { viagemId: number; passageiroId: number } | undefined;
     if (!activeData) return;
+
+    // Solto no bloco (carro) inteiro, fora de qualquer leg especifica -- o
+    // horario/sentido do proprio passageiro decide a leg de destino dentro
+    // desse carro, criando-a se ainda nao existir (igual ao modo Base).
+    const overBloco = over.data.current as { blocoId: number } | undefined;
+    if (overBloco?.blocoId !== undefined) {
+      moverPassageiroBloco.mutate(
+        { id: activeData.passageiroId, bloco_id: overBloco.blocoId },
+        { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao mover passageiro")) },
+      );
+      return;
+    }
+
     const overData = over.data.current as { viagemId: number; passageiroId?: number } | undefined;
     const destinoId = overData?.viagemId ?? Number(String(over.id).replace("carro-", ""));
     if (!destinoId || Number.isNaN(destinoId)) return;
@@ -513,7 +531,7 @@ export default function AgendamentoDiaPage() {
             <div className="board">
               {gruposBloco.map((grupo) => (
                 <CarroCard
-                  key={grupo[0].condutor_id !== null ? `c${grupo[0].condutor_id}` : `v${grupo[0].id}`}
+                  key={grupo.find((v) => v.grupo_viagem_id === null)?.id ?? grupo[0].id}
                   viagens={grupo}
                   empresas={empresas ?? []}
                   veiculos={veiculos ?? []}

@@ -289,6 +289,10 @@ class ViagemDiaPassageiroMover(BaseModel):
     ordem: int | None = None
 
 
+class ViagemDiaPassageiroMoverBloco(BaseModel):
+    bloco_id: int
+
+
 class ViagemDiaAtribuir(BaseModel):
     condutor_id: int | None = None
     veiculo_id: int | None = None

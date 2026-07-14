@@ -264,7 +264,7 @@ def _mapa_empresas_por_regiao(db: Session) -> dict[int, list[int]]:
     return resultado
 
 
-def _horario_garagem(hora: dt.time) -> dt.time:
+def horario_garagem(hora: dt.time) -> dt.time:
     referencia = dt.datetime.combine(dt.date.today(), hora) - dt.timedelta(minutes=TEMPO_SAIDA_GARAGEM_MINUTOS)
     return referencia.time()
 
@@ -462,7 +462,7 @@ def _gerar_carro_do_grupo_base(
             viagem = ViagemDia(
                 data=data,
                 regiao_id=regiao_da_viagem,
-                horario_saida=_horario_garagem(viagem_base.hora),
+                horario_saida=horario_garagem(viagem_base.hora),
                 capacidade=max(lugares_totais, 1),
                 status=StatusViagemDia.PLANEJADA,
             )
@@ -576,7 +576,7 @@ def _abrir_carro(
             print(f"[geracao] regiao_id={regiao_id}: nenhuma empresa vinculada (empresa_regiao vazio pra essa regiao)")
         return None
 
-    horario_saida = _horario_garagem(hora)
+    horario_saida = horario_garagem(hora)
 
     veiculo = None
     if veiculo_preferido_id is not None:

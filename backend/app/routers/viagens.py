@@ -11,7 +11,7 @@ from app.auth import obter_conta_atual
 from app.database import get_db
 from app.services.exportacao import gerar_pdf_resumo_dia, gerar_zip_agendamentos
 from app.services.frequencia import INTERVALO_PADRAO_POR_PERIODO
-from app.services.geracao import gerar_agendamento_dia, listar_desconsiderados_dia
+from app.services.geracao import gerar_agendamento_dia, horario_garagem, listar_desconsiderados_dia
 from app.services.recursos import fim_viagem, janelas_sobrepoem
 
 router = APIRouter(prefix="/viagens", tags=["viagens"], dependencies=[Depends(obter_conta_atual)])
@@ -374,6 +374,80 @@ def mover_passageiro(passageiro_id: int, payload: schemas.ViagemDiaPassageiroMov
 
     db.commit()
     viagem = _get_viagem_ou_404(db, payload.viagem_dia_destino_id)
+    return _serializar_viagem(viagem, _construir_contexto_dia(db, viagem.data))
+
+
+@router.patch("/passageiros/{passageiro_id}/mover-bloco", response_model=schemas.ViagemDiaRead)
+def mover_passageiro_para_bloco(
+    passageiro_id: int, payload: schemas.ViagemDiaPassageiroMoverBloco, db: Session = Depends(get_db)
+):
+    """Move um passageiro pro bloco (carro) inteiro, soltado fora de uma leg
+    especifica -- igual ao modo Base: quem manda e o proprio sentido/hora do
+    passageiro, que decide em qual leg do bloco ele entra, criando a leg
+    on-the-fly se o carro ainda nao tiver uma pro horario dele.
+    """
+    passageiro = _get_passageiro_ou_404(db, passageiro_id)
+    ancora = _get_viagem_ou_404(db, payload.bloco_id)
+    bloco_id = ancora.grupo_viagem_id or ancora.id
+
+    viagens_bloco = (
+        db.query(models.ViagemDia)
+        .filter(
+            (models.ViagemDia.id == bloco_id) | (models.ViagemDia.grupo_viagem_id == bloco_id),
+        )
+        .all()
+    )
+    ids_bloco = [v.id for v in viagens_bloco]
+
+    destino = (
+        db.query(models.ViagemDiaPassageiro)
+        .filter(
+            models.ViagemDiaPassageiro.viagem_dia_id.in_(ids_bloco),
+            models.ViagemDiaPassageiro.sentido == passageiro.sentido,
+            models.ViagemDiaPassageiro.hora == passageiro.hora,
+            models.ViagemDiaPassageiro.id != passageiro_id,
+        )
+        .first()
+    )
+
+    if destino is not None:
+        viagem_destino_id = destino.viagem_dia_id
+    else:
+        modelo = viagens_bloco[0]
+        nova_viagem = models.ViagemDia(
+            data=modelo.data,
+            regiao_id=modelo.regiao_id,
+            empresa_id=modelo.empresa_id,
+            condutor_id=modelo.condutor_id,
+            veiculo_id=modelo.veiculo_id,
+            horario_saida=horario_garagem(passageiro.hora),
+            capacidade=modelo.capacidade,
+            status=models.StatusViagemDia.PLANEJADA,
+            grupo_viagem_id=bloco_id,
+        )
+        db.add(nova_viagem)
+        db.flush()
+        viagem_destino_id = nova_viagem.id
+
+    _verificar_conflito(db, viagem_destino_id, passageiro.usuario_id, passageiro.sentido, passageiro.id)
+
+    irmaos = (
+        db.query(models.ViagemDiaPassageiro)
+        .filter(
+            models.ViagemDiaPassageiro.viagem_dia_id == viagem_destino_id,
+            models.ViagemDiaPassageiro.id != passageiro_id,
+        )
+        .order_by(models.ViagemDiaPassageiro.hora, models.ViagemDiaPassageiro.ordem)
+        .all()
+    )
+    passageiro.viagem_dia_id = viagem_destino_id
+    passageiro.data = None  # saiu do container "Sem vaga" (se estava la)
+    irmaos.append(passageiro)
+    for indice, p in enumerate(irmaos):
+        p.ordem = indice
+
+    db.commit()
+    viagem = _get_viagem_ou_404(db, viagem_destino_id)
     return _serializar_viagem(viagem, _construir_contexto_dia(db, viagem.data))
 
 

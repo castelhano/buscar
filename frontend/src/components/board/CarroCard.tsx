@@ -1,3 +1,4 @@
+import { useDroppable } from "@dnd-kit/core";
 import type { Condutor, Empresa, Local, Regiao, Veiculo, ViagemDia, ViagemDiaPassageiro } from "../../api/types";
 import LegBlock from "./LegBlock";
 
@@ -43,6 +44,17 @@ export default function CarroCard({
   const empresa = empresas.find((e) => e.id === primeira.empresa_id);
   const condutor = condutores.find((c) => c.id === primeira.condutor_id);
 
+  // Ancora do bloco: a perna com grupo_viagem_id nulo (ou a unica perna, se o
+  // carro so tem uma). Usada pro droppable do bloco inteiro -- soltar um
+  // passageiro fora de uma leg especifica (ex: no espaco entre pernas ou no
+  // cabecalho) usa o horario/sentido dele proprio pra achar ou criar a leg
+  // certa dentro desse carro, igual ao modo Base.
+  const blocoId = pernas.find((v) => v.grupo_viagem_id === null)?.id ?? primeira.id;
+  const { setNodeRef: setBlocoRef, isOver: isOverBloco } = useDroppable({
+    id: `bloco-${blocoId}`,
+    data: { blocoId },
+  });
+
   // Regiao de cada passageiro (nao da viagem/leg) -- cobre tanto o condutor
   // com pernas em regioes diferentes ao longo do dia quanto um unico carro
   // misturando passageiros de regioes diferentes (grupo da Base cross-regiao).
@@ -52,7 +64,7 @@ export default function CarroCard({
   const regiaoNomes = [...new Set(regiaoIdsPassageiros)].map((id) => regioes.find((r) => r.id === id)?.nome ?? "?");
 
   return (
-    <div className="carro-card">
+    <div ref={setBlocoRef} className="carro-card" style={{ outline: isOverBloco ? "2px dashed var(--cor-primaria)" : "none" }}>
       <div className="carro-card-topo">
         <div className="titulo">{veiculo ? veiculo.prefixo : tituloSemVeiculo}</div>
         <span className="tag tag-regiao" title="Regiao do veiculo">
