@@ -10,6 +10,12 @@ interface Props {
   locais: Local[];
   regioes: Regiao[];
   tituloSemVeiculo?: string;
+  periodoAtual: "Manha" | "Tarde";
+  posicao: number;
+  totalNoPeriodo: number;
+  onMoverEsquerda: () => void;
+  onMoverDireita: () => void;
+  onEditarPosicao: () => void;
   onAdicionarPassageiro?: (viagemId: number) => void;
   onRemoverPassageiro?: (id: number) => void;
   onCancelarPassageiro?: (id: number) => void;
@@ -27,6 +33,12 @@ export default function CarroCard({
   locais,
   regioes,
   tituloSemVeiculo = "Carro sem veiculo",
+  periodoAtual,
+  posicao,
+  totalNoPeriodo,
+  onMoverEsquerda,
+  onMoverDireita,
+  onEditarPosicao,
   onAdicionarPassageiro,
   onRemoverPassageiro,
   onCancelarPassageiro,
@@ -67,6 +79,29 @@ export default function CarroCard({
 
   return (
     <div ref={setBlocoRef} className="carro-card" style={{ outline: isOverBloco ? "2px dashed var(--cor-primaria)" : "none" }}>
+      <div className="carro-card-ordem">
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={posicao <= 1}
+          title="Mover carro para tras"
+          onClick={onMoverEsquerda}
+        >
+          ←
+        </button>
+        <button type="button" className="badge-ordem" title="Definir posicao" onClick={onEditarPosicao}>
+          {posicao}/{totalNoPeriodo}
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={posicao >= totalNoPeriodo}
+          title="Mover carro para frente"
+          onClick={onMoverDireita}
+        >
+          →
+        </button>
+      </div>
       <div className="carro-card-topo">
         <div className="titulo">{veiculo ? veiculo.prefixo : tituloSemVeiculo}</div>
         <span className="tag tag-regiao" title="Regiao do veiculo">
@@ -115,6 +150,7 @@ export default function CarroCard({
           viagem={viagem}
           isPrimeira={indice === 0}
           locais={locais}
+          periodoAtual={periodoAtual}
           onAdicionarPassageiro={onAdicionarPassageiro}
           onRemoverPassageiro={onRemoverPassageiro}
           onCancelarPassageiro={onCancelarPassageiro}

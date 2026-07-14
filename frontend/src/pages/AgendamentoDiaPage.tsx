@@ -12,6 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { api } from "../api/client";
 import { useList } from "../api/hooks";
+import { CORTE_TARDE_MINUTOS, minutosDaHora, periodoDaViagem } from "../api/periodo";
 import { DIAS_SEMANA, DIAS_SEMANA_LABEL, diaSemanaFromData } from "../api/types";
 import type {
   Condutor,
@@ -43,25 +44,15 @@ import ExportarEscalasModal from "../components/board/ExportarEscalasModal";
 import FeriasModal from "../components/board/FeriasModal";
 import CancelarPassageiroModal from "../components/board/CancelarPassageiroModal";
 import ConfirmarModal from "../components/board/ConfirmarModal";
+import ReordenarPosicaoModal from "../components/board/ReordenarPosicaoModal";
 
 function hoje() {
   return new Date().toISOString().slice(0, 10);
 }
 
-const CORTE_TARDE_MINUTOS = 14 * 60;
-
-function minutosDaHora(hora: string): number {
-  const [h, m] = hora.split(":").map(Number);
-  return h * 60 + m;
-}
-
 function primeiraHora(viagem: ViagemDia): string {
   const horas = viagem.passageiros.map((p) => p.hora).sort();
   return horas[0] ?? viagem.horario_saida;
-}
-
-function periodoDaViagem(viagem: ViagemDia): "Manha" | "Tarde" {
-  return minutosDaHora(primeiraHora(viagem)) >= CORTE_TARDE_MINUTOS ? "Tarde" : "Manha";
 }
 
 function periodoDaViagemBase(viagem: ViagemBase): "Manha" | "Tarde" {
@@ -103,6 +94,10 @@ function agruparPorBloco(viagens: ViagemDia[]): ViagemDia[][] {
     return primeiraHora(a[0]).localeCompare(primeiraHora(b[0]));
   });
   return lista;
+}
+
+function ancoraIdDoBloco(grupo: ViagemDia[]): number {
+  return grupo.find((v) => v.grupo_viagem_id === null)?.id ?? grupo[0].id;
 }
 
 export default function AgendamentoDiaPage() {
@@ -235,6 +230,10 @@ export default function AgendamentoDiaPage() {
       }),
     onSuccess: invalidarDia,
   });
+  const reordenarBlocos = useMutation({
+    mutationFn: (ancoraIds: number[]) => api.patch("/viagens/reordenar-blocos", { data, ancora_ids: ancoraIds }),
+    onSuccess: invalidarDia,
+  });
   const limparCondutorVeiculo = useMutation({
     mutationFn: async (viagemIds: number[]) => {
       for (const viagemId of viagemIds) {
@@ -282,6 +281,7 @@ export default function AgendamentoDiaPage() {
   const [modalRemoverPassageiro, setModalRemoverPassageiro] = useState<number | null>(null);
   const [modalEditarPassageiro, setModalEditarPassageiro] = useState<ViagemDiaPassageiro | null>(null);
   const [modalLimparDia, setModalLimparDia] = useState(false);
+  const [modalOrdemIndice, setModalOrdemIndice] = useState<number | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -390,8 +390,30 @@ export default function AgendamentoDiaPage() {
     handleDragEndDia(activeData, overData, destinoId);
   }
 
+  // Escopo estrito de periodo (so pernas cuja hora bate com o periodo aberto)
+  // -- usado pra saber quem esta "escalado" no periodo no modal de
+  // condutor/veiculo, independente do bloco aparecer ou nao na tela.
   const viagensDoPeriodo = (viagensQuery.data ?? []).filter((v) => periodoDaViagem(v) === periodo);
-  const gruposBloco = agruparPorBloco(viagensDoPeriodo);
+
+  // Blocos exibidos: agrupa TODAS as pernas do dia (nao so as do periodo
+  // aberto) e mostra o bloco inteiro se qualquer perna dele bater com o
+  // periodo -- carro com pernas em periodos diferentes (ida de manha, volta
+  // a tarde) nao fica mais escondido, so aparece com destaque visual na perna
+  // fora do periodo (ver LegBlock).
+  const todosOsBlocos = agruparPorBloco(viagensQuery.data ?? []);
+  const gruposBloco = todosOsBlocos.filter((grupo) => grupo.some((v) => periodoDaViagem(v) === periodo));
+
+  function moverBloco(indiceAtual: number, novoIndice: number) {
+    const total = gruposBloco.length;
+    const alvo = Math.max(0, Math.min(novoIndice, total - 1));
+    if (alvo === indiceAtual) return;
+    const ids = gruposBloco.map(ancoraIdDoBloco);
+    const [id] = ids.splice(indiceAtual, 1);
+    ids.splice(alvo, 0, id);
+    reordenarBlocos.mutate(ids, {
+      onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao reordenar carro")),
+    });
+  }
 
   const condutoresFeriasIds = new Set(
     (ferias ?? []).filter((f) => f.data_inicio <= data && f.data_fim >= data).map((f) => f.condutor_id),
@@ -544,9 +566,9 @@ export default function AgendamentoDiaPage() {
         {modo === "dia" ? (
           <div className="board-layout">
             <div className="board">
-              {gruposBloco.map((grupo) => (
+              {gruposBloco.map((grupo, indice) => (
                 <CarroCard
-                  key={grupo.find((v) => v.grupo_viagem_id === null)?.id ?? grupo[0].id}
+                  key={ancoraIdDoBloco(grupo)}
                   viagens={grupo}
                   empresas={empresas ?? []}
                   veiculos={veiculos ?? []}
@@ -554,6 +576,12 @@ export default function AgendamentoDiaPage() {
                   locais={locais ?? []}
                   regioes={regioes ?? []}
                   tituloSemVeiculo="Carro sem veiculo"
+                  periodoAtual={periodo}
+                  posicao={indice + 1}
+                  totalNoPeriodo={gruposBloco.length}
+                  onMoverEsquerda={() => moverBloco(indice, indice - 1)}
+                  onMoverDireita={() => moverBloco(indice, indice + 1)}
+                  onEditarPosicao={() => setModalOrdemIndice(indice)}
                   onAdicionarPassageiro={setModalAdicionar}
                   onRemoverPassageiro={setModalRemoverPassageiro}
                   onCancelarPassageiro={setModalCancelar}
@@ -742,6 +770,18 @@ export default function AgendamentoDiaPage() {
               onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao limpar o dia")),
             })
           }
+        />
+      )}
+
+      {modalOrdemIndice !== null && (
+        <ReordenarPosicaoModal
+          posicaoAtual={modalOrdemIndice + 1}
+          total={gruposBloco.length}
+          onFechar={() => setModalOrdemIndice(null)}
+          onConfirmar={(novaPosicao) => {
+            moverBloco(modalOrdemIndice, novaPosicao - 1);
+            setModalOrdemIndice(null);
+          }}
         />
       )}
 

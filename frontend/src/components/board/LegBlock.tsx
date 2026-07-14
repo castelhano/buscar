@@ -1,12 +1,14 @@
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import type { Local, ViagemDia, ViagemDiaPassageiro } from "../../api/types";
+import { periodoDaViagem } from "../../api/periodo";
 import PassageiroCard from "./PassageiroCard";
 
 interface Props {
   viagem: ViagemDia;
   isPrimeira: boolean;
   locais: Local[];
+  periodoAtual: "Manha" | "Tarde";
   onAdicionarPassageiro?: (viagemId: number) => void;
   onRemoverPassageiro?: (id: number) => void;
   onCancelarPassageiro?: (id: number) => void;
@@ -18,6 +20,7 @@ export default function LegBlock({
   viagem,
   isPrimeira,
   locais,
+  periodoAtual,
   onAdicionarPassageiro,
   onRemoverPassageiro,
   onCancelarPassageiro,
@@ -25,6 +28,8 @@ export default function LegBlock({
   onRemoverViagem,
 }: Props) {
   const { setNodeRef, isOver } = useDroppable({ id: `carro-${viagem.id}`, data: { viagemId: viagem.id } });
+  const periodoDaPerna = periodoDaViagem(viagem);
+  const foraDoPeriodo = periodoDaPerna !== periodoAtual;
 
   const passageirosOrdenados = [...viagem.passageiros].sort((a, b) => a.hora.localeCompare(b.hora) || a.ordem - b.ordem);
   const primeiro = passageirosOrdenados[0];
@@ -35,6 +40,7 @@ export default function LegBlock({
     .reduce((soma, p) => soma + (p.acompanhante ? 2 : 1), 0);
 
   const avisos: string[] = [];
+  if (foraDoPeriodo) avisos.push(`Perna de periodo diferente (${periodoDaPerna})`);
   if (viagem.condutor_em_ferias) avisos.push("Condutor em ferias nessa data");
   if (viagem.conflito_horario) avisos.push(viagem.motivo_conflito_horario ?? "Conflito de horario");
   if (lugaresOcupados > viagem.capacidade) avisos.push("Lugares ocupados acima da capacidade do veiculo");
@@ -42,7 +48,7 @@ export default function LegBlock({
   return (
     <div
       ref={setNodeRef}
-      className={`leg-block ${isPrimeira ? "leg-block-primeira" : ""}`}
+      className={`leg-block ${isPrimeira ? "leg-block-primeira" : ""} ${foraDoPeriodo ? "leg-block-periodo-errado" : ""}`}
       style={{ outline: isOver ? "2px solid var(--cor-primaria)" : "none" }}
     >
       <div className="leg-block-header">

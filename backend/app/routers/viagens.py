@@ -356,6 +356,31 @@ def atribuir_condutor_veiculo_bloco(payload: schemas.ViagemDiaAtribuirBloco, db:
     return [_serializar_viagem(v, contexto) for v in viagens_bloco]
 
 
+@router.patch("/reordenar-blocos", status_code=204)
+def reordenar_blocos(payload: schemas.ReordenarBlocosPayload, db: Session = Depends(get_db)):
+    """Regrava a ordem de exibicao dos carros de um dia -- so essa data, nao
+    mexe no molde da Base. `ancora_ids` e a lista completa dos blocos
+    exibidos num periodo (Manha/Tarde), na nova ordem desejada; cada id tem
+    que ser a ancora do bloco (a perna com grupo_viagem_id nulo), que e onde
+    a ordem fica gravada.
+    """
+    ids_unicos = list(dict.fromkeys(payload.ancora_ids))
+    viagens = db.query(models.ViagemDia).filter(models.ViagemDia.id.in_(ids_unicos)).all()
+    por_id = {v.id: v for v in viagens}
+    for ancora_id in ids_unicos:
+        viagem = por_id.get(ancora_id)
+        if viagem is None:
+            raise HTTPException(status_code=404, detail=f"ViagemDia {ancora_id} nao encontrada")
+        if viagem.data != payload.data:
+            raise HTTPException(status_code=400, detail=f"Viagem {ancora_id} nao pertence a data informada")
+        if viagem.grupo_viagem_id is not None:
+            raise HTTPException(status_code=400, detail=f"Viagem {ancora_id} nao e a ancora do bloco")
+
+    for posicao, ancora_id in enumerate(ids_unicos, start=1):
+        por_id[ancora_id].ordem_exibicao = posicao
+    db.commit()
+
+
 @router.patch("/{viagem_id}/status", response_model=schemas.ViagemDiaRead)
 def alterar_status_viagem(viagem_id: int, status: models.StatusViagemDia, db: Session = Depends(get_db)):
     viagem = _get_viagem_ou_404(db, viagem_id)

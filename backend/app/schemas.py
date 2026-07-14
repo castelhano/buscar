@@ -305,6 +305,11 @@ class ViagemDiaAtribuirBloco(BaseModel):
     veiculo_id: int | None = None
 
 
+class ReordenarBlocosPayload(BaseModel):
+    data: dt.date
+    ancora_ids: list[int]
+
+
 # --------------------------------------------------------------------------
 # Modo Base (molde por dia da semana): grupos/viagens/membros curados
 # manualmente -- a geracao real tenta materializar cada grupo como um carro

@@ -267,6 +267,28 @@ th {
   gap: 0.5rem;
 }
 
+.carro-card-ordem {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.badge-ordem {
+  border: 1px solid var(--cor-borda);
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: #edf2f7;
+  color: var(--cor-texto-suave);
+}
+
+.badge-ordem:hover {
+  background: color-mix(in srgb, var(--cor-primaria) 15%, transparent);
+  color: var(--cor-primaria);
+}
+
 .carro-card > .titulo {
   font-weight: 600;
   font-size: 0.85rem;
@@ -302,6 +324,12 @@ th {
 
 .leg-block.leg-block-vazio {
   min-height: 5rem;
+}
+
+.leg-block.leg-block-periodo-errado {
+  border-left: 3px solid var(--cor-alerta-borda);
+  background: var(--cor-alerta-fundo);
+  padding-left: 0.4rem;
 }
 
 .leg-block-header {
