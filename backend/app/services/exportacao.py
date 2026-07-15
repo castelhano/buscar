@@ -69,13 +69,18 @@ def _com_detalhe(texto: str, detalhe: str | None) -> Paragraph:
 
 
 def _celula_origem(passageiro: ViagemDiaPassageiro) -> Paragraph:
-    detalhe = passageiro.usuario.detalhe if passageiro.sentido == Sentido.IDA else None
+    if passageiro.sentido == Sentido.RETORNO:
+        destino = passageiro.destino
+        return _com_detalhe(destino.nome if destino else "-", None)
+    detalhe = passageiro.usuario.detalhe
     return _com_detalhe(passageiro.origem or "-", detalhe)
 
 
 def _celula_destino(passageiro: ViagemDiaPassageiro) -> Paragraph:
+    if passageiro.sentido == Sentido.RETORNO:
+        return _com_detalhe(passageiro.origem or "-", None)
     destino = passageiro.destino
-    detalhe = destino.observacao if destino and passageiro.sentido == Sentido.IDA else None
+    detalhe = destino.observacao if destino else None
     return _com_detalhe(destino.nome if destino else "-", detalhe)
 
 
