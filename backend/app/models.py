@@ -71,6 +71,7 @@ class TipoLocal(str, enum.Enum):
     EQUOTERAPIA = "Equoterapia"
     TRABALHO = "Trabalho"
     HEMODIALISE = "Hemodialise"
+    MEDICO = "Medico"
     OUTROS = "Outros"
 
 

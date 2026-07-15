@@ -3,7 +3,7 @@ import { useCreate, useList, useRemove, useUpdate } from "../../api/hooks";
 import type { Local, Regiao, TipoLocal } from "../../api/types";
 import ConfirmarModal from "../../components/board/ConfirmarModal";
 
-const TIPOS: TipoLocal[] = ["Escola", "Fisioterapia", "Equoterapia", "Trabalho", "Hemodialise", "Outros"];
+const TIPOS: TipoLocal[] = ["Escola", "Fisioterapia", "Equoterapia", "Trabalho", "Hemodialise", "Medico", "Outros"];
 
 interface FormState {
   nome: string;

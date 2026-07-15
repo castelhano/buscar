@@ -445,6 +445,13 @@ export default function AgendamentoDiaPage() {
     })),
   ];
 
+  // "Gerado" pro dia = existe algo persistido pela geracao: carros (ViagemDia)
+  // ou passageiros orfaos sem vaga (viagem_dia_id NULL). Sobras e
+  // desconsiderados NAO servem de sinal aqui -- sao calculados on-the-fly a
+  // partir da agenda semanal, independente de ter gerado ou nao (sobras
+  // sempre lista os condutores ociosos do dia, gerado ou nao).
+  const diaTemAlgumRegistro = (viagensQuery.data ?? []).length > 0 || (semVagaQuery.data ?? []).length > 0;
+
   const gruposBaseDoPeriodo: { grupo: GrupoBase; viagensExibir: ViagemBase[] }[] = (estruturaBaseQuery.data?.grupos ?? [])
     .map((grupo) => ({ grupo, viagensExibir: grupo.viagens.filter((v) => periodoDaViagemBase(v) === periodo) }))
     .filter(({ grupo, viagensExibir }) => viagensExibir.length > 0 || grupo.viagens.length === 0);
@@ -500,12 +507,12 @@ export default function AgendamentoDiaPage() {
           </div>
         )}
 
-        {modo === "dia" && (viagensQuery.data ?? []).length > 0 && (
+        {modo === "dia" && diaTemAlgumRegistro && (
           <button className="btn btn-perigo" onClick={() => setModalLimparDia(true)} disabled={limparDia.isPending}>
             Limpar
           </button>
         )}
-        {modo === "dia" && (viagensQuery.data ?? []).length === 0 && !viagensQuery.isLoading && (
+        {modo === "dia" && !diaTemAlgumRegistro && !viagensQuery.isLoading && (
           <button
             className="btn btn-primario"
             onClick={() =>

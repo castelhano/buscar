@@ -298,7 +298,13 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     vaga" na tela do dia), igual a quem ficou sem vaga por falta de frota.
     """
     existentes = db.query(ViagemDia).filter(ViagemDia.data == data).all()
-    if existentes:
+    existe_orfao = (
+        db.query(ViagemDiaPassageiro.id)
+        .filter(ViagemDiaPassageiro.viagem_dia_id.is_(None), ViagemDiaPassageiro.data == data)
+        .first()
+        is not None
+    )
+    if existentes or existe_orfao:
         return existentes
 
     dia_semana, agendas, excecoes, locais_em_recesso = _agendas_do_dia(db, data)
