@@ -9,7 +9,12 @@ from sqlalchemy.orm import Session, joinedload
 from app import models, schemas
 from app.auth import obter_conta_atual
 from app.database import get_db
-from app.services.exportacao import gerar_pdf_resumo_dia, gerar_zip_agendamentos
+from app.services.exportacao import (
+    gerar_pdf_agendamento_condutor,
+    gerar_pdf_resumo_dia,
+    gerar_zip_agendamentos,
+    nome_arquivo_seguro,
+)
 from app.services.frequencia import INTERVALO_PADRAO_POR_PERIODO
 from app.services.geracao import _periodo_da_viagem, gerar_agendamento_dia, horario_garagem, listar_desconsiderados_dia
 from app.services.recursos import fim_viagem, janelas_sobrepoem
@@ -662,6 +667,22 @@ def baixar_agendamentos(data: dt.date, db: Session = Depends(get_db)):
         content=conteudo,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{nome_arquivo}"'},
+    )
+
+
+@router.get("/agendamentos/pdf")
+def baixar_agendamento_condutor(data: dt.date, condutor_id: int, db: Session = Depends(get_db)):
+    condutor = db.get(models.Condutor, condutor_id)
+    if condutor is None:
+        raise HTTPException(status_code=404, detail=f"Condutor {condutor_id} nao encontrado")
+    conteudo = gerar_pdf_agendamento_condutor(db, data, condutor_id)
+    if conteudo is None:
+        raise HTTPException(status_code=404, detail="Nenhuma viagem com condutor atribuido para essa data")
+    nome_arquivo = nome_arquivo_seguro(f"{condutor.matricula}_{condutor.apelido or condutor.nome}")
+    return Response(
+        content=conteudo,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nome_arquivo}.pdf"'},
     )
 
 

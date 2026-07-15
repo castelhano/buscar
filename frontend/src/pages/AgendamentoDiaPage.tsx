@@ -41,6 +41,7 @@ import AdicionarPassageiroModal from "../components/board/AdicionarPassageiroMod
 import AtribuirModal from "../components/board/AtribuirModal";
 import AbrirCarroModal from "../components/board/AbrirCarroModal";
 import ExportarEscalasModal from "../components/board/ExportarEscalasModal";
+import ExportarAgendamentosModal from "../components/board/ExportarAgendamentosModal";
 import FeriasModal from "../components/board/FeriasModal";
 import CancelarPassageiroModal from "../components/board/CancelarPassageiroModal";
 import ConfirmarModal from "../components/board/ConfirmarModal";
@@ -276,6 +277,7 @@ export default function AgendamentoDiaPage() {
   } | null>(null);
   const [modalAbrirCarro, setModalAbrirCarro] = useState(false);
   const [modalEscalas, setModalEscalas] = useState(false);
+  const [modalAgendamentos, setModalAgendamentos] = useState(false);
   const [modalFerias, setModalFerias] = useState(false);
   const [modalCancelar, setModalCancelar] = useState<number | null>(null);
   const [modalRemoverPassageiro, setModalRemoverPassageiro] = useState<number | null>(null);
@@ -419,6 +421,15 @@ export default function AgendamentoDiaPage() {
     (ferias ?? []).filter((f) => f.data_inicio <= data && f.data_fim >= data).map((f) => f.condutor_id),
   );
 
+  const condutoresEscaladosNoDia = (() => {
+    const idsEscalados = new Set(
+      (viagensQuery.data ?? []).filter((v) => v.condutor_id !== null).map((v) => v.condutor_id as number),
+    );
+    return (condutores ?? [])
+      .filter((c) => idsEscalados.has(c.id))
+      .sort((a, b) => (a.apelido || a.nome).localeCompare(b.apelido || b.nome));
+  })();
+
   const gruposBaseDoPeriodo: { grupo: GrupoBase; viagensExibir: ViagemBase[] }[] = (estruturaBaseQuery.data?.grupos ?? [])
     .map((grupo) => ({ grupo, viagensExibir: grupo.viagens.filter((v) => periodoDaViagemBase(v) === periodo) }))
     .filter(({ grupo, viagensExibir }) => viagensExibir.length > 0 || grupo.viagens.length === 0);
@@ -509,15 +520,8 @@ export default function AgendamentoDiaPage() {
           </button>
         )}
         {modo === "dia" && (
-          <button
-            className="btn"
-            onClick={() =>
-              api
-                .download("/viagens/agendamentos/zip", { data })
-                .catch((e: unknown) => setErro(mensagemErro(e, "Erro ao baixar agendamentos")))
-            }
-          >
-            Agendamentos (zip)
+          <button className="btn" onClick={() => setModalAgendamentos(true)}>
+            Agendamentos
           </button>
         )}
         {modo === "dia" && (
@@ -742,6 +746,14 @@ export default function AgendamentoDiaPage() {
       )}
 
       {modalEscalas && <ExportarEscalasModal onFechar={() => setModalEscalas(false)} />}
+      {modalAgendamentos && (
+        <ExportarAgendamentosModal
+          data={data}
+          condutores={condutoresEscaladosNoDia}
+          onFechar={() => setModalAgendamentos(false)}
+          onErro={(mensagem) => setErro(mensagem)}
+        />
+      )}
       {modalFerias && <FeriasModal onFechar={() => setModalFerias(false)} />}
 
       {modalCancelar !== null && (

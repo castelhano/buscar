@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models import (
     CondutorFerias,
     Frequencia,
+    Sentido,
     StatusAtendimentoDia,
     StatusCondutor,
     ViagemDia,
@@ -33,6 +34,9 @@ _ESTILO_CABECALHO_CONDUTOR = ParagraphStyle("CabecalhoCondutor", parent=_ESTILOS
 # sem quebra), o texto longo vazava da celula. Com Paragraph o ReportLab quebra
 # respeitando a largura da coluna e a Table recalcula a altura da linha sozinha.
 _ESTILO_CELULA = ParagraphStyle("Celula", parent=_ESTILOS["Normal"], fontName="Helvetica", fontSize=9, leading=11)
+# Endereco detalhado (Usuario.detalhe / Local.observacao) e um complemento do
+# texto principal da celula, exibido menor pra nao competir com ele.
+_TAMANHO_FONTE_DETALHE = 7
 
 _DIAS_SEMANA_PT = {
     0: "segunda-feira",
@@ -45,12 +49,31 @@ _DIAS_SEMANA_PT = {
 }
 
 
-def _nome_arquivo_seguro(nome: str) -> str:
+def nome_arquivo_seguro(nome: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "_", nome).strip("_") or "sem_nome"
 
 
 def _celula(texto: str) -> Paragraph:
     return Paragraph(escape(texto), _ESTILO_CELULA)
+
+
+def _com_detalhe(texto: str, detalhe: str | None) -> Paragraph:
+    """Texto principal da celula + endereco detalhado numa linha extra, menor."""
+    html = escape(texto)
+    if detalhe:
+        html += f'<br/><font size="{_TAMANHO_FONTE_DETALHE}">{escape(detalhe)}</font>'
+    return Paragraph(html, _ESTILO_CELULA)
+
+
+def _celula_origem(passageiro: ViagemDiaPassageiro) -> Paragraph:
+    detalhe = passageiro.usuario.detalhe if passageiro.sentido == Sentido.IDA else None
+    return _com_detalhe(passageiro.origem or "-", detalhe)
+
+
+def _celula_destino(passageiro: ViagemDiaPassageiro) -> Paragraph:
+    destino = passageiro.destino
+    detalhe = destino.observacao if destino and passageiro.sentido == Sentido.IDA else None
+    return _com_detalhe(destino.nome if destino else "-", detalhe)
 
 
 def _hora_referencia(viagem: ViagemDia) -> dt.time:
@@ -132,8 +155,8 @@ def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.tim
                     passageiro.hora.strftime("%H:%M"),
                     _celula(nome),
                     passageiro.sentido.value,
-                    _celula(passageiro.origem or "-"),
-                    _celula(passageiro.destino.nome if passageiro.destino else "-"),
+                    _celula_origem(passageiro),
+                    _celula_destino(passageiro),
                     _celula(observacoes) if observacoes else "",
                 ]
             )
@@ -176,8 +199,8 @@ def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.tim
     return buffer.getvalue()
 
 
-def gerar_zip_agendamentos(db: Session, data: dt.date) -> bytes | None:
-    viagens = (
+def _viagens_do_dia_com_condutor(db: Session, data: dt.date, condutor_id: int | None = None) -> list[ViagemDia]:
+    query = (
         db.query(ViagemDia)
         .options(
             joinedload(ViagemDia.condutor),
@@ -188,8 +211,14 @@ def gerar_zip_agendamentos(db: Session, data: dt.date) -> bytes | None:
             joinedload(ViagemDia.passageiros).joinedload(ViagemDiaPassageiro.destino),
         )
         .filter(ViagemDia.data == data, ViagemDia.condutor_id.isnot(None))
-        .all()
     )
+    if condutor_id is not None:
+        query = query.filter(ViagemDia.condutor_id == condutor_id)
+    return query.all()
+
+
+def gerar_zip_agendamentos(db: Session, data: dt.date) -> bytes | None:
+    viagens = _viagens_do_dia_com_condutor(db, data)
     if not viagens:
         return None
 
@@ -202,9 +231,17 @@ def gerar_zip_agendamentos(db: Session, data: dt.date) -> bytes | None:
         for pernas in viagens_por_condutor.values():
             condutor = pernas[0].condutor
             intervalo = intervalo_do_condutor(db, condutor.id, data)
-            nome_arquivo = _nome_arquivo_seguro(f"{condutor.matricula}_{condutor.apelido or condutor.nome}")
+            nome_arquivo = nome_arquivo_seguro(f"{condutor.matricula}_{condutor.apelido or condutor.nome}")
             zip_file.writestr(f"{nome_arquivo}.pdf", _pdf_condutor_dia(pernas, intervalo))
     return buffer.getvalue()
+
+
+def gerar_pdf_agendamento_condutor(db: Session, data: dt.date, condutor_id: int) -> bytes | None:
+    viagens = _viagens_do_dia_com_condutor(db, data, condutor_id)
+    if not viagens:
+        return None
+    intervalo = intervalo_do_condutor(db, condutor_id, data)
+    return _pdf_condutor_dia(viagens, intervalo)
 
 
 # --------------------------------------------------------------------------
