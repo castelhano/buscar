@@ -11,6 +11,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
@@ -199,7 +200,9 @@ def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.tim
     return buffer.getvalue()
 
 
-def _viagens_do_dia_com_condutor(db: Session, data: dt.date, condutor_id: int | None = None) -> list[ViagemDia]:
+def _viagens_do_dia(
+    db: Session, data: dt.date, condutor_id: int | None = None, bloco_id: int | None = None
+) -> list[ViagemDia]:
     query = (
         db.query(ViagemDia)
         .options(
@@ -210,38 +213,78 @@ def _viagens_do_dia_com_condutor(db: Session, data: dt.date, condutor_id: int | 
             joinedload(ViagemDia.passageiros).joinedload(ViagemDiaPassageiro.usuario),
             joinedload(ViagemDia.passageiros).joinedload(ViagemDiaPassageiro.destino),
         )
-        .filter(ViagemDia.data == data, ViagemDia.condutor_id.isnot(None))
+        .filter(ViagemDia.data == data)
     )
     if condutor_id is not None:
         query = query.filter(ViagemDia.condutor_id == condutor_id)
+    elif bloco_id is not None:
+        query = query.filter(
+            or_(ViagemDia.id == bloco_id, ViagemDia.grupo_viagem_id == bloco_id)
+        )
     return query.all()
 
 
+def _bloco_do_carro(viagem: ViagemDia) -> int:
+    """Ancora do bloco (carro) que a leg pertence -- mesma chave usada na tela
+    do dia (`agruparPorBloco` no frontend) pra emendar as pernas de um mesmo
+    carro independente de condutor/veiculo estarem atribuidos.
+    """
+    return viagem.grupo_viagem_id if viagem.grupo_viagem_id is not None else viagem.id
+
+
+def _agrupar_para_exportacao(viagens: list[ViagemDia]) -> list[list[ViagemDia]]:
+    """Uma leg com condutor atribuido agrupa por condutor (todas as legs dele
+    no dia, mesmo que em carros diferentes, viram um so PDF); sem condutor,
+    agrupa pelas legs do mesmo carro (bloco), um PDF por carro "Indefinido".
+    """
+    grupos: dict[str, list[ViagemDia]] = {}
+    ordem: list[str] = []
+    for viagem in viagens:
+        chave = f"c{viagem.condutor_id}" if viagem.condutor_id is not None else f"b{_bloco_do_carro(viagem)}"
+        if chave not in grupos:
+            grupos[chave] = []
+            ordem.append(chave)
+        grupos[chave].append(viagem)
+    return [grupos[chave] for chave in ordem]
+
+
 def gerar_zip_agendamentos(db: Session, data: dt.date) -> bytes | None:
-    viagens = _viagens_do_dia_com_condutor(db, data)
+    viagens = _viagens_do_dia(db, data)
     if not viagens:
         return None
 
-    viagens_por_condutor: dict[int, list[ViagemDia]] = {}
-    for viagem in viagens:
-        viagens_por_condutor.setdefault(viagem.condutor_id, []).append(viagem)
-
     buffer = io.BytesIO()
+    indefinido_seq = 0
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        for pernas in viagens_por_condutor.values():
+        for pernas in _agrupar_para_exportacao(viagens):
             condutor = pernas[0].condutor
-            intervalo = intervalo_do_condutor(db, condutor.id, data)
-            nome_arquivo = nome_arquivo_seguro(f"{condutor.matricula}_{condutor.apelido or condutor.nome}")
+            if condutor is not None:
+                intervalo = intervalo_do_condutor(db, condutor.id, data)
+                nome_arquivo = nome_arquivo_seguro(f"{condutor.matricula}_{condutor.apelido or condutor.nome}")
+            else:
+                intervalo = None
+                indefinido_seq += 1
+                nome_arquivo = f"Indefinido_{indefinido_seq}"
             zip_file.writestr(f"{nome_arquivo}.pdf", _pdf_condutor_dia(pernas, intervalo))
     return buffer.getvalue()
 
 
 def gerar_pdf_agendamento_condutor(db: Session, data: dt.date, condutor_id: int) -> bytes | None:
-    viagens = _viagens_do_dia_com_condutor(db, data, condutor_id)
+    viagens = _viagens_do_dia(db, data, condutor_id=condutor_id)
     if not viagens:
         return None
     intervalo = intervalo_do_condutor(db, condutor_id, data)
     return _pdf_condutor_dia(viagens, intervalo)
+
+
+def gerar_pdf_agendamento_bloco(db: Session, data: dt.date, bloco_id: int) -> bytes | None:
+    """Carro sem condutor atribuido -- exporta pelas legs do bloco em vez de
+    condutor_id (ver `_bloco_do_carro`).
+    """
+    viagens = _viagens_do_dia(db, data, bloco_id=bloco_id)
+    if not viagens:
+        return None
+    return _pdf_condutor_dia(viagens, None)
 
 
 # --------------------------------------------------------------------------

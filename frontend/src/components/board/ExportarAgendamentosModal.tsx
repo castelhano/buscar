@@ -1,24 +1,27 @@
 import { useState } from "react";
 import { api } from "../../api/client";
-import type { Condutor } from "../../api/types";
 import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
 
 interface Props {
   data: string;
-  condutores: Condutor[];
+  opcoes: { valor: string; label: string }[];
   onFechar: () => void;
   onErro: (mensagem: string) => void;
 }
 
-export default function ExportarAgendamentosModal({ data, condutores, onFechar, onErro }: Props) {
+export default function ExportarAgendamentosModal({ data, opcoes, onFechar, onErro }: Props) {
   useLockBodyScroll();
-  const [condutorId, setCondutorId] = useState<number | "">("");
+  const [selecionado, setSelecionado] = useState("");
 
   function gerar() {
+    const [tipo, id] = selecionado.split("-");
     const download =
-      condutorId === ""
+      selecionado === ""
         ? api.download("/viagens/agendamentos/zip", { data })
-        : api.download("/viagens/agendamentos/pdf", { data, condutor_id: condutorId });
+        : api.download("/viagens/agendamentos/pdf", {
+            data,
+            ...(tipo === "c" ? { condutor_id: Number(id) } : { bloco_id: Number(id) }),
+          });
     download.catch((e: unknown) => onErro(e instanceof Error ? e.message : "Erro ao baixar agendamentos"));
     onFechar();
   }
@@ -29,11 +32,11 @@ export default function ExportarAgendamentosModal({ data, condutores, onFechar, 
         <h3>Agendamentos</h3>
         <div className="campo">
           <label>Condutor</label>
-          <select value={condutorId} onChange={(e) => setCondutorId(e.target.value ? Number(e.target.value) : "")}>
+          <select value={selecionado} onChange={(e) => setSelecionado(e.target.value)}>
             <option value="">Todos</option>
-            {condutores.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.apelido || c.nome}
+            {opcoes.map((o) => (
+              <option key={o.valor} value={o.valor}>
+                {o.label}
               </option>
             ))}
           </select>

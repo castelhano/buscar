@@ -430,6 +430,19 @@ export default function AgendamentoDiaPage() {
       .sort((a, b) => (a.apelido || a.nome).localeCompare(b.apelido || b.nome));
   })();
 
+  // Carros sem condutor escalado nao tem nome pra exibir no select de
+  // exportacao -- entram como "Indefinido_N", numerados na mesma ordem em
+  // que aparecem no board (ordem definida em agruparPorBloco).
+  const blocosSemCondutorNoDia = todosOsBlocos.filter((grupo) => grupo.every((v) => v.condutor_id === null));
+
+  const opcoesExportacao: { valor: string; label: string }[] = [
+    ...condutoresEscaladosNoDia.map((c) => ({ valor: `c-${c.id}`, label: c.apelido || c.nome })),
+    ...blocosSemCondutorNoDia.map((grupo, indice) => ({
+      valor: `b-${ancoraIdDoBloco(grupo)}`,
+      label: `Indefinido_${indice + 1}`,
+    })),
+  ];
+
   const gruposBaseDoPeriodo: { grupo: GrupoBase; viagensExibir: ViagemBase[] }[] = (estruturaBaseQuery.data?.grupos ?? [])
     .map((grupo) => ({ grupo, viagensExibir: grupo.viagens.filter((v) => periodoDaViagemBase(v) === periodo) }))
     .filter(({ grupo, viagensExibir }) => viagensExibir.length > 0 || grupo.viagens.length === 0);
@@ -749,7 +762,7 @@ export default function AgendamentoDiaPage() {
       {modalAgendamentos && (
         <ExportarAgendamentosModal
           data={data}
-          condutores={condutoresEscaladosNoDia}
+          opcoes={opcoesExportacao}
           onFechar={() => setModalAgendamentos(false)}
           onErro={(mensagem) => setErro(mensagem)}
         />

@@ -10,6 +10,7 @@ from app import models, schemas
 from app.auth import obter_conta_atual
 from app.database import get_db
 from app.services.exportacao import (
+    gerar_pdf_agendamento_bloco,
     gerar_pdf_agendamento_condutor,
     gerar_pdf_resumo_dia,
     gerar_zip_agendamentos,
@@ -661,7 +662,7 @@ def listar_sem_vaga(data: dt.date, db: Session = Depends(get_db)):
 def baixar_agendamentos(data: dt.date, db: Session = Depends(get_db)):
     conteudo = gerar_zip_agendamentos(db, data)
     if conteudo is None:
-        raise HTTPException(status_code=404, detail="Nenhuma viagem com condutor atribuido para essa data")
+        raise HTTPException(status_code=404, detail="Nenhuma viagem gerada para essa data")
     nome_arquivo = f"agendamentos_{data.isoformat()}.zip"
     return Response(
         content=conteudo,
@@ -671,14 +672,23 @@ def baixar_agendamentos(data: dt.date, db: Session = Depends(get_db)):
 
 
 @router.get("/agendamentos/pdf")
-def baixar_agendamento_condutor(data: dt.date, condutor_id: int, db: Session = Depends(get_db)):
-    condutor = db.get(models.Condutor, condutor_id)
-    if condutor is None:
-        raise HTTPException(status_code=404, detail=f"Condutor {condutor_id} nao encontrado")
-    conteudo = gerar_pdf_agendamento_condutor(db, data, condutor_id)
+def baixar_agendamento_condutor(
+    data: dt.date, condutor_id: int | None = None, bloco_id: int | None = None, db: Session = Depends(get_db)
+):
+    if condutor_id is not None:
+        condutor = db.get(models.Condutor, condutor_id)
+        if condutor is None:
+            raise HTTPException(status_code=404, detail=f"Condutor {condutor_id} nao encontrado")
+        conteudo = gerar_pdf_agendamento_condutor(db, data, condutor_id)
+        nome_arquivo = nome_arquivo_seguro(f"{condutor.matricula}_{condutor.apelido or condutor.nome}")
+    elif bloco_id is not None:
+        conteudo = gerar_pdf_agendamento_bloco(db, data, bloco_id)
+        nome_arquivo = f"Indefinido_{bloco_id}"
+    else:
+        raise HTTPException(status_code=400, detail="Informe condutor_id ou bloco_id")
+
     if conteudo is None:
-        raise HTTPException(status_code=404, detail="Nenhuma viagem com condutor atribuido para essa data")
-    nome_arquivo = nome_arquivo_seguro(f"{condutor.matricula}_{condutor.apelido or condutor.nome}")
+        raise HTTPException(status_code=404, detail="Nenhuma viagem encontrada para essa data")
     return Response(
         content=conteudo,
         media_type="application/pdf",
