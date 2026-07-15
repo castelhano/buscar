@@ -28,7 +28,7 @@ def baixar_ocupacao_base(
     if not semana and dia_semana is None:
         raise HTTPException(status_code=400, detail="Informe dia_semana ou semana=true")
     dias = list(models.DiaSemana) if semana else [dia_semana]
-    conteudo = gerar_pdf_ocupacao_base(db, dias)
+    conteudo = gerar_pdf_ocupacao_base(db, dias, modo_semana=semana)
     if conteudo is None:
         raise HTTPException(status_code=404, detail="Nenhum carro cadastrado no molde base para gerar a ocupacao")
     nome_arquivo = "ocupacao_semana.pdf" if semana else f"ocupacao_{dia_semana.value}.pdf"

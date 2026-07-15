@@ -1,12 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { MouseEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "../../api/client";
 import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
 import { DIAS_SEMANA, DIAS_SEMANA_LABEL } from "../../api/types";
-import type { DiaSemana, EstruturaBase, Local, Sentido } from "../../api/types";
-import { CAPACIDADE_VIAGEM_BASE, montarColunaDia } from "../../utils/ocupacao";
-import type { CelulaOcupacao, ColunaDiaOcupacao } from "../../utils/ocupacao";
+import type { DiaSemana, EstruturaBase, Local } from "../../api/types";
+import {
+  CAPACIDADE_VIAGEM_BASE,
+  montarMatrizDiaSimples,
+  montarMatrizSemana,
+  type CarroNaCelula,
+  type CelulaHoraCarro,
+  type CelulaHoraDiaSemana,
+  type ViagemResumo,
+} from "../../utils/ocupacao";
 
 interface Props {
   diaSemanaInicial: DiaSemana;
@@ -14,11 +21,25 @@ interface Props {
   onFechar: () => void;
 }
 
+interface GrupoPopover {
+  titulo: string;
+  viagens: ViagemResumo[];
+}
+
 interface PopoverState {
   x: number;
   y: number;
   titulo: string;
-  celula: CelulaOcupacao;
+  grupos: GrupoPopover[];
+}
+
+function formatarHoraCurta(hora: string): string {
+  return hora.slice(0, 5).replace(":", "h");
+}
+
+function percentual(parte: number, total: number): string {
+  if (total <= 0) return "–";
+  return `${Math.round((parte / total) * 100)}%`;
 }
 
 export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }: Props) {
@@ -51,9 +72,9 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
     return id ? locais.find((l) => l.id === id)?.nome ?? "destino cadastrado" : "-";
   }
 
-  function abrirPopover(e: MouseEvent<HTMLElement>, titulo: string, celula: CelulaOcupacao) {
+  function abrirPopover(e: MouseEvent<HTMLElement>, titulo: string, grupos: GrupoPopover[]) {
     const rect = e.currentTarget.getBoundingClientRect();
-    setPopover({ x: rect.left, y: rect.bottom + 4, titulo, celula });
+    setPopover({ x: rect.left, y: rect.bottom + 4, titulo, grupos });
   }
 
   function exportarPdf() {
@@ -67,8 +88,33 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
   }
 
   const diasComDados = (estruturasQuery.data ?? []).filter(({ estrutura }) => estrutura.grupos.length > 0);
-  const totalCarros = Math.max(0, ...diasComDados.map(({ estrutura }) => estrutura.grupos.length));
-  const colunas: ColunaDiaOcupacao[] = diasComDados.map(({ dia, estrutura }) => montarColunaDia(dia, estrutura.grupos, totalCarros));
+
+  const matrizDia = useMemo(() => {
+    if (escopo !== "dia") return null;
+    const dados = diasComDados.find((d) => d.dia === diaSelecionado);
+    return dados ? montarMatrizDiaSimples(dados.estrutura.grupos) : null;
+  }, [escopo, diasComDados, diaSelecionado]);
+
+  const matrizSemana = useMemo(() => {
+    if (escopo !== "semana") return null;
+    return montarMatrizSemana(diasComDados.map(({ dia, estrutura }) => ({ dia, grupos: estrutura.grupos })));
+  }, [escopo, diasComDados]);
+
+  function labelCarroNoDia(dia: DiaSemana, grupoId: number): string {
+    const dados = diasComDados.find((d) => d.dia === dia);
+    const indice = dados?.estrutura.grupos.findIndex((g) => g.id === grupoId) ?? -1;
+    return `Carro ${indice + 1}`;
+  }
+
+  function gruposPopoverCarro(celula: CelulaHoraCarro): GrupoPopover[] {
+    return [{ titulo: "", viagens: celula.viagens }];
+  }
+
+  function gruposPopoverSemana(dia: DiaSemana, celula: CelulaHoraDiaSemana): GrupoPopover[] {
+    return celula.porCarro.map((c: CarroNaCelula) => ({ titulo: labelCarroNoDia(dia, c.grupoId), viagens: c.viagens }));
+  }
+
+  const semVazio = escopo === "dia" ? (matrizDia?.totalCarros ?? 0) === 0 : diasComDados.length === 0;
 
   return (
     <div className="modal-fundo" onClick={onFechar}>
@@ -120,7 +166,7 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
           </span>
           <span className="ocupacao-legenda-item">
             <span className="ocupacao-legenda-swatch ocupacao-swatch-lotado" />
-            Lotado ({CAPACIDADE_VIAGEM_BASE}/{CAPACIDADE_VIAGEM_BASE})
+            Lotado
           </span>
           <span className="ocupacao-legenda-item">
             <span className="ocupacao-legenda-swatch ocupacao-swatch-acima" />
@@ -135,54 +181,130 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
         {estruturasQuery.isLoading && <p>Carregando...</p>}
         {estruturasQuery.error && <div className="erro-box">Erro ao carregar a ocupacao.</div>}
 
-        {!estruturasQuery.isLoading && colunas.length === 0 && (
+        {!estruturasQuery.isLoading && semVazio && (
           <p className="aviso-discreto">Nenhum carro cadastrado no molde base para essa selecao.</p>
         )}
 
-        {colunas.length > 0 && (
+        {escopo === "dia" && matrizDia && matrizDia.totalCarros > 0 && (
           <div className="ocupacao-matriz-wrap">
             <table className="ocupacao-tabela">
               <thead>
-                {escopo === "semana" && (
-                  <tr>
-                    <th className="ocupacao-th-carro" rowSpan={2}>
-                      Carro
-                    </th>
-                    {colunas.map((coluna) => (
-                      <th key={coluna.diaSemana} colSpan={2}>
-                        {DIAS_SEMANA_LABEL[coluna.diaSemana]}
-                      </th>
-                    ))}
-                  </tr>
-                )}
                 <tr>
-                  {escopo === "dia" && <th className="ocupacao-th-carro">Carro</th>}
-                  {colunas.flatMap((coluna) => [
-                    <th key={`${coluna.diaSemana}-ida`}>Ida</th>,
-                    <th key={`${coluna.diaSemana}-volta`}>Volta</th>,
-                  ])}
+                  <th className="ocupacao-th-hora">Horario</th>
+                  {Array.from({ length: matrizDia.totalCarros }, (_, i) => (
+                    <th key={i}>Carro {i + 1}</th>
+                  ))}
+                  <th className="ocupacao-col-total">Total</th>
+                  <th className="ocupacao-col-percentual">%</th>
                 </tr>
               </thead>
               <tbody>
-                {Array.from({ length: totalCarros }, (_, indiceCarro) => (
-                  <tr key={indiceCarro}>
-                    <td className="ocupacao-td-carro">Carro {indiceCarro + 1}</td>
-                    {colunas.map((coluna) => {
-                      const carro = coluna.carros[indiceCarro];
-                      return (
-                        <CelulasCarro
-                          key={coluna.diaSemana}
-                          coluna={coluna}
-                          carroLabel={`Carro ${indiceCarro + 1}`}
-                          ida={carro.ida}
-                          volta={carro.volta}
-                          onAbrirPopover={abrirPopover}
-                        />
-                      );
-                    })}
+                {matrizDia.linhas.map((linha) => (
+                  <tr key={linha.hora}>
+                    <td className="ocupacao-td-hora">{formatarHoraCurta(linha.hora)}</td>
+                    {linha.porCarro.map((celula, indiceCarro) =>
+                      celula ? (
+                        <td key={indiceCarro}>
+                          <button
+                            type="button"
+                            className={`ocupacao-celula ocupacao-${celula.status}`}
+                            onClick={(e) =>
+                              abrirPopover(e, `Carro ${indiceCarro + 1} · ${formatarHoraCurta(linha.hora)}`, gruposPopoverCarro(celula))
+                            }
+                          >
+                            {celula.ocupados}
+                          </button>
+                        </td>
+                      ) : (
+                        <td key={indiceCarro}>
+                          <div className="ocupacao-celula ocupacao-vazia">–</div>
+                        </td>
+                      ),
+                    )}
+                    <td className="ocupacao-col-total">{linha.totalOcupados}</td>
+                    <td className="ocupacao-col-percentual">{percentual(linha.totalOcupados, matrizDia.totalGeral)}</td>
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr className="ocupacao-linha-total">
+                  <td className="ocupacao-td-hora">Total</td>
+                  {matrizDia.totalPorCarro.map((total, indice) => (
+                    <td key={indice} className="ocupacao-col-total">
+                      {total}
+                    </td>
+                  ))}
+                  <td className="ocupacao-col-total">{matrizDia.totalGeral}</td>
+                  <td className="ocupacao-col-percentual"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+
+        {escopo === "semana" && matrizSemana && matrizSemana.dias.length > 0 && (
+          <div className="ocupacao-matriz-wrap">
+            <table className="ocupacao-tabela">
+              <thead>
+                <tr>
+                  <th className="ocupacao-th-hora">Horario</th>
+                  {matrizSemana.dias.map((dia) => (
+                    <th key={dia}>{DIAS_SEMANA_LABEL[dia]}</th>
+                  ))}
+                  <th className="ocupacao-col-total">Total</th>
+                  <th className="ocupacao-col-percentual">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {matrizSemana.linhas.map((linha) => (
+                  <tr key={linha.hora}>
+                    <td className="ocupacao-td-hora">{formatarHoraCurta(linha.hora)}</td>
+                    {linha.porDia.map((celula, indiceDia) =>
+                      celula ? (
+                        <td key={indiceDia}>
+                          <button
+                            type="button"
+                            className={`ocupacao-celula ocupacao-${celula.status}`}
+                            onClick={(e) =>
+                              abrirPopover(
+                                e,
+                                `${DIAS_SEMANA_LABEL[matrizSemana.dias[indiceDia]]} · ${formatarHoraCurta(linha.hora)}`,
+                                gruposPopoverSemana(matrizSemana.dias[indiceDia], celula),
+                              )
+                            }
+                          >
+                            {celula.ocupados}/{celula.capacidade}
+                          </button>
+                        </td>
+                      ) : (
+                        <td key={indiceDia}>
+                          <div className="ocupacao-celula ocupacao-vazia">–</div>
+                        </td>
+                      ),
+                    )}
+                    <td className="ocupacao-col-total">
+                      {linha.totalOcupados}/{linha.totalCapacidade}
+                    </td>
+                    <td className="ocupacao-col-percentual">{percentual(linha.totalOcupados, linha.totalCapacidade)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="ocupacao-linha-total">
+                  <td className="ocupacao-td-hora">Total</td>
+                  {matrizSemana.totalPorDia.map((total, indice) => (
+                    <td key={indice} className="ocupacao-col-total">
+                      {total.ocupados}/{total.capacidade}
+                    </td>
+                  ))}
+                  <td className="ocupacao-col-total">
+                    {matrizSemana.totalGeral.ocupados}/{matrizSemana.totalGeral.capacidade}
+                  </td>
+                  <td className="ocupacao-col-percentual">
+                    {percentual(matrizSemana.totalGeral.ocupados, matrizSemana.totalGeral.capacidade)}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}
@@ -199,94 +321,31 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
           />
           <div className="ocupacao-tooltip" style={{ top: popover.y, left: popover.x }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontWeight: 600, marginBottom: "0.3rem" }}>{popover.titulo}</div>
-            {popover.celula.membros.length === 0 ? (
+            {popover.grupos.every((g) => g.viagens.every((v) => v.membros.length === 0)) ? (
               <div className="meta">Sem passageiros</div>
             ) : (
-              <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-                {popover.celula.membros.map((m) => (
-                  <li
-                    key={m.id}
-                    style={{ opacity: m.usuario_ativo ? 1 : 0.55, textDecoration: m.usuario_ativo ? "none" : "line-through" }}
-                  >
-                    {m.usuario_abbr || m.usuario_nome} · {nomeLocal(m.destino_id)}
-                    {m.acompanhante ? " (+1 acomp.)" : ""}
-                  </li>
-                ))}
-              </ul>
+              popover.grupos.map((grupo, indiceGrupo) => (
+                <div key={indiceGrupo} style={{ marginBottom: indiceGrupo < popover.grupos.length - 1 ? "0.4rem" : 0 }}>
+                  {grupo.titulo && <div style={{ fontWeight: 600, fontSize: "0.75rem", marginBottom: "0.15rem" }}>{grupo.titulo}</div>}
+                  <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+                    {grupo.viagens.flatMap((v) =>
+                      v.membros.map((m) => (
+                        <li
+                          key={m.id}
+                          style={{ opacity: m.usuario_ativo ? 1 : 0.55, textDecoration: m.usuario_ativo ? "none" : "line-through" }}
+                        >
+                          {m.usuario_abbr || m.usuario_nome} · {nomeLocal(m.destino_id)}
+                          {m.acompanhante ? " (+1 acomp.)" : ""}
+                        </li>
+                      )),
+                    )}
+                  </ul>
+                </div>
+              ))
             )}
           </div>
         </>
       )}
     </div>
   );
-}
-
-function CelulasCarro({
-  coluna,
-  carroLabel,
-  ida,
-  volta,
-  onAbrirPopover,
-}: {
-  coluna: ColunaDiaOcupacao;
-  carroLabel: string;
-  ida: CelulaOcupacao[];
-  volta: CelulaOcupacao[];
-  onAbrirPopover: (e: MouseEvent<HTMLElement>, titulo: string, celula: CelulaOcupacao) => void;
-}) {
-  return (
-    <>
-      <td>
-        <ColunaCelulas
-          celulas={ida}
-          sentido="Ida"
-          onClick={(e, celula) => onAbrirPopover(e, `${carroLabel} · ${DIAS_SEMANA_LABEL[coluna.diaSemana]} · Ida ${celula.hora.slice(0, 5)}`, celula)}
-        />
-      </td>
-      <td>
-        <ColunaCelulas
-          celulas={volta}
-          sentido="Retorno"
-          onClick={(e, celula) =>
-            onAbrirPopover(e, `${carroLabel} · ${DIAS_SEMANA_LABEL[coluna.diaSemana]} · Volta ${celula.hora.slice(0, 5)}`, celula)
-          }
-        />
-      </td>
-    </>
-  );
-}
-
-function ColunaCelulas({
-  celulas,
-  onClick,
-}: {
-  celulas: CelulaOcupacao[];
-  sentido: Sentido;
-  onClick: (e: MouseEvent<HTMLElement>, celula: CelulaOcupacao) => void;
-}) {
-  if (celulas.length === 0) {
-    return <div className="ocupacao-celula ocupacao-vazia">–</div>;
-  }
-  return (
-    <div className="ocupacao-celula-container">
-      {celulas.map((celula) => {
-        const horaCurta = formatarHoraCurta(celula.hora);
-        return (
-          <button
-            key={celula.viagemId}
-            type="button"
-            className={`ocupacao-celula ocupacao-${celula.status}`}
-            title={`${horaCurta} · ${celula.ocupados} ocupado(s)`}
-            onClick={(e) => onClick(e, celula)}
-          >
-            {horaCurta} : {celula.ocupados}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function formatarHoraCurta(hora: string): string {
-  return hora.slice(0, 5).replace(":", "h");
 }

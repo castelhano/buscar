@@ -6,59 +6,149 @@ export const CAPACIDADE_VIAGEM_BASE = 4;
 
 export type StatusOcupacao = "livre" | "lotado" | "acima";
 
-export interface CelulaOcupacao {
+export interface ViagemResumo {
   viagemId: number;
-  hora: string;
-  ocupados: number;
-  status: StatusOcupacao;
+  sentido: Sentido;
   membros: MembroBase[];
 }
 
-export interface CarroOcupacao {
-  grupoId: number | null;
-  ida: CelulaOcupacao[];
-  volta: CelulaOcupacao[];
-}
-
-export interface ColunaDiaOcupacao {
-  diaSemana: DiaSemana;
-  carros: CarroOcupacao[];
-}
-
-export function statusOcupacao(ocupados: number): StatusOcupacao {
-  if (ocupados > CAPACIDADE_VIAGEM_BASE) return "acima";
-  if (ocupados === CAPACIDADE_VIAGEM_BASE) return "lotado";
+export function statusOcupacao(ocupados: number, capacidade: number): StatusOcupacao {
+  if (ocupados > capacidade) return "acima";
+  if (ocupados === capacidade) return "lotado";
   return "livre";
 }
 
-function ocuparViagem(viagem: ViagemBase): CelulaOcupacao {
-  const ocupados = viagem.membros
-    .filter((m) => m.usuario_ativo)
-    .reduce((soma, m) => soma + (m.acompanhante ? 2 : 1), 0);
-  return { viagemId: viagem.id, hora: viagem.hora, ocupados, status: statusOcupacao(ocupados), membros: viagem.membros };
+export function ocupadosDaViagem(viagem: ViagemBase): number {
+  return viagem.membros.filter((m) => m.usuario_ativo).reduce((soma, m) => soma + (m.acompanhante ? 2 : 1), 0);
 }
 
-function celulasDoSentido(grupo: GrupoBase | undefined, sentido: Sentido): CelulaOcupacao[] {
-  if (!grupo) return [];
-  return grupo.viagens
-    .filter((v) => v.sentido === sentido)
-    .sort((a, b) => a.hora.localeCompare(b.hora))
-    .map(ocuparViagem);
+function horasDosGrupos(grupos: GrupoBase[]): string[] {
+  const horas = new Set<string>();
+  for (const grupo of grupos) for (const viagem of grupo.viagens) horas.add(viagem.hora);
+  return [...horas].sort();
 }
 
-/** Monta uma coluna (um dia) da matriz de ocupacao, alinhando os carros por
- * posicao (`ordem_exibicao`) -- carros do modo Base sao por dia, sem
- * identidade estavel entre dias, entao a linha N da matriz e "o carro na
- * posicao N daquele dia", nao um carro especifico. */
-export function montarColunaDia(diaSemana: DiaSemana, grupos: GrupoBase[], totalCarros: number): ColunaDiaOcupacao {
-  const carros: CarroOcupacao[] = [];
-  for (let i = 0; i < totalCarros; i++) {
-    const grupo = grupos[i];
-    carros.push({
-      grupoId: grupo?.id ?? null,
-      ida: celulasDoSentido(grupo, "Ida"),
-      volta: celulasDoSentido(grupo, "Retorno"),
+// --------------------------------------------------------------------------
+// Visao de dia simples: linhas = horario, colunas = carro
+// --------------------------------------------------------------------------
+
+export interface CelulaHoraCarro {
+  ocupados: number;
+  status: StatusOcupacao;
+  viagens: ViagemResumo[];
+}
+
+export interface LinhaHoraDia {
+  hora: string;
+  porCarro: (CelulaHoraCarro | null)[];
+  totalOcupados: number;
+}
+
+export interface MatrizDiaSimples {
+  totalCarros: number;
+  linhas: LinhaHoraDia[];
+  totalPorCarro: number[];
+  totalGeral: number;
+}
+
+export function montarMatrizDiaSimples(grupos: GrupoBase[]): MatrizDiaSimples {
+  const totalCarros = grupos.length;
+  const horas = horasDosGrupos(grupos);
+
+  const linhas: LinhaHoraDia[] = horas.map((hora) => {
+    const porCarro: (CelulaHoraCarro | null)[] = [];
+    let totalOcupados = 0;
+    for (const grupo of grupos) {
+      const viagensNaHora = grupo.viagens.filter((v) => v.hora === hora);
+      if (viagensNaHora.length === 0) {
+        porCarro.push(null);
+        continue;
+      }
+      const ocupados = viagensNaHora.reduce((soma, v) => soma + ocupadosDaViagem(v), 0);
+      totalOcupados += ocupados;
+      porCarro.push({
+        ocupados,
+        status: statusOcupacao(ocupados, CAPACIDADE_VIAGEM_BASE),
+        viagens: viagensNaHora.map((v) => ({ viagemId: v.id, sentido: v.sentido, membros: v.membros })),
+      });
+    }
+    return { hora, porCarro, totalOcupados };
+  });
+
+  const totalPorCarro = grupos.map((_, indice) => linhas.reduce((soma, l) => soma + (l.porCarro[indice]?.ocupados ?? 0), 0));
+  const totalGeral = totalPorCarro.reduce((a, b) => a + b, 0);
+
+  return { totalCarros, linhas, totalPorCarro, totalGeral };
+}
+
+// --------------------------------------------------------------------------
+// Visao de semana toda: linhas = horario, colunas = dia (agregando os carros)
+// --------------------------------------------------------------------------
+
+export interface CarroNaCelula {
+  grupoId: number;
+  viagens: ViagemResumo[];
+}
+
+export interface CelulaHoraDiaSemana {
+  ocupados: number;
+  capacidade: number;
+  status: StatusOcupacao;
+  porCarro: CarroNaCelula[];
+}
+
+export interface LinhaHoraSemana {
+  hora: string;
+  porDia: (CelulaHoraDiaSemana | null)[];
+  totalOcupados: number;
+  totalCapacidade: number;
+}
+
+export interface DiaComGrupos {
+  dia: DiaSemana;
+  grupos: GrupoBase[];
+}
+
+export interface MatrizSemana {
+  dias: DiaSemana[];
+  linhas: LinhaHoraSemana[];
+  totalPorDia: { ocupados: number; capacidade: number }[];
+  totalGeral: { ocupados: number; capacidade: number };
+}
+
+export function montarMatrizSemana(diasComGrupos: DiaComGrupos[]): MatrizSemana {
+  const horas = horasDosGrupos(diasComGrupos.flatMap((d) => d.grupos));
+
+  const linhas: LinhaHoraSemana[] = horas.map((hora) => {
+    let totalOcupados = 0;
+    let totalCapacidade = 0;
+    const porDia: (CelulaHoraDiaSemana | null)[] = diasComGrupos.map(({ grupos }) => {
+      const porCarro: CarroNaCelula[] = [];
+      let ocupados = 0;
+      for (const grupo of grupos) {
+        const viagensNaHora = grupo.viagens.filter((v) => v.hora === hora);
+        if (viagensNaHora.length === 0) continue;
+        porCarro.push({ grupoId: grupo.id, viagens: viagensNaHora.map((v) => ({ viagemId: v.id, sentido: v.sentido, membros: v.membros })) });
+        ocupados += viagensNaHora.reduce((soma, v) => soma + ocupadosDaViagem(v), 0);
+      }
+      if (porCarro.length === 0) return null;
+      const capacidade = porCarro.length * CAPACIDADE_VIAGEM_BASE;
+      totalOcupados += ocupados;
+      totalCapacidade += capacidade;
+      return { ocupados, capacidade, status: statusOcupacao(ocupados, capacidade), porCarro };
     });
-  }
-  return { diaSemana, carros };
+    return { hora, porDia, totalOcupados, totalCapacidade };
+  });
+
+  const totalPorDia = diasComGrupos.map((_, indice) => {
+    const ocupados = linhas.reduce((soma, l) => soma + (l.porDia[indice]?.ocupados ?? 0), 0);
+    const capacidade = linhas.reduce((soma, l) => soma + (l.porDia[indice]?.capacidade ?? 0), 0);
+    return { ocupados, capacidade };
+  });
+  const totalGeral = totalPorDia.reduce(
+    (acc, t) => ({ ocupados: acc.ocupados + t.ocupados, capacidade: acc.capacidade + t.capacidade }),
+    { ocupados: 0, capacidade: 0 },
+  );
+
+  return { dias: diasComGrupos.map((d) => d.dia), linhas, totalPorDia, totalGeral };
 }

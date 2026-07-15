@@ -768,15 +768,15 @@ th {
 }
 
 .ocupacao-tabela thead th,
-.ocupacao-tabela thead .ocupacao-th-carro {
+.ocupacao-tabela thead .ocupacao-th-hora {
   background: #3d4d63;
   color: #ffffff;
   font-weight: 600;
   font-size: 0.75rem;
 }
 
-.ocupacao-th-carro,
-.ocupacao-td-carro {
+.ocupacao-th-hora,
+.ocupacao-td-hora {
   text-align: left;
   font-weight: 600;
   background: var(--cor-fundo);
@@ -785,11 +785,30 @@ th {
   z-index: 1;
 }
 
-.ocupacao-celula-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
+.ocupacao-col-total {
+  font-weight: 700;
+  background: var(--cor-fundo);
+}
+
+.ocupacao-tabela thead .ocupacao-col-total {
+  background: #3d4d63;
+}
+
+.ocupacao-col-percentual {
+  font-style: italic;
+  color: var(--cor-texto-suave);
+  font-weight: 400;
+}
+
+.ocupacao-tabela thead .ocupacao-col-percentual {
+  background: #3d4d63;
+  font-style: normal;
+}
+
+.ocupacao-linha-total td {
+  border-top: 2px solid var(--cor-primaria);
+  background: var(--cor-fundo);
+  font-weight: 700;
 }
 
 .ocupacao-celula {
