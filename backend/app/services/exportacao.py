@@ -524,6 +524,7 @@ _ESTILO_OCUPACAO_CELULA = ParagraphStyle(
 _ESTILO_OCUPACAO_CARRO = ParagraphStyle(
     "OcupacaoCarro", parent=_ESTILOS["Normal"], fontName="Helvetica-Bold", fontSize=9, leading=11
 )
+_ESTILO_OCUPACAO_TITULO = ParagraphStyle("OcupacaoTitulo", parent=_ESTILOS["Title"], alignment=0)
 
 
 def _status_ocupacao_base(ocupados: int) -> str:
@@ -557,20 +558,15 @@ def gerar_pdf_ocupacao_base(db: Session, dias: list[DiaSemana]) -> bytes | None:
         return None
 
     total_carros = max(len(estrutura["grupos"]) for _, estrutura in estruturas)
-    multi = len(estruturas) > 1
 
+    margem = 1.2 * cm
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer, pagesize=landscape(A4), topMargin=1.2 * cm, bottomMargin=1.2 * cm, leftMargin=1 * cm, rightMargin=1 * cm
-    )
-    titulo = (
-        "Perfil de ocupacao -- semana"
-        if multi
-        else f"Perfil de ocupacao -- {_DIA_SEMANA_LABEL_PT[estruturas[0][0]]}-feira"
-    )
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=margem, bottomMargin=margem, leftMargin=margem, rightMargin=margem)
+    largura_util = A4[0] - 2 * margem
+
     gerado_em = dt.datetime.now().strftime("%d/%m/%Y %H:%M")
     elementos: list = [
-        Paragraph(titulo, _ESTILOS["Title"]),
+        Paragraph("Perfil de Ocupação - Sistema Buscar", _ESTILO_OCUPACAO_TITULO),
         Paragraph(
             f"Gerado em {gerado_em} -- capacidade assumida de {CAPACIDADE_VIAGEM_BASE} lugares por viagem", _ESTILO_CELULA
         ),
@@ -609,7 +605,10 @@ def gerar_pdf_ocupacao_base(db: Session, dias: list[DiaSemana]) -> bytes | None:
                     cores_celulas.append((len(linhas), len(linha) - 1, _cor_status_ocupacao(status)))
         linhas.append(linha)
 
-    col_widths = [2.6 * cm] + [1.6 * cm] * (2 * len(estruturas))
+    largura_carro = 2.4 * cm
+    n_subcolunas = 2 * len(estruturas)
+    largura_subcoluna = min(1.6 * cm, (largura_util - largura_carro) / n_subcolunas)
+    col_widths = [largura_carro] + [largura_subcoluna] * n_subcolunas
     tabela = Table(linhas, colWidths=col_widths, repeatRows=2)
     estilo = [
         *spans,

@@ -767,9 +767,10 @@ th {
   text-align: center;
 }
 
-.ocupacao-tabela thead th {
-  background: var(--cor-primaria);
-  color: white;
+.ocupacao-tabela thead th,
+.ocupacao-tabela thead .ocupacao-th-carro {
+  background: #3d4d63;
+  color: #ffffff;
   font-weight: 600;
   font-size: 0.75rem;
 }
@@ -784,10 +785,6 @@ th {
   z-index: 1;
 }
 
-.ocupacao-tabela thead .ocupacao-th-carro {
-  background: var(--cor-primaria);
-}
-
 .ocupacao-celula-container {
   display: flex;
   flex-direction: column;
@@ -799,13 +796,14 @@ th {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 30px;
+  min-width: 68px;
   border: none;
   border-radius: 5px;
-  padding: 0.2rem 0.4rem;
+  padding: 0.2rem 0.45rem;
   font-weight: 700;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-family: inherit;
+  white-space: nowrap;
 }
 
 .ocupacao-livre {

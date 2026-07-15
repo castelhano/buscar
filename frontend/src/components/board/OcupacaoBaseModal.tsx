@@ -108,6 +108,9 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
           <button className="btn btn-primario" style={{ marginLeft: "auto" }} onClick={exportarPdf} disabled={exportando}>
             {exportando ? "Exportando..." : "Exportar PDF"}
           </button>
+          <button className="btn" onClick={onFechar}>
+            Fechar
+          </button>
         </div>
 
         <div className="ocupacao-legenda">
@@ -183,17 +186,17 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
             </table>
           </div>
         )}
-
-        <div className="linha-toolbar" style={{ marginTop: "1rem" }}>
-          <button className="btn" onClick={onFechar}>
-            Fechar
-          </button>
-        </div>
       </div>
 
       {popover && (
         <>
-          <div style={{ position: "fixed", inset: 0, zIndex: 19 }} onClick={() => setPopover(null)} />
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 19 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setPopover(null);
+            }}
+          />
           <div className="ocupacao-tooltip" style={{ top: popover.y, left: popover.x }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontWeight: 600, marginBottom: "0.3rem" }}>{popover.titulo}</div>
             {popover.celula.membros.length === 0 ? (
@@ -266,17 +269,24 @@ function ColunaCelulas({
   }
   return (
     <div className="ocupacao-celula-container">
-      {celulas.map((celula) => (
-        <button
-          key={celula.viagemId}
-          type="button"
-          className={`ocupacao-celula ocupacao-${celula.status}`}
-          title={`${celula.hora.slice(0, 5)} · ${celula.ocupados} ocupado(s)`}
-          onClick={(e) => onClick(e, celula)}
-        >
-          {celula.ocupados}
-        </button>
-      ))}
+      {celulas.map((celula) => {
+        const horaCurta = formatarHoraCurta(celula.hora);
+        return (
+          <button
+            key={celula.viagemId}
+            type="button"
+            className={`ocupacao-celula ocupacao-${celula.status}`}
+            title={`${horaCurta} · ${celula.ocupados} ocupado(s)`}
+            onClick={(e) => onClick(e, celula)}
+          >
+            {horaCurta} : {celula.ocupados}
+          </button>
+        );
+      })}
     </div>
   );
+}
+
+function formatarHoraCurta(hora: string): string {
+  return hora.slice(0, 5).replace(":", "h");
 }
