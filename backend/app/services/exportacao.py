@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
     CondutorFerias,
+    DiaSemana,
     Frequencia,
     Sentido,
     StatusAtendimentoDia,
@@ -23,6 +24,7 @@ from app.models import (
     ViagemDia,
     ViagemDiaPassageiro,
 )
+from app.services.base import montar_estrutura_base
 from app.services.frequencia import INTERVALO_PADRAO_POR_PERIODO, intervalo_do_condutor
 from app.services.geracao import CORTE_PERIODO_TARDE
 from app.services.recursos import fim_turno_condutor, fim_viagem
@@ -487,6 +489,176 @@ def gerar_pdf_resumo_dia(db: Session, data: dt.date) -> bytes | None:
         )
     )
     elementos.append(tabela_resumo)
+
+    doc.build(elementos)
+    return buffer.getvalue()
+
+
+# --------------------------------------------------------------------------
+# Ocupacao do modo Base (perfil de ocupacao por carro/horario)
+# --------------------------------------------------------------------------
+
+CAPACIDADE_VIAGEM_BASE = 4
+
+_DIA_SEMANA_LABEL_PT = {
+    DiaSemana.SEG: "Segunda",
+    DiaSemana.TER: "Terca",
+    DiaSemana.QUA: "Quarta",
+    DiaSemana.QUI: "Quinta",
+    DiaSemana.SEX: "Sexta",
+    DiaSemana.SAB: "Sabado",
+    DiaSemana.DOM: "Domingo",
+}
+
+_COR_OCUPACAO_LIVRE = colors.HexColor("#e6f4ea")
+_COR_OCUPACAO_LOTADO = colors.HexColor("#e2e5ea")
+_COR_OCUPACAO_ACIMA = colors.HexColor("#f3dcda")
+_COR_OCUPACAO_VAZIA = colors.HexColor("#fafafb")
+
+_ESTILO_OCUPACAO_CABECALHO = ParagraphStyle(
+    "OcupacaoCabecalho", parent=_ESTILOS["Normal"], fontName="Helvetica-Bold", fontSize=8.5, leading=10, alignment=1
+)
+_ESTILO_OCUPACAO_CELULA = ParagraphStyle(
+    "OcupacaoCelula", parent=_ESTILOS["Normal"], fontName="Helvetica-Bold", fontSize=9.5, leading=11, alignment=1
+)
+_ESTILO_OCUPACAO_CARRO = ParagraphStyle(
+    "OcupacaoCarro", parent=_ESTILOS["Normal"], fontName="Helvetica-Bold", fontSize=9, leading=11
+)
+
+
+def _status_ocupacao_base(ocupados: int) -> str:
+    if ocupados > CAPACIDADE_VIAGEM_BASE:
+        return "acima"
+    if ocupados == CAPACIDADE_VIAGEM_BASE:
+        return "lotado"
+    return "livre"
+
+
+def _cor_status_ocupacao(status: str):
+    return {"livre": _COR_OCUPACAO_LIVRE, "lotado": _COR_OCUPACAO_LOTADO, "acima": _COR_OCUPACAO_ACIMA}[status]
+
+
+def _ocupados_viagem_base(viagem: dict) -> int:
+    return sum((2 if m["acompanhante"] else 1) for m in viagem["membros"] if m["usuario_ativo"])
+
+
+def gerar_pdf_ocupacao_base(db: Session, dias: list[DiaSemana]) -> bytes | None:
+    """PDF da matriz de ocupacao do modo Base (carro x dia/sentido), pensado
+    pra apresentacao formal (orgao gestor): cada celula mostra so a
+    quantidade de lugares ocupados na viagem, colorida pela ocupacao em
+    relacao aos `CAPACIDADE_VIAGEM_BASE` lugares assumidos por viagem (verde
+    = com vaga, cinza = lotado, vermelho suave = acima da capacidade);
+    celulas sem viagem cadastrada ficam neutras. Dias sem nenhum carro sao
+    descartados (evita colunas em branco no relatorio).
+    """
+    estruturas = [(dia, montar_estrutura_base(db, dia)) for dia in dias]
+    estruturas = [(dia, estrutura) for dia, estrutura in estruturas if estrutura["grupos"]]
+    if not estruturas:
+        return None
+
+    total_carros = max(len(estrutura["grupos"]) for _, estrutura in estruturas)
+    multi = len(estruturas) > 1
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=landscape(A4), topMargin=1.2 * cm, bottomMargin=1.2 * cm, leftMargin=1 * cm, rightMargin=1 * cm
+    )
+    titulo = (
+        "Perfil de ocupacao -- semana"
+        if multi
+        else f"Perfil de ocupacao -- {_DIA_SEMANA_LABEL_PT[estruturas[0][0]]}-feira"
+    )
+    gerado_em = dt.datetime.now().strftime("%d/%m/%Y %H:%M")
+    elementos: list = [
+        Paragraph(titulo, _ESTILOS["Title"]),
+        Paragraph(
+            f"Gerado em {gerado_em} -- capacidade assumida de {CAPACIDADE_VIAGEM_BASE} lugares por viagem", _ESTILO_CELULA
+        ),
+        Spacer(1, 0.4 * cm),
+    ]
+
+    linha1: list = [""]
+    linha2: list = [Paragraph("Carro", _ESTILO_OCUPACAO_CABECALHO)]
+    spans = [("SPAN", (0, 0), (0, 1))]
+    for indice, (dia, _) in enumerate(estruturas):
+        col = 1 + indice * 2
+        linha1 += [Paragraph(_DIA_SEMANA_LABEL_PT[dia], _ESTILO_OCUPACAO_CABECALHO), ""]
+        linha2 += [Paragraph("Ida", _ESTILO_OCUPACAO_CABECALHO), Paragraph("Volta", _ESTILO_OCUPACAO_CABECALHO)]
+        spans.append(("SPAN", (col, 0), (col + 1, 0)))
+
+    linhas = [linha1, linha2]
+    cores_celulas: list[tuple[int, int, object]] = []
+
+    for i in range(total_carros):
+        linha: list = [Paragraph(f"Carro {i + 1}", _ESTILO_OCUPACAO_CARRO)]
+        for _, estrutura in estruturas:
+            grupo = estrutura["grupos"][i] if i < len(estrutura["grupos"]) else None
+            for sentido in (Sentido.IDA, Sentido.RETORNO):
+                viagens = sorted(
+                    (v for v in (grupo["viagens"] if grupo else []) if v["sentido"] == sentido),
+                    key=lambda v: v["hora"],
+                )
+                if not viagens:
+                    linha.append("")
+                    cores_celulas.append((len(linhas), len(linha) - 1, _COR_OCUPACAO_VAZIA))
+                else:
+                    ocupados_lista = [_ocupados_viagem_base(v) for v in viagens]
+                    texto = "/".join(str(o) for o in ocupados_lista)
+                    status = _status_ocupacao_base(max(ocupados_lista))
+                    linha.append(Paragraph(texto, _ESTILO_OCUPACAO_CELULA))
+                    cores_celulas.append((len(linhas), len(linha) - 1, _cor_status_ocupacao(status)))
+        linhas.append(linha)
+
+    col_widths = [2.6 * cm] + [1.6 * cm] * (2 * len(estruturas))
+    tabela = Table(linhas, colWidths=col_widths, repeatRows=2)
+    estilo = [
+        *spans,
+        ("BACKGROUND", (0, 0), (-1, 1), colors.HexColor("#2d3748")),
+        ("TEXTCOLOR", (0, 0), (-1, 1), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]
+    for linha_idx, col_idx, cor in cores_celulas:
+        estilo.append(("BACKGROUND", (col_idx, linha_idx), (col_idx, linha_idx), cor))
+    tabela.setStyle(TableStyle(estilo))
+    elementos.append(tabela)
+
+    elementos.append(Spacer(1, 0.5 * cm))
+    legenda = Table(
+        [
+            [
+                "",
+                Paragraph("Com vaga", _ESTILO_CELULA),
+                "",
+                Paragraph(f"Lotado ({CAPACIDADE_VIAGEM_BASE}/{CAPACIDADE_VIAGEM_BASE})", _ESTILO_CELULA),
+                "",
+                Paragraph("Acima da capacidade", _ESTILO_CELULA),
+                "",
+                Paragraph("Sem viagem cadastrada", _ESTILO_CELULA),
+            ]
+        ],
+        colWidths=[0.5 * cm, 2.6 * cm, 0.5 * cm, 3 * cm, 0.5 * cm, 3.4 * cm, 0.5 * cm, 3.6 * cm],
+    )
+    legenda.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, 0), _COR_OCUPACAO_LIVRE),
+                ("BACKGROUND", (2, 0), (2, 0), _COR_OCUPACAO_LOTADO),
+                ("BACKGROUND", (4, 0), (4, 0), _COR_OCUPACAO_ACIMA),
+                ("BACKGROUND", (6, 0), (6, 0), _COR_OCUPACAO_VAZIA),
+                ("GRID", (0, 0), (0, 0), 0.5, colors.grey),
+                ("GRID", (2, 0), (2, 0), 0.5, colors.grey),
+                ("GRID", (4, 0), (4, 0), 0.5, colors.grey),
+                ("GRID", (6, 0), (6, 0), 0.5, colors.grey),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+            ]
+        )
+    )
+    elementos.append(legenda)
 
     doc.build(elementos)
     return buffer.getvalue()

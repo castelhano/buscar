@@ -43,6 +43,7 @@ import AbrirCarroModal from "../components/board/AbrirCarroModal";
 import ExportarEscalasModal from "../components/board/ExportarEscalasModal";
 import ExportarAgendamentosModal from "../components/board/ExportarAgendamentosModal";
 import FeriasModal from "../components/board/FeriasModal";
+import OcupacaoBaseModal from "../components/board/OcupacaoBaseModal";
 import CancelarPassageiroModal from "../components/board/CancelarPassageiroModal";
 import ConfirmarModal from "../components/board/ConfirmarModal";
 import ReordenarPosicaoModal from "../components/board/ReordenarPosicaoModal";
@@ -279,6 +280,7 @@ export default function AgendamentoDiaPage() {
   const [modalEscalas, setModalEscalas] = useState(false);
   const [modalAgendamentos, setModalAgendamentos] = useState(false);
   const [modalFerias, setModalFerias] = useState(false);
+  const [modalOcupacao, setModalOcupacao] = useState(false);
   const [modalCancelar, setModalCancelar] = useState<number | null>(null);
   const [modalRemoverPassageiro, setModalRemoverPassageiro] = useState<number | null>(null);
   const [modalEditarPassageiro, setModalEditarPassageiro] = useState<ViagemDiaPassageiro | null>(null);
@@ -527,6 +529,11 @@ export default function AgendamentoDiaPage() {
             + Novo carro
           </button>
         )}
+        {modo === "base" && (
+          <button className="btn" onClick={() => setModalOcupacao(true)}>
+            Ocupacao
+          </button>
+        )}
         {modo === "dia" && (
           <button className="btn" onClick={() => setModalAbrirCarro(true)}>
             + Abrir carro
@@ -768,6 +775,9 @@ export default function AgendamentoDiaPage() {
         />
       )}
       {modalFerias && <FeriasModal onFechar={() => setModalFerias(false)} />}
+      {modalOcupacao && (
+        <OcupacaoBaseModal diaSemanaInicial={diaSemanaBase} locais={locais ?? []} onFechar={() => setModalOcupacao(false)} />
+      )}
 
       {modalCancelar !== null && (
         <CancelarPassageiroModal

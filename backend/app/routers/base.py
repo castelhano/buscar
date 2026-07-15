@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -14,8 +14,29 @@ from app.services.base import (
     remover_membro,
     remover_viagem,
 )
+from app.services.exportacao import gerar_pdf_ocupacao_base
 
 router = APIRouter(prefix="/base", tags=["base"], dependencies=[Depends(obter_conta_atual)])
+
+
+@router.get("/ocupacao/pdf")
+def baixar_ocupacao_base(
+    dia_semana: models.DiaSemana | None = None,
+    semana: bool = False,
+    db: Session = Depends(get_db),
+):
+    if not semana and dia_semana is None:
+        raise HTTPException(status_code=400, detail="Informe dia_semana ou semana=true")
+    dias = list(models.DiaSemana) if semana else [dia_semana]
+    conteudo = gerar_pdf_ocupacao_base(db, dias)
+    if conteudo is None:
+        raise HTTPException(status_code=404, detail="Nenhum carro cadastrado no molde base para gerar a ocupacao")
+    nome_arquivo = "ocupacao_semana.pdf" if semana else f"ocupacao_{dia_semana.value}.pdf"
+    return Response(
+        content=conteudo,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nome_arquivo}"'},
+    )
 
 
 @router.get("/{dia_semana}", response_model=schemas.EstruturaBaseRead)
