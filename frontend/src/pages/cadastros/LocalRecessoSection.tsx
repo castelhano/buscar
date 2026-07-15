@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useCreate, useList, useRemove, useUpdate } from "../../api/hooks";
 import type { Local, LocalRecesso } from "../../api/types";
 import ConfirmarModal from "../../components/board/ConfirmarModal";
+import { formatarData } from "../../utils/data";
 
 interface FormState {
   local_id: number | "";
@@ -110,8 +111,8 @@ export default function LocalRecessoSection() {
           {(recessos ?? []).map((r) => (
             <tr key={r.id}>
               <td>{nomeLocal(r.local_id)}</td>
-              <td>{r.data_inicio}</td>
-              <td>{r.data_fim}</td>
+              <td>{formatarData(r.data_inicio)}</td>
+              <td>{formatarData(r.data_fim)}</td>
               <td>{r.observacao ?? "-"}</td>
               <td>
                 <button className="btn btn-sm" onClick={() => editar(r)}>

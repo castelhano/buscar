@@ -40,32 +40,202 @@ button {
 }
 
 .app-nav {
-  width: 200px;
+  --app-nav-largura: 224px;
+  --app-nav-largura-colapsada: 68px;
+  width: var(--app-nav-largura);
   flex-shrink: 0;
   background: var(--cor-primaria);
   color: white;
-  padding: 1rem 0;
+  padding: 0.75rem 0 1rem;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.08);
+  transition: width 0.18s ease;
+  overflow: hidden;
 }
 
-.app-nav a {
-  display: block;
-  padding: 0.6rem 1.2rem;
+.app-nav-colapsada {
+  width: var(--app-nav-largura-colapsada);
+}
+
+.app-nav-topo {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0 0.9rem 0.9rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.app-nav-colapsada .app-nav-topo {
+  justify-content: center;
+  padding: 0 0.5rem 0.9rem;
+}
+
+.app-nav-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.16);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.app-nav-topo h1 {
+  flex: 1;
+  font-size: 1rem;
+  margin: 0;
+  color: white;
+  white-space: nowrap;
+}
+
+.app-nav-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.app-nav-toggle:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: white;
+}
+
+.app-nav-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0 0.5rem;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.app-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 7px;
   text-decoration: none;
   color: #cbd5e0;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
+  white-space: nowrap;
+  border-left: 3px solid transparent;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
-.app-nav a.active,
-.app-nav a:hover {
+.app-nav-link svg {
+  flex-shrink: 0;
+}
+
+.app-nav-link:hover {
   color: white;
   background: rgba(255, 255, 255, 0.08);
 }
 
-.app-nav h1 {
-  font-size: 1rem;
-  padding: 0 1.2rem 1rem;
-  margin: 0;
+.app-nav-link.active {
   color: white;
+  background: rgba(255, 255, 255, 0.14);
+  border-left-color: #fff;
+  font-weight: 600;
+}
+
+.app-nav-colapsada .app-nav-link {
+  justify-content: center;
+  padding: 0.6rem;
+  border-left: none;
+}
+
+.app-nav-usuario {
+  margin-top: 0.75rem;
+  padding: 0.85rem 0.9rem 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.app-nav-usuario-info {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.app-nav-colapsada .app-nav-usuario-info {
+  justify-content: center;
+}
+
+.app-nav-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.app-nav-usuario-texto {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.app-nav-usuario-nome {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: white;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-nav-usuario-papel {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: capitalize;
+}
+
+.app-nav-sair {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f1d4d0;
+  border-radius: 7px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.8rem;
+  width: 100%;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.app-nav-sair:hover {
+  background: var(--cor-perigo);
+  border-color: var(--cor-perigo);
+  color: white;
+}
+
+.app-nav-colapsada .app-nav-sair {
+  width: 32px;
+  height: 32px;
+  padding: 0;
 }
 
 .app-content {

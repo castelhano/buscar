@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import type { Local, Regiao, UsuarioExcecao } from "../../api/types";
 import ConfirmarModal from "../../components/board/ConfirmarModal";
+import { formatarData } from "../../utils/data";
 
 interface Props {
   usuarioId: number;
@@ -99,11 +100,6 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
   function cancelarEdicao() {
     setEditandoId(null);
     setForm(vazio);
-  }
-
-  function formatarData(data: string): string {
-    const [ano, mes, dia] = data.split("-");
-    return `${dia}/${mes}/${ano.slice(2)}`;
   }
 
   const removerMutation = useMutation({

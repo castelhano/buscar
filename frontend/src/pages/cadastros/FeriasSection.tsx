@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useCreate, useList, useRemove, useUpdate } from "../../api/hooks";
 import type { Condutor, CondutorFerias } from "../../api/types";
 import ConfirmarModal from "../../components/board/ConfirmarModal";
+import { formatarData } from "../../utils/data";
 
 interface FormState {
   condutor_id: number | "";
@@ -106,8 +107,8 @@ export default function FeriasSection() {
           {(ferias ?? []).map((f) => (
             <tr key={f.id}>
               <td>{nomeCondutor(f.condutor_id)}</td>
-              <td>{f.data_inicio}</td>
-              <td>{f.data_fim}</td>
+              <td>{formatarData(f.data_inicio)}</td>
+              <td>{formatarData(f.data_fim)}</td>
               <td>{f.observacao ?? "-"}</td>
               <td>
                 <button className="btn btn-sm" onClick={() => editar(f)}>
