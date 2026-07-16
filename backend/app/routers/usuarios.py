@@ -178,13 +178,6 @@ def listar_excecoes(usuario_id: int, db: Session = Depends(get_db)):
 )
 def criar_excecao(usuario_id: int, payload: schemas.UsuarioExcecaoCreate, db: Session = Depends(get_db)):
     _get_usuario_ou_404(db, usuario_id)
-    existente = (
-        db.query(models.UsuarioExcecao)
-        .filter(models.UsuarioExcecao.usuario_id == usuario_id, models.UsuarioExcecao.data == payload.data)
-        .first()
-    )
-    if existente is not None:
-        raise HTTPException(status_code=409, detail="Usuario ja possui excecao cadastrada para essa data")
     excecao = models.UsuarioExcecao(usuario_id=usuario_id, **payload.model_dump())
     db.add(excecao)
     db.commit()

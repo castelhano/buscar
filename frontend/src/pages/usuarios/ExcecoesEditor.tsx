@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
-import type { Local, Regiao, UsuarioExcecao } from "../../api/types";
+import type { Local, OperacaoExcecao, Regiao, UsuarioExcecao } from "../../api/types";
 import ConfirmarModal from "../../components/board/ConfirmarModal";
 import { formatarData } from "../../utils/data";
 
@@ -14,8 +14,9 @@ interface Props {
 }
 
 interface FormState {
-  data: string;
-  suspenso: boolean;
+  data_inicio: string;
+  data_fim: string;
+  operacao: OperacaoExcecao;
   saida: string;
   retorno: string;
   origem: string;
@@ -25,9 +26,16 @@ interface FormState {
   motivo: string;
 }
 
+const rotulosOperacao: Record<OperacaoExcecao, string> = {
+  Adicao: "Incluir atendimento extra",
+  Modificacao: "Alterar atendimento",
+  Suspensao: "Suspender atendimento",
+};
+
 const vazio: FormState = {
-  data: "",
-  suspenso: false,
+  data_inicio: "",
+  data_fim: "",
+  operacao: "Modificacao",
   saida: "",
   retorno: "",
   origem: "",
@@ -50,15 +58,18 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
   }
 
   function payload() {
+    const suspenso = form.operacao === "Suspensao";
     return {
-      data: form.data,
-      suspenso: form.suspenso,
-      saida: form.suspenso ? null : form.saida || null,
-      retorno: form.suspenso ? null : form.retorno || null,
-      origem: form.suspenso ? null : form.origem || null,
-      regiao_origem_id: form.suspenso || form.regiao_origem_id === "" ? null : form.regiao_origem_id,
-      destino_id: form.suspenso || form.destino_id === "" ? null : form.destino_id,
-      acompanhante: form.suspenso ? null : form.acompanhante,
+      data_inicio: form.data_inicio,
+      data_fim: form.data_fim || form.data_inicio,
+      operacao: form.operacao,
+      tipo: "Eventual",
+      saida: suspenso ? null : form.saida || null,
+      retorno: suspenso ? null : form.retorno || null,
+      origem: suspenso ? null : form.origem || null,
+      regiao_origem_id: suspenso || form.regiao_origem_id === "" ? null : form.regiao_origem_id,
+      destino_id: suspenso || form.destino_id === "" ? null : form.destino_id,
+      acompanhante: suspenso ? null : form.acompanhante,
       motivo: form.motivo || null,
     };
   }
@@ -78,15 +89,16 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
   });
 
   function adicionar() {
-    if (!form.data) return;
+    if (!form.data_inicio) return;
     salvarMutation.mutate();
   }
 
   function editar(e: UsuarioExcecao) {
     setEditandoId(e.id);
     setForm({
-      data: e.data,
-      suspenso: e.suspenso,
+      data_inicio: e.data_inicio,
+      data_fim: e.data_fim,
+      operacao: e.operacao,
       saida: e.saida ?? "",
       retorno: e.retorno ?? "",
       origem: e.origem ?? "",
@@ -116,21 +128,44 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
     <div>
       <h4>Exceções</h4>
       <p style={{ fontSize: "0.8rem", color: "var(--cor-texto-suave)", marginTop: 0 }}>
-        Para um dia especifico: suspender o atendimento ou trocar horario/local so naquela data. Tambem serve pra um
-        atendimento avulso (usuario sem agenda fixa nesse dia da semana): preenchendo horario/local aqui, a excecao
-        sozinha ja garante a geracao naquela data, sem precisar cadastrar agenda semanal pra isso.
+        Para um intervalo de datas (data fim vazia = mesma data do inicio): suspender o atendimento, alterar
+        horario/local do atendimento atual, ou incluir um atendimento extra mantendo o Fixo original. Tambem serve
+        pra um atendimento avulso (usuario sem agenda fixa nesse dia da semana): preenchendo horario/local aqui, a
+        excecao sozinha ja garante a geracao nessas datas, sem precisar cadastrar agenda semanal pra isso.
       </p>
       {!somenteLeitura && (
         <div className="linha-toolbar">
           <div className="campo">
-            <label>Data</label>
-            <input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
+            <label>Data inicio</label>
+            <input
+              type="date"
+              value={form.data_inicio}
+              onChange={(e) => setForm({ ...form, data_inicio: e.target.value })}
+            />
           </div>
-          <label style={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
-            <input type="checkbox" checked={form.suspenso} onChange={(e) => setForm({ ...form, suspenso: e.target.checked })} />
-            Suspender atendimento nesse dia
-          </label>
-          {!form.suspenso && (
+          <div className="campo">
+            <label>Data fim</label>
+            <input
+              type="date"
+              value={form.data_fim}
+              placeholder={form.data_inicio}
+              onChange={(e) => setForm({ ...form, data_fim: e.target.value })}
+            />
+          </div>
+          <div className="campo">
+            <label>Operacao</label>
+            <select
+              value={form.operacao}
+              onChange={(e) => setForm({ ...form, operacao: e.target.value as OperacaoExcecao })}
+            >
+              {(Object.keys(rotulosOperacao) as OperacaoExcecao[]).map((op) => (
+                <option key={op} value={op}>
+                  {rotulosOperacao[op]}
+                </option>
+              ))}
+            </select>
+          </div>
+          {form.operacao !== "Suspensao" && (
             <>
               <input type="time" value={form.saida} onChange={(e) => setForm({ ...form, saida: e.target.value })} title="Saida" />
               <input type="time" value={form.retorno} onChange={(e) => setForm({ ...form, retorno: e.target.value })} title="Retorno" />
@@ -184,6 +219,7 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
         <thead>
           <tr>
             <th>Data</th>
+            <th>Operacao</th>
             <th>Situacao</th>
             <th>Destino</th>
             <th>Motivo</th>
@@ -193,8 +229,12 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
         <tbody>
           {excecoes.map((e) => (
             <tr key={e.id}>
-              <td>{formatarData(e.data)}</td>
-              <td>{e.suspenso ? <span className="tag tag-inativo">Suspenso</span> : `${e.saida ?? "-"} / ${e.retorno ?? "-"}`}</td>
+              <td>
+                {formatarData(e.data_inicio)}
+                {e.data_fim !== e.data_inicio ? ` a ${formatarData(e.data_fim)}` : ""}
+              </td>
+              <td>{rotulosOperacao[e.operacao]}</td>
+              <td>{e.operacao === "Suspensao" ? <span className="tag tag-inativo">Suspenso</span> : `${e.saida ?? "-"} / ${e.retorno ?? "-"}`}</td>
               <td>{e.destino_id ? locais.find((l) => l.id === e.destino_id)?.nome ?? "-" : "-"}</td>
               <td>{e.motivo ?? "-"}</td>
               <td>
@@ -216,7 +256,7 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
       {removendo && (
         <ConfirmarModal
           titulo="Remover excecao"
-          mensagem={`Deseja realmente remover a excecao de ${formatarData(removendo.data)}?`}
+          mensagem={`Deseja realmente remover a excecao de ${formatarData(removendo.data_inicio)}?`}
           onFechar={() => setRemovendo(null)}
           onConfirmar={() => removerMutation.mutate(removendo.id)}
         />

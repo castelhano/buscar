@@ -55,6 +55,12 @@ class TipoAtendimento(str, enum.Enum):
     EVENTUAL = "Eventual"
 
 
+class OperacaoExcecao(str, enum.Enum):
+    ADICAO = "Adicao"
+    MODIFICACAO = "Modificacao"
+    SUSPENSAO = "Suspensao"
+
+
 class DiaSemana(str, enum.Enum):
     SEG = "SEG"
     TER = "TER"
@@ -280,25 +286,36 @@ class UsuarioAgendaSemanal(Base):
 
 
 class UsuarioExcecao(Base):
-    """Excecao pontual (uma data especifica), nao recorrente.
+    """Excecao pontual (um intervalo de datas), nao recorrente.
 
-    Ex: nesse dia o local de destino muda so daquela vez, ou o usuario nao tem
-    atendimento (suspenso=True) por algum motivo isolado. Padroes recorrentes
-    (ex: toda sexta e diferente) devem virar uma linha em UsuarioAgendaSemanal,
-    nao uma excecao.
+    `operacao` define o que a excecao faz nesse intervalo:
+    - SUSPENSAO: usuario nao tem atendimento (equivalente ao antigo
+      suspenso=True); os demais campos de override sao ignorados.
+    - MODIFICACAO: substitui o atendimento Fixo campo a campo onde a excecao
+      tiver valor preenchido (comportamento historico da excecao).
+    - ADICAO: inclui um atendimento extra, mantendo o Fixo original (quando
+      existir) intacto -- os dois coexistem no dia (ver `montar_pernas`).
 
-    Tambem cobre o atendimento avulso (uma vez na vida, sem nenhuma linha em
+    Padroes recorrentes (ex: toda sexta e diferente) devem virar uma linha em
+    UsuarioAgendaSemanal, nao uma excecao.
+
+    Tambem cobre o atendimento avulso (sem nenhuma linha em
     UsuarioAgendaSemanal pro dia da semana): nesse caso a excecao sozinha
-    descreve o dia inteiro (ver `app.services.geracao._agendas_do_dia`), sem
-    precisar cadastrar um padrao semanal so pra uma unica ocorrencia.
+    descreve o(s) dia(s) (ver `app.services.geracao._agendas_do_dia`), sem
+    precisar cadastrar um padrao semanal so pra essa ocorrencia.
+
+    Intervalos de excecoes do mesmo usuario podem se sobrepor sem validacao
+    (igual ao resto do sistema); quando sobrepoem, `_agendas_do_dia` resolve
+    pegando a excecao de maior id (mais recente) pra cada dia.
     """
 
     __tablename__ = "usuario_excecao"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     usuario_id: Mapped[int] = mapped_column(ForeignKey("usuario.id"))
-    data: Mapped[dt.date] = mapped_column(Date)
-    suspenso: Mapped[bool] = mapped_column(default=False)
+    data_inicio: Mapped[dt.date] = mapped_column(Date)
+    data_fim: Mapped[dt.date] = mapped_column(Date)
+    operacao: Mapped[OperacaoExcecao] = mapped_column(_enum(OperacaoExcecao), default=OperacaoExcecao.MODIFICACAO)
     tipo: Mapped[TipoAtendimento | None] = mapped_column(_enum(TipoAtendimento), nullable=True)
     saida: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
     retorno: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
@@ -311,10 +328,6 @@ class UsuarioExcecao(Base):
     usuario: Mapped["Usuario"] = relationship(back_populates="excecoes")
     regiao_origem: Mapped["Regiao | None"] = relationship()
     destino: Mapped["Local | None"] = relationship()
-
-    __table_args__ = (
-        UniqueConstraint("usuario_id", "data", name="uq_usuario_excecao_data"),
-    )
 
 
 # --------------------------------------------------------------------------

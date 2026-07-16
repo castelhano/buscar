@@ -11,6 +11,7 @@ from app.models import (
     GrupoBase,
     Local,
     LocalRecesso,
+    OperacaoExcecao,
     PeriodoCondutor,
     Sentido,
     StatusAtendimentoDia,
@@ -68,21 +69,31 @@ def agendas_fixo_da_semana(db: Session, dia_semana: DiaSemana) -> list[UsuarioAg
 
 def _agendas_do_dia(db: Session, data: dt.date):
     """Agendas Fixo/ativas do dia da semana de `data` mais TODAS as
-    `UsuarioExcecao` cadastradas pra essa data -- inclusive de usuarios sem
-    nenhuma linha de agenda nesse dia da semana (atendimento avulso, ver
-    `montar_pernas`) -- com os locais em recesso vigentes nessa data. Base
-    comum usada tanto pela geracao quanto pelo diagnostico de
-    desconsiderados.
+    `UsuarioExcecao` cujo intervalo [data_inicio, data_fim] cobre essa data --
+    inclusive de usuarios sem nenhuma linha de agenda nesse dia da semana
+    (atendimento avulso, ver `montar_pernas`) -- com os locais em recesso
+    vigentes nessa data. Base comum usada tanto pela geracao quanto pelo
+    diagnostico de desconsiderados.
+
+    Excecoes do mesmo usuario com intervalos sobrepostos nao sao validadas na
+    escrita (ver `UsuarioExcecao`); quando isso acontece, a de maior id
+    (mais recente) vence.
     """
     dia_semana = dia_semana_from_date(data)
     agendas = agendas_fixo_da_semana(db, dia_semana)
-    excecoes = {
-        e.usuario_id: e
-        for e in db.query(UsuarioExcecao)
+    excecoes: dict[int, UsuarioExcecao] = {}
+    for e in (
+        db.query(UsuarioExcecao)
         .join(Usuario, UsuarioExcecao.usuario_id == Usuario.id)
         .options(joinedload(UsuarioExcecao.usuario))
-        .filter(UsuarioExcecao.data == data, Usuario.status == StatusAtivoInativo.ATIVO)
-    }
+        .filter(
+            UsuarioExcecao.data_inicio <= data,
+            UsuarioExcecao.data_fim >= data,
+            Usuario.status == StatusAtivoInativo.ATIVO,
+        )
+        .order_by(UsuarioExcecao.id.desc())
+    ):
+        excecoes.setdefault(e.usuario_id, e)
     locais_em_recesso = {
         row[0]
         for row in db.query(LocalRecesso.local_id).filter(
@@ -101,7 +112,7 @@ def _motivo_desconsideracao(
     aqui). `agenda` pode ser None no atendimento avulso (so excecao, sem
     nenhuma linha de agenda pro dia da semana).
     """
-    if excecao and excecao.suspenso:
+    if excecao and excecao.operacao == OperacaoExcecao.SUSPENSAO:
         return f"Excecao de usuario: suspenso nesse dia ({excecao.motivo})" if excecao.motivo else "Excecao de usuario: suspenso nesse dia"
 
     destino_id = excecao.destino_id if excecao and excecao.destino_id else (agenda.destino_id if agenda else None)
@@ -219,6 +230,10 @@ def montar_pernas(
     `_adicionar_pernas`), mesmo sem ter nenhuma linha de `UsuarioAgendaSemanal`
     nesse dia da semana -- cobre o atendimento avulso (uma vez na vida) sem
     precisar cadastrar um padrao semanal so pra essa ocorrencia.
+
+    Quando a excecao e do tipo ADICAO e o usuario tem agenda Fixo, as duas
+    pernas coexistem (Fixo original + excecao), em vez da excecao substituir o
+    Fixo campo a campo como no MODIFICACAO.
     """
     pernas_por_regiao: dict[int, list[dict]] = defaultdict(list)
     usuarios_com_agenda: set[int] = set()
@@ -226,6 +241,18 @@ def montar_pernas(
     for agenda in agendas:
         usuarios_com_agenda.add(agenda.usuario_id)
         excecao = excecoes.get(agenda.usuario_id)
+        if excecao is not None and excecao.operacao == OperacaoExcecao.ADICAO:
+            motivo_fixo = _motivo_desconsideracao(agenda, None, locais_em_recesso)
+            if motivo_fixo is None:
+                _adicionar_pernas(pernas_por_regiao, agenda.id, agenda.usuario, agenda, None, locais_regiao)
+            else:
+                print(f"[geracao] usuario_id={agenda.usuario_id}: {motivo_fixo}, Fixo ficou de fora (excecao ADICAO mantida)")
+            motivo_excecao = _motivo_desconsideracao(None, excecao, locais_em_recesso)
+            if motivo_excecao is None:
+                _adicionar_pernas(pernas_por_regiao, -excecao.id, agenda.usuario, None, excecao, locais_regiao)
+            else:
+                print(f"[geracao] usuario_id={agenda.usuario_id}: {motivo_excecao}, excecao ADICAO ficou de fora")
+            continue
         motivo = _motivo_desconsideracao(agenda, excecao, locais_em_recesso)
         if motivo is not None:
             print(f"[geracao] usuario_id={agenda.usuario_id}: {motivo}, ficou de fora")

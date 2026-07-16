@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.models import (
     DiaSemana,
+    OperacaoExcecao,
     PapelConta,
     PeriodoCondutor,
     Sentido,
@@ -166,9 +167,10 @@ class UsuarioAgendaSemanalRead(ORMModel):
 
 
 class UsuarioExcecaoCreate(BaseModel):
-    data: dt.date
-    suspenso: bool = False
-    tipo: TipoAtendimento | None = None
+    data_inicio: dt.date
+    data_fim: dt.date
+    operacao: OperacaoExcecao = OperacaoExcecao.MODIFICACAO
+    tipo: TipoAtendimento | None = TipoAtendimento.EVENTUAL
     saida: dt.time | None = None
     retorno: dt.time | None = None
     origem: str | None = None
@@ -181,8 +183,9 @@ class UsuarioExcecaoCreate(BaseModel):
 class UsuarioExcecaoRead(ORMModel):
     id: int
     usuario_id: int
-    data: dt.date
-    suspenso: bool
+    data_inicio: dt.date
+    data_fim: dt.date
+    operacao: OperacaoExcecao
     tipo: TipoAtendimento | None
     saida: dt.time | None
     retorno: dt.time | None

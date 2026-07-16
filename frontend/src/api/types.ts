@@ -3,6 +3,7 @@ export type StatusVeiculo = "Ativo" | "Inativo" | "Manutencao";
 export type StatusCondutor = "Ativo" | "Desligado" | "Afastado";
 export type PeriodoCondutor = "Manha" | "Tarde";
 export type TipoAtendimento = "Fixo" | "Eventual";
+export type OperacaoExcecao = "Adicao" | "Modificacao" | "Suspensao";
 export type DiaSemana = "SEG" | "TER" | "QUA" | "QUI" | "SEX" | "SAB" | "DOM";
 export type TipoLocal = "Escola" | "Fisioterapia" | "Equoterapia" | "Trabalho" | "Hemodialise" | "Medico" | "Outros";
 export type Sentido = "Ida" | "Retorno";
@@ -114,8 +115,9 @@ export interface UsuarioAgendaSemanal {
 export interface UsuarioExcecao {
   id: number;
   usuario_id: number;
-  data: string;
-  suspenso: boolean;
+  data_inicio: string;
+  data_fim: string;
+  operacao: OperacaoExcecao;
   tipo: TipoAtendimento | null;
   saida: string | null;
   retorno: string | null;
