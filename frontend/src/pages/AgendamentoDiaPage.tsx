@@ -132,6 +132,11 @@ export default function AgendamentoDiaPage() {
     queryKey: ["sem-vaga", data],
     queryFn: () => api.get<ViagemDiaPassageiro[]>("/viagens/sem-vaga", { data }),
   });
+  const travamentoQuery = useQuery({
+    queryKey: ["travamento", data],
+    queryFn: () => api.get<{ data: string; travado: boolean; travado_em: string | null }>("/viagens/travamento", { data }),
+  });
+  const travado = travamentoQuery.data?.travado ?? false;
 
   const estruturaBaseQuery = useQuery({
     queryKey: ["estrutura-base", diaSemanaBase],
@@ -265,6 +270,14 @@ export default function AgendamentoDiaPage() {
     mutationFn: () => api.delete("/viagens/limpar", { data }),
     onSuccess: invalidarDia,
   });
+  const travarDia = useMutation({
+    mutationFn: () => api.post("/viagens/travar", undefined, { data }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["travamento", data] }),
+  });
+  const destravarDia = useMutation({
+    mutationFn: () => api.post("/viagens/destravar", undefined, { data }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["travamento", data] }),
+  });
 
   function mensagemErro(e: unknown, fallback: string): string {
     return e instanceof Error ? e.message : fallback;
@@ -306,6 +319,7 @@ export default function AgendamentoDiaPage() {
   const [modalRemoverPassageiro, setModalRemoverPassageiro] = useState<number | null>(null);
   const [modalEditarPassageiro, setModalEditarPassageiro] = useState<ViagemDiaPassageiro | null>(null);
   const [modalLimparDia, setModalLimparDia] = useState(false);
+  const [modalDestravarDia, setModalDestravarDia] = useState(false);
   const [modalOrdemIndice, setModalOrdemIndice] = useState<number | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -385,6 +399,8 @@ export default function AgendamentoDiaPage() {
   function handleDragEnd(evento: DragEndEvent) {
     const { active, over } = evento;
     if (!over) return;
+
+    if (modo === "dia" && travado) return;
 
     if (modo === "base") {
       const activeData = active.data.current as ItemBase | undefined;
@@ -528,7 +544,22 @@ export default function AgendamentoDiaPage() {
           </div>
         )}
 
-        {modo === "dia" && diaTemAlgumRegistro && (
+        {modo === "dia" && diaTemAlgumRegistro && !travado && (
+          <button
+            className="btn"
+            onClick={() => travarDia.mutate(undefined, { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao travar o dia")) })}
+            disabled={travarDia.isPending}
+            title="Trava o agendamento desse dia, impedindo edicao nao intencional"
+          >
+            Travar
+          </button>
+        )}
+        {modo === "dia" && travado && (
+          <button className="btn btn-primario" onClick={() => setModalDestravarDia(true)} disabled={destravarDia.isPending}>
+            Destravar
+          </button>
+        )}
+        {modo === "dia" && diaTemAlgumRegistro && !travado && (
           <button className="btn btn-perigo" onClick={() => setModalLimparDia(true)} disabled={limparDia.isPending}>
             Limpar
           </button>
@@ -562,7 +593,7 @@ export default function AgendamentoDiaPage() {
             Ocupacao
           </button>
         )}
-        {modo === "dia" && (
+        {modo === "dia" && !travado && (
           <button className="btn" onClick={() => setModalAbrirCarro(true)}>
             + Abrir carro
           </button>
@@ -629,21 +660,28 @@ export default function AgendamentoDiaPage() {
                   onMoverEsquerda={() => moverBloco(indice, indice - 1)}
                   onMoverDireita={() => moverBloco(indice, indice + 1)}
                   onEditarPosicao={() => setModalOrdemIndice(indice)}
-                  onAdicionarPassageiro={setModalAdicionar}
-                  onRemoverPassageiro={setModalRemoverPassageiro}
-                  onCancelarPassageiro={setModalCancelar}
+                  onAdicionarPassageiro={travado ? undefined : setModalAdicionar}
+                  onRemoverPassageiro={travado ? undefined : setModalRemoverPassageiro}
+                  onCancelarPassageiro={travado ? undefined : setModalCancelar}
                   onEditarPassageiro={setModalEditarPassageiro}
-                  onAtribuir={setModalAtribuir}
-                  onLimparCondutorVeiculo={(viagemIds) =>
-                    limparCondutorVeiculo.mutate(viagemIds, {
-                      onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao limpar condutor/veiculo")),
-                    })
+                  onAtribuir={travado ? undefined : setModalAtribuir}
+                  onLimparCondutorVeiculo={
+                    travado
+                      ? undefined
+                      : (viagemIds) =>
+                          limparCondutorVeiculo.mutate(viagemIds, {
+                            onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao limpar condutor/veiculo")),
+                          })
                   }
-                  onRemoverViagem={(id) =>
-                    removerViagem.mutate(id, {
-                      onError: (e: unknown) => setErro(mensagemErro(e, "Nao foi possivel remover a viagem")),
-                    })
+                  onRemoverViagem={
+                    travado
+                      ? undefined
+                      : (id) =>
+                          removerViagem.mutate(id, {
+                            onError: (e: unknown) => setErro(mensagemErro(e, "Nao foi possivel remover a viagem")),
+                          })
                   }
+                  bloqueado={travado}
                 />
               ))}
             </div>
@@ -653,8 +691,8 @@ export default function AgendamentoDiaPage() {
                 passageiros={semVagaQuery.data}
                 locais={locais ?? []}
                 regioes={regioes ?? []}
-                onRemover={setModalRemoverPassageiro}
-                onCancelar={setModalCancelar}
+                onRemover={travado ? undefined : setModalRemoverPassageiro}
+                onCancelar={travado ? undefined : setModalCancelar}
                 onEditar={setModalEditarPassageiro}
               />
             )}
@@ -853,6 +891,20 @@ export default function AgendamentoDiaPage() {
         />
       )}
 
+      {modalDestravarDia && (
+        <ConfirmarModal
+          titulo="Destravar agendamento do dia"
+          mensagem="Destravar esse dia permite editar novamente o agendamento (mover passageiros, trocar condutor/veiculo, reordenar carros etc). Confirma?"
+          onFechar={() => setModalDestravarDia(false)}
+          onConfirmar={() =>
+            destravarDia.mutate(undefined, {
+              onSuccess: () => setModalDestravarDia(false),
+              onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao destravar o dia")),
+            })
+          }
+        />
+      )}
+
       {modalOrdemIndice !== null && (
         <ReordenarPosicaoModal
           posicaoAtual={modalOrdemIndice + 1}
@@ -881,8 +933,9 @@ export default function AgendamentoDiaPage() {
 
       {modalEditarPassageiro !== null && (
         <AdicionarPassageiroModal
-          titulo="Editar atendimento"
+          titulo={travado ? "Detalhes do atendimento" : "Editar atendimento"}
           textoConfirmar="Salvar edicao"
+          somenteLeitura={travado}
           diaSemana={diaSemanaFromData(data)}
           usuarioFixo={{ id: modalEditarPassageiro.usuario_id, nome: modalEditarPassageiro.usuario.nome }}
           valoresIniciais={{

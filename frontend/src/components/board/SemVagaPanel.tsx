@@ -7,8 +7,8 @@ interface Props {
   passageiros: ViagemDiaPassageiro[];
   locais: Local[];
   regioes: Regiao[];
-  onRemover: (id: number) => void;
-  onCancelar: (id: number) => void;
+  onRemover?: (id: number) => void;
+  onCancelar?: (id: number) => void;
   onEditar: (passageiro: ViagemDiaPassageiro) => void;
 }
 

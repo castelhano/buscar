@@ -319,6 +319,12 @@ class ReordenarBlocosPayload(BaseModel):
     ancora_ids: list[int]
 
 
+class DiaTravadoRead(BaseModel):
+    data: dt.date
+    travado: bool
+    travado_em: dt.datetime | None = None
+
+
 # --------------------------------------------------------------------------
 # Modo Base (molde por dia da semana): grupos/viagens/membros curados
 # manualmente -- a geracao real tenta materializar cada grupo como um carro

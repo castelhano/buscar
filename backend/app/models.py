@@ -445,6 +445,17 @@ class ViagemDia(Base):
     )
 
 
+class DiaTravado(Base):
+    """Marca uma data como travada: bloqueia edicao do agendamento gerado pra
+    esse dia (evita alteracao nao intencional apos o dia estar fechado).
+    """
+
+    __tablename__ = "dia_travado"
+
+    data: Mapped[dt.date] = mapped_column(Date, primary_key=True)
+    travado_em: Mapped[dt.datetime] = mapped_column(default=dt.datetime.utcnow)
+
+
 class ViagemDiaPassageiro(Base):
     """Um usuario dentro de uma ViagemDia (o card de passageiro na tela de agendamento).
 

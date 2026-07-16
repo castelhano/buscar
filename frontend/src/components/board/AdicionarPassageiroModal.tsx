@@ -35,6 +35,8 @@ interface Props {
   valoresIniciais?: Partial<PassageiroFormValores>;
   /** Dia da semana da viagem, pra sugerir os dados do Eventual cadastrado do usuario (so na insercao nova). */
   diaSemana: DiaSemana;
+  /** Dia travado: mostra os dados so pra consulta, sem permitir edicao. */
+  somenteLeitura?: boolean;
 }
 
 export default function AdicionarPassageiroModal({
@@ -45,6 +47,7 @@ export default function AdicionarPassageiroModal({
   usuarioFixo,
   valoresIniciais,
   diaSemana,
+  somenteLeitura = false,
 }: Props) {
   useLockBodyScroll();
   const { data: usuarios } = useList<Usuario>("usuarios", "/usuarios", { status: "Ativo" });
@@ -102,7 +105,11 @@ export default function AdicionarPassageiroModal({
             {usuarioFixo ? (
               <input value={usuarioFixo.nome} disabled />
             ) : (
-              <select value={usuarioId} onChange={(e) => setUsuarioId(e.target.value ? Number(e.target.value) : "")}>
+              <select
+                value={usuarioId}
+                disabled={somenteLeitura}
+                onChange={(e) => setUsuarioId(e.target.value ? Number(e.target.value) : "")}
+              >
                 <option value="">Selecione</option>
                 {(usuarios ?? []).map((u) => (
                   <option key={u.id} value={u.id}>
@@ -114,12 +121,12 @@ export default function AdicionarPassageiroModal({
           </div>
           <div className="campo">
             <label>Sentido</label>
-            <select value={sentido} onChange={(e) => setSentido(e.target.value as Sentido)}>
+            <select value={sentido} disabled={somenteLeitura} onChange={(e) => setSentido(e.target.value as Sentido)}>
               <option value="Ida">Ida</option>
               <option value="Retorno">Retorno</option>
             </select>
           </div>
-          {eventuais.length > 0 && (
+          {!somenteLeitura && eventuais.length > 0 && (
             <div className="campo">
               <label>Eventual cadastrado pra esse dia</label>
               <div style={{ display: "flex", gap: "0.3rem", flexWrap: "wrap" }}>
@@ -134,15 +141,24 @@ export default function AdicionarPassageiroModal({
           )}
           <div className="campo">
             <label>Hora</label>
-            <input type="time" value={hora} onChange={(e) => setHora(e.target.value)} />
+            <input type="time" value={hora} disabled={somenteLeitura} onChange={(e) => setHora(e.target.value)} />
           </div>
           <div className="campo">
             <label>Origem</label>
-            <input value={origem} onChange={(e) => setOrigem(e.target.value)} placeholder="Endereco de origem" />
+            <input
+              value={origem}
+              disabled={somenteLeitura}
+              onChange={(e) => setOrigem(e.target.value)}
+              placeholder="Endereco de origem"
+            />
           </div>
           <div className="campo">
             <label>Regiao de origem</label>
-            <select value={regiaoOrigemId} onChange={(e) => setRegiaoOrigemId(e.target.value ? Number(e.target.value) : "")}>
+            <select
+              value={regiaoOrigemId}
+              disabled={somenteLeitura}
+              onChange={(e) => setRegiaoOrigemId(e.target.value ? Number(e.target.value) : "")}
+            >
               <option value="">Selecione</option>
               {(regioes ?? []).map((r) => (
                 <option key={r.id} value={r.id}>
@@ -153,7 +169,11 @@ export default function AdicionarPassageiroModal({
           </div>
           <div className="campo">
             <label>Destino</label>
-            <select value={destinoId} onChange={(e) => setDestinoId(e.target.value ? Number(e.target.value) : "")}>
+            <select
+              value={destinoId}
+              disabled={somenteLeitura}
+              onChange={(e) => setDestinoId(e.target.value ? Number(e.target.value) : "")}
+            >
               <option value="">Selecione</option>
               {(locais ?? []).map((l) => (
                 <option key={l.id} value={l.id}>
@@ -163,20 +183,27 @@ export default function AdicionarPassageiroModal({
             </select>
           </div>
           <label style={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
-            <input type="checkbox" checked={acompanhante} onChange={(e) => setAcompanhante(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={acompanhante}
+              disabled={somenteLeitura}
+              onChange={(e) => setAcompanhante(e.target.checked)}
+            />
             Acompanhante (ocupa 2 lugares no veiculo)
           </label>
           <div className="campo">
             <label>Observacoes</label>
-            <textarea rows={3} value={observacoes} onChange={(e) => setObservacoes(e.target.value)} />
+            <textarea rows={3} value={observacoes} disabled={somenteLeitura} onChange={(e) => setObservacoes(e.target.value)} />
           </div>
         </div>
         <div className="linha-toolbar" style={{ marginTop: "1rem" }}>
-          <button className="btn btn-primario" onClick={confirmar}>
-            {textoConfirmar}
-          </button>
+          {!somenteLeitura && (
+            <button className="btn btn-primario" onClick={confirmar}>
+              {textoConfirmar}
+            </button>
+          )}
           <button className="btn" onClick={onFechar}>
-            Cancelar
+            {somenteLeitura ? "Fechar" : "Cancelar"}
           </button>
         </div>
       </div>

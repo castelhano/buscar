@@ -37,6 +37,26 @@ def _get_passageiro_ou_404(db: Session, passageiro_id: int) -> models.ViagemDiaP
     return passageiro
 
 
+def _verificar_dia_destravado(db: Session, data: dt.date) -> None:
+    """Bloqueia mutacoes num dia travado (ver /travar) -- protege contra
+    edicao nao intencional depois que o agendamento do dia foi fechado.
+    """
+    if db.get(models.DiaTravado, data) is not None:
+        raise HTTPException(status_code=409, detail="Dia travado: destrave para editar o agendamento")
+
+
+def _verificar_viagem_destravada(db: Session, viagem: models.ViagemDia) -> None:
+    _verificar_dia_destravado(db, viagem.data)
+
+
+def _verificar_passageiro_destravado(db: Session, passageiro: models.ViagemDiaPassageiro) -> None:
+    if passageiro.viagem_dia_id is not None:
+        viagem = _get_viagem_ou_404(db, passageiro.viagem_dia_id)
+        _verificar_dia_destravado(db, viagem.data)
+    elif passageiro.data is not None:
+        _verificar_dia_destravado(db, passageiro.data)
+
+
 def _verificar_conflito(
     db: Session, viagem_dia_id: int, usuario_id: int, sentido: models.Sentido, excluir_passageiro_id: int | None = None
 ) -> None:
@@ -216,8 +236,32 @@ def listar_viagens(data: dt.date, db: Session = Depends(get_db)):
     return [_serializar_viagem(v, contexto) for v in viagens_do_dia]
 
 
+@router.get("/travamento", response_model=schemas.DiaTravadoRead)
+def obter_travamento(data: dt.date, db: Session = Depends(get_db)):
+    travamento = db.get(models.DiaTravado, data)
+    return schemas.DiaTravadoRead(data=data, travado=travamento is not None, travado_em=travamento.travado_em if travamento else None)
+
+
+@router.post("/travar", response_model=schemas.DiaTravadoRead)
+def travar_dia(data: dt.date, db: Session = Depends(get_db)):
+    if db.get(models.DiaTravado, data) is None:
+        db.add(models.DiaTravado(data=data))
+        db.commit()
+    travamento = db.get(models.DiaTravado, data)
+    return schemas.DiaTravadoRead(data=data, travado=True, travado_em=travamento.travado_em)
+
+
+@router.post("/destravar", status_code=204)
+def destravar_dia(data: dt.date, db: Session = Depends(get_db)):
+    travamento = db.get(models.DiaTravado, data)
+    if travamento is not None:
+        db.delete(travamento)
+        db.commit()
+
+
 @router.post("/gerar", response_model=list[schemas.ViagemDiaRead], status_code=201)
 def gerar(data: dt.date, db: Session = Depends(get_db)):
+    _verificar_dia_destravado(db, data)
     gerar_agendamento_dia(db, data)
     viagens_do_dia = _query_viagens(db, data)
     contexto = _construir_contexto_dia(db, data, viagens_do_dia)
@@ -226,6 +270,7 @@ def gerar(data: dt.date, db: Session = Depends(get_db)):
 
 @router.post("/abrir", response_model=schemas.ViagemDiaRead, status_code=201)
 def abrir_viagem(payload: schemas.ViagemDiaAbrir, db: Session = Depends(get_db)):
+    _verificar_dia_destravado(db, payload.data)
     if db.get(models.Regiao, payload.regiao_id) is None:
         raise HTTPException(status_code=404, detail=f"Regiao {payload.regiao_id} nao encontrada")
     viagem = models.ViagemDia(
@@ -251,6 +296,7 @@ def limpar_dia(data: dt.date, db: Session = Depends(get_db)):
     sem isso, gerar/limpar/gerar de novo acumula orfaos duplicados de
     tentativas anteriores no painel de Sem Vaga.
     """
+    _verificar_dia_destravado(db, data)
     viagem_ids = [
         row[0] for row in db.query(models.ViagemDia.id).filter(models.ViagemDia.data == data).all()
     ]
@@ -268,6 +314,7 @@ def limpar_dia(data: dt.date, db: Session = Depends(get_db)):
 @router.patch("/{viagem_id}/atribuir", response_model=schemas.ViagemDiaRead)
 def atribuir_condutor_veiculo(viagem_id: int, payload: schemas.ViagemDiaAtribuir, db: Session = Depends(get_db)):
     viagem = _get_viagem_ou_404(db, viagem_id)
+    _verificar_viagem_destravada(db, viagem)
     if payload.limpar:
         viagem.condutor_id = None
         viagem.veiculo_id = None
@@ -310,6 +357,7 @@ def atribuir_condutor_veiculo_bloco(payload: schemas.ViagemDiaAtribuirBloco, db:
         raise HTTPException(status_code=400, detail="Nenhuma viagem informada")
 
     data = viagens_bloco[0].data
+    _verificar_dia_destravado(db, data)
     atual_veiculo_id = viagens_bloco[0].veiculo_id
     atual_empresa_id = viagens_bloco[0].empresa_id
     atual_condutor_id = viagens_bloco[0].condutor_id
@@ -370,6 +418,7 @@ def reordenar_blocos(payload: schemas.ReordenarBlocosPayload, db: Session = Depe
     que ser a ancora do bloco (a perna com grupo_viagem_id nulo), que e onde
     a ordem fica gravada.
     """
+    _verificar_dia_destravado(db, payload.data)
     ids_unicos = list(dict.fromkeys(payload.ancora_ids))
     viagens = db.query(models.ViagemDia).filter(models.ViagemDia.id.in_(ids_unicos)).all()
     por_id = {v.id: v for v in viagens}
@@ -390,6 +439,7 @@ def reordenar_blocos(payload: schemas.ReordenarBlocosPayload, db: Session = Depe
 @router.patch("/{viagem_id}/status", response_model=schemas.ViagemDiaRead)
 def alterar_status_viagem(viagem_id: int, status: models.StatusViagemDia, db: Session = Depends(get_db)):
     viagem = _get_viagem_ou_404(db, viagem_id)
+    _verificar_viagem_destravada(db, viagem)
     viagem.status = status
     db.commit()
     db.refresh(viagem)
@@ -399,6 +449,7 @@ def alterar_status_viagem(viagem_id: int, status: models.StatusViagemDia, db: Se
 @router.delete("/{viagem_id}", status_code=204)
 def remover_viagem(viagem_id: int, db: Session = Depends(get_db)):
     viagem = _get_viagem_ou_404(db, viagem_id)
+    _verificar_viagem_destravada(db, viagem)
     if viagem.passageiros:
         raise HTTPException(status_code=409, detail="Mova ou remova os passageiros antes de remover a viagem")
     # Se a viagem removida for a ancora do grupo (grupo_viagem_id nulo), as
@@ -422,6 +473,7 @@ def remover_viagem(viagem_id: int, db: Session = Depends(get_db)):
 @router.post("/{viagem_id}/passageiros", response_model=schemas.ViagemDiaRead, status_code=201)
 def adicionar_passageiro(viagem_id: int, payload: schemas.ViagemDiaPassageiroCreate, db: Session = Depends(get_db)):
     viagem = _get_viagem_ou_404(db, viagem_id)
+    _verificar_viagem_destravada(db, viagem)
     if db.get(models.Usuario, payload.usuario_id) is None:
         raise HTTPException(status_code=404, detail=f"Usuario {payload.usuario_id} nao encontrado")
     _verificar_conflito(db, viagem_id, payload.usuario_id, payload.sentido)
@@ -438,6 +490,7 @@ def adicionar_passageiro(viagem_id: int, payload: schemas.ViagemDiaPassageiroCre
 @router.patch("/passageiros/{passageiro_id}", response_model=schemas.ViagemDiaRead | schemas.ViagemDiaPassageiroRead)
 def atualizar_passageiro(passageiro_id: int, payload: schemas.ViagemDiaPassageiroAtualizar, db: Session = Depends(get_db)):
     passageiro = _get_passageiro_ou_404(db, passageiro_id)
+    _verificar_passageiro_destravado(db, passageiro)
     dados = payload.model_dump(exclude_unset=True)
     if "sentido" in dados and passageiro.viagem_dia_id is not None:
         _verificar_conflito(db, passageiro.viagem_dia_id, passageiro.usuario_id, dados["sentido"], passageiro.id)
@@ -462,7 +515,9 @@ def mover_passageiro(passageiro_id: int, payload: schemas.ViagemDiaPassageiroMov
     persistir a sequencia visual (drag dentro da mesma leva reordena so).
     """
     passageiro = _get_passageiro_ou_404(db, passageiro_id)
-    _get_viagem_ou_404(db, payload.viagem_dia_destino_id)
+    _verificar_passageiro_destravado(db, passageiro)
+    viagem_destino = _get_viagem_ou_404(db, payload.viagem_dia_destino_id)
+    _verificar_dia_destravado(db, viagem_destino.data)
 
     irmaos = (
         db.query(models.ViagemDiaPassageiro)
@@ -504,7 +559,9 @@ def mover_passageiro_para_bloco(
     on-the-fly se o carro ainda nao tiver uma pro horario dele.
     """
     passageiro = _get_passageiro_ou_404(db, passageiro_id)
+    _verificar_passageiro_destravado(db, passageiro)
     ancora = _get_viagem_ou_404(db, payload.bloco_id)
+    _verificar_dia_destravado(db, ancora.data)
     bloco_id = ancora.grupo_viagem_id or ancora.id
 
     viagens_bloco = (
@@ -573,6 +630,7 @@ def alterar_status_passageiro(
     passageiro_id: int, status: models.StatusAtendimentoDia, observacoes: str | None = None, db: Session = Depends(get_db)
 ):
     passageiro = _get_passageiro_ou_404(db, passageiro_id)
+    _verificar_passageiro_destravado(db, passageiro)
     passageiro.status = status
     if observacoes is not None:
         passageiro.observacoes = observacoes
@@ -586,6 +644,7 @@ def alterar_status_passageiro(
 @router.delete("/passageiros/{passageiro_id}", response_model=schemas.ViagemDiaRead | schemas.ViagemDiaPassageiroRead)
 def remover_passageiro(passageiro_id: int, db: Session = Depends(get_db)):
     passageiro = _get_passageiro_ou_404(db, passageiro_id)
+    _verificar_passageiro_destravado(db, passageiro)
     viagem_id = passageiro.viagem_dia_id
     dados_orfao = _serializar_passageiro_orfao(passageiro) if viagem_id is None else None
     db.delete(passageiro)
@@ -712,6 +771,7 @@ def baixar_resumo_dia(data: dt.date, db: Session = Depends(get_db)):
 
 @router.post("/sobras/condutor/{condutor_id}/folga", response_model=schemas.FrequenciaRead)
 def marcar_folga(condutor_id: int, data: dt.date, db: Session = Depends(get_db)):
+    _verificar_dia_destravado(db, data)
     if db.get(models.Condutor, condutor_id) is None:
         raise HTTPException(status_code=404, detail=f"Condutor {condutor_id} nao encontrado")
     frequencia = (

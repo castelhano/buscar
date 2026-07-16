@@ -23,6 +23,9 @@ interface Props {
   onAtribuir?: (dados: { viagemIds: number[]; condutorAtualId: number | null; veiculoAtualId: number | null }) => void;
   onLimparCondutorVeiculo?: (viagemIds: number[]) => void;
   onRemoverViagem?: (viagemId: number) => void;
+  /** Dia travado: desabilita reposicionamento do carro (Editar, Cancelar,
+   * Adicionar, etc ja saem desligados via ausencia dos handlers acima). */
+  bloqueado?: boolean;
 }
 
 export default function CarroCard({
@@ -46,6 +49,7 @@ export default function CarroCard({
   onAtribuir,
   onLimparCondutorVeiculo,
   onRemoverViagem,
+  bloqueado = false,
 }: Props) {
   const pernas = [...viagens].sort((a, b) => {
     const horaA = a.passageiros[0]?.hora ?? a.horario_saida;
@@ -83,19 +87,25 @@ export default function CarroCard({
         <button
           type="button"
           className="btn btn-sm"
-          disabled={posicao <= 1}
+          disabled={bloqueado || posicao <= 1}
           title="Mover carro para tras"
           onClick={onMoverEsquerda}
         >
           ←
         </button>
-        <button type="button" className="badge-ordem" title="Definir posicao" onClick={onEditarPosicao}>
+        <button
+          type="button"
+          className="badge-ordem"
+          disabled={bloqueado}
+          title={bloqueado ? "Dia travado" : "Definir posicao"}
+          onClick={onEditarPosicao}
+        >
           {posicao}/{totalNoPeriodo}
         </button>
         <button
           type="button"
           className="btn btn-sm"
-          disabled={posicao >= totalNoPeriodo}
+          disabled={bloqueado || posicao >= totalNoPeriodo}
           title="Mover carro para frente"
           onClick={onMoverDireita}
         >
