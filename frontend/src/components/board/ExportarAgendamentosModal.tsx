@@ -12,16 +12,15 @@ interface Props {
 export default function ExportarAgendamentosModal({ data, opcoes, onFechar, onErro }: Props) {
   useLockBodyScroll();
   const [selecionado, setSelecionado] = useState("");
+  const [formato, setFormato] = useState<"pdf" | "png">("png");
 
   function gerar() {
     const [tipo, id] = selecionado.split("-");
-    const download =
-      selecionado === ""
-        ? api.download("/viagens/agendamentos/zip", { data })
-        : api.download("/viagens/agendamentos/pdf", {
-            data,
-            ...(tipo === "c" ? { condutor_id: Number(id) } : { bloco_id: Number(id) }),
-          });
+    const caminho = selecionado === "" ? `/viagens/agendamentos/zip${formato === "png" ? "-png" : ""}` : `/viagens/agendamentos/${formato}`;
+    const download = api.download(caminho, {
+      data,
+      ...(selecionado !== "" ? (tipo === "c" ? { condutor_id: Number(id) } : { bloco_id: Number(id) }) : {}),
+    });
     download.catch((e: unknown) => onErro(e instanceof Error ? e.message : "Erro ao baixar agendamentos"));
     onFechar();
   }
@@ -39,6 +38,13 @@ export default function ExportarAgendamentosModal({ data, opcoes, onFechar, onEr
                 {o.label}
               </option>
             ))}
+          </select>
+        </div>
+        <div className="campo">
+          <label>Formato</label>
+          <select value={formato} onChange={(e) => setFormato(e.target.value as "pdf" | "png")}>
+            <option value="pdf">PDF</option>
+            <option value="png">Imagem (PNG)</option>
           </select>
         </div>
         <div className="linha-toolbar" style={{ marginTop: "1rem" }}>

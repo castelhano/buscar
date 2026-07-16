@@ -13,7 +13,10 @@ from app.services.exportacao import (
     gerar_pdf_agendamento_bloco,
     gerar_pdf_agendamento_condutor,
     gerar_pdf_resumo_dia,
+    gerar_png_agendamento_bloco,
+    gerar_png_agendamento_condutor,
     gerar_zip_agendamentos,
+    gerar_zip_agendamentos_png,
     nome_arquivo_seguro,
 )
 from app.services.frequencia import INTERVALO_PADRAO_POR_PERIODO
@@ -753,6 +756,44 @@ def baixar_agendamento_condutor(
         content=conteudo,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{nome_arquivo}.pdf"'},
+    )
+
+
+@router.get("/agendamentos/zip-png")
+def baixar_agendamentos_png(data: dt.date, db: Session = Depends(get_db)):
+    conteudo = gerar_zip_agendamentos_png(db, data)
+    if conteudo is None:
+        raise HTTPException(status_code=404, detail="Nenhuma viagem gerada para essa data")
+    nome_arquivo = f"agendamentos_{data.isoformat()}.zip"
+    return Response(
+        content=conteudo,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{nome_arquivo}"'},
+    )
+
+
+@router.get("/agendamentos/png")
+def baixar_agendamento_condutor_png(
+    data: dt.date, condutor_id: int | None = None, bloco_id: int | None = None, db: Session = Depends(get_db)
+):
+    if condutor_id is not None:
+        condutor = db.get(models.Condutor, condutor_id)
+        if condutor is None:
+            raise HTTPException(status_code=404, detail=f"Condutor {condutor_id} nao encontrado")
+        conteudo = gerar_png_agendamento_condutor(db, data, condutor_id)
+        nome_arquivo = nome_arquivo_seguro(f"{condutor.matricula}_{condutor.apelido or condutor.nome}")
+    elif bloco_id is not None:
+        conteudo = gerar_png_agendamento_bloco(db, data, bloco_id)
+        nome_arquivo = f"Indefinido_{bloco_id}"
+    else:
+        raise HTTPException(status_code=400, detail="Informe condutor_id ou bloco_id")
+
+    if conteudo is None:
+        raise HTTPException(status_code=404, detail="Nenhuma viagem encontrada para essa data")
+    return Response(
+        content=conteudo,
+        media_type="image/png",
+        headers={"Content-Disposition": f'attachment; filename="{nome_arquivo}.png"'},
     )
 
 

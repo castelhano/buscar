@@ -3,8 +3,10 @@ import datetime as dt
 import io
 import re
 import zipfile
+from dataclasses import dataclass
 from xml.sax.saxutils import escape
 
+from PIL import Image, ImageDraw, ImageFont
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -30,16 +32,16 @@ from app.services.geracao import CORTE_PERIODO_TARDE
 from app.services.recursos import fim_turno_condutor, fim_viagem
 
 _ESTILOS = getSampleStyleSheet()
-_ESTILO_CABECALHO_DIA = ParagraphStyle("CabecalhoDia", parent=_ESTILOS["Normal"], fontName="Helvetica-Bold", fontSize=13, leading=16)
-_ESTILO_CABECALHO_CONDUTOR = ParagraphStyle("CabecalhoCondutor", parent=_ESTILOS["Normal"], fontName="Helvetica-Bold", fontSize=10.5, leading=13)
+_ESTILO_CABECALHO_DIA = ParagraphStyle("CabecalhoDia", parent=_ESTILOS["Normal"], fontName="Helvetica-Bold", fontSize=16, leading=19)
+_ESTILO_CABECALHO_CONDUTOR = ParagraphStyle("CabecalhoCondutor", parent=_ESTILOS["Normal"], fontName="Helvetica-Bold", fontSize=13, leading=16)
 # Celulas de texto longo (Usuario/Origem/Destino/Observacoes) usam Paragraph em
 # vez de string pura -- string pura e desenhada com drawString (uma linha so,
 # sem quebra), o texto longo vazava da celula. Com Paragraph o ReportLab quebra
 # respeitando a largura da coluna e a Table recalcula a altura da linha sozinha.
-_ESTILO_CELULA = ParagraphStyle("Celula", parent=_ESTILOS["Normal"], fontName="Helvetica", fontSize=9, leading=11)
+_ESTILO_CELULA = ParagraphStyle("Celula", parent=_ESTILOS["Normal"], fontName="Helvetica", fontSize=11, leading=13)
 # Endereco detalhado (Usuario.detalhe / Local.observacao) e um complemento do
 # texto principal da celula, exibido menor pra nao competir com ele.
-_TAMANHO_FONTE_DETALHE = 7
+_TAMANHO_FONTE_DETALHE = 9
 
 _DIAS_SEMANA_PT = {
     0: "segunda-feira",
@@ -56,10 +58,6 @@ def nome_arquivo_seguro(nome: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "_", nome).strip("_") or "sem_nome"
 
 
-def _celula(texto: str) -> Paragraph:
-    return Paragraph(escape(texto), _ESTILO_CELULA)
-
-
 def _com_detalhe(texto: str, detalhe: str | None) -> Paragraph:
     """Texto principal da celula + endereco detalhado numa linha extra, menor."""
     html = escape(texto)
@@ -68,20 +66,18 @@ def _com_detalhe(texto: str, detalhe: str | None) -> Paragraph:
     return Paragraph(html, _ESTILO_CELULA)
 
 
-def _celula_origem(passageiro: ViagemDiaPassageiro) -> Paragraph:
+def _dados_origem(passageiro: ViagemDiaPassageiro) -> tuple[str, str | None]:
     if passageiro.sentido == Sentido.RETORNO:
         destino = passageiro.destino
-        return _com_detalhe(destino.nome if destino else "-", None)
-    detalhe = passageiro.usuario.detalhe
-    return _com_detalhe(passageiro.origem or "-", detalhe)
+        return (destino.nome if destino else "-", None)
+    return (passageiro.origem or "-", passageiro.usuario.detalhe)
 
 
-def _celula_destino(passageiro: ViagemDiaPassageiro) -> Paragraph:
+def _dados_destino(passageiro: ViagemDiaPassageiro) -> tuple[str, str | None]:
     if passageiro.sentido == Sentido.RETORNO:
-        return _com_detalhe(passageiro.origem or "-", None)
+        return (passageiro.origem or "-", None)
     destino = passageiro.destino
-    detalhe = destino.observacao if destino else None
-    return _com_detalhe(destino.nome if destino else "-", detalhe)
+    return (destino.nome if destino else "-", destino.observacao if destino else None)
 
 
 def _hora_referencia(viagem: ViagemDia) -> dt.time:
@@ -89,27 +85,34 @@ def _hora_referencia(viagem: ViagemDia) -> dt.time:
     return min(horas) if horas else viagem.horario_saida
 
 
-def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.time] | None = None) -> bytes:
-    """Um PDF por condutor/dia, com todas as viagens (legs) dele numa unica
-    tabela continua, na ordem cronologica -- reflete o mesmo agrupamento por
-    condutor usado na tela de agendamento do dia.
+# Celula generica: texto principal + detalhe opcional (endereco/observacao,
+# exibido menor). Linha do intervalo usa uma unica celula (texto, None) na
+# coluna 0 e o resto vazio -- quem renderiza (PDF ou PNG) faz o merge visual.
+_Celula = tuple[str, str | None]
+
+
+@dataclass
+class _DadosCondutorDia:
+    titulo_dia: str
+    titulo_condutor: str
+    linhas: list[list[_Celula]]
+    limites_leg: list[int]
+    linha_intervalo: int | None
+
+
+def _montar_dados_condutor_dia(
+    viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.time] | None = None
+) -> _DadosCondutorDia:
+    """Monta o conteudo da tabela de agendamento (cabecalhos + linhas) de um
+    condutor/dia, com todas as viagens (legs) dele numa unica tabela continua,
+    na ordem cronologica -- reflete o mesmo agrupamento por condutor usado na
+    tela de agendamento do dia. Usado tanto pelo PDF quanto pelo PNG.
 
     A primeira linha da tabela e o "Acesso" (saida da garagem, uma unica vez
     no dia); as legs seguintes emendam direto, sem nova saida de garagem --
     uma borda mais grossa so marca a troca de horario/leg. O intervalo do
     condutor entra como uma linha mesclada na posicao cronologica correta.
     """
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=landscape(A4),
-        topMargin=1.2 * cm,
-        bottomMargin=1.2 * cm,
-        leftMargin=1.5 * cm,
-        rightMargin=1.5 * cm,
-    )
-    elementos = []
-
     pernas = sorted(viagens, key=_hora_referencia)
     primeira = pernas[0]
     ultima = pernas[-1]
@@ -121,25 +124,18 @@ def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.tim
     hora_fim = fim_turno_condutor(ultima).strftime("%H:%M")
     dia_semana_nome = _DIAS_SEMANA_PT[primeira.data.weekday()]
 
-    elementos.append(
-        Paragraph(
-            f"{primeira.data.strftime('%d/%m/%Y')} ({dia_semana_nome}) - {regiao.nome if regiao else '-'}",
-            _ESTILO_CABECALHO_DIA,
-        )
+    titulo_dia = f"{primeira.data.strftime('%d/%m/%Y')} ({dia_semana_nome}) - {regiao.nome if regiao else '-'}"
+    titulo_condutor = (
+        f"{condutor.matricula if condutor else '-'} {condutor.nome if condutor else '-'} "
+        f"{hora_inicio} - {hora_fim} | VEICULO: {veiculo.prefixo if veiculo else '-'}"
     )
-    elementos.append(
-        Paragraph(
-            f"{condutor.matricula if condutor else '-'} {condutor.nome if condutor else '-'} "
-            f"{hora_inicio} - {hora_fim} | VEICULO: {veiculo.prefixo if veiculo else '-'}",
-            _ESTILO_CABECALHO_CONDUTOR,
-        )
-    )
-    elementos.append(Spacer(1, 0.4 * cm))
 
     empresa_garagem = veiculo.empresa.nome if veiculo and veiculo.empresa else (primeira.empresa.nome if primeira.empresa else "-")
 
-    linhas: list[list] = [["Hora", "Usuario", "Sentido", "Origem", "Destino", "Observacoes"]]
-    linhas.append([hora_inicio, "--", "Acesso", _celula(empresa_garagem), "-", ""])
+    linhas: list[list[_Celula]] = [
+        [("Hora", None), ("Usuario", None), ("Sentido", None), ("Origem", None), ("Destino", None), ("Observacoes", None)]
+    ]
+    linhas.append([(hora_inicio, None), ("--", None), ("Acesso", None), (empresa_garagem, None), ("-", None), ("", None)])
 
     limites_leg: list[int] = []
     linha_intervalo: int | None = None
@@ -155,17 +151,17 @@ def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.tim
             observacoes = passageiro.observacoes or ""
             if passageiro.status == StatusAtendimentoDia.EM_ANALISE:
                 observacoes = (f"[EM ANALISE] {observacoes}").strip()
-            nome = passageiro.usuario.nome
+            nome = passageiro.usuario.abbr or passageiro.usuario.nome
             if passageiro.acompanhante:
                 nome = f"{nome} + ACOMP"
             linhas.append(
                 [
-                    passageiro.hora.strftime("%H:%M"),
-                    _celula(nome),
-                    passageiro.sentido.value,
-                    _celula_origem(passageiro),
-                    _celula_destino(passageiro),
-                    _celula(observacoes) if observacoes else "",
+                    (passageiro.hora.strftime("%H:%M"), None),
+                    (nome, None),
+                    (passageiro.sentido.value, None),
+                    _dados_origem(passageiro),
+                    _dados_destino(passageiro),
+                    (observacoes, None),
                 ]
             )
 
@@ -174,14 +170,52 @@ def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.tim
             cabe_antes_da_proxima = proxima is None or intervalo[1] <= proxima.horario_saida
             if intervalo[0] >= fim_viagem(viagem) and cabe_antes_da_proxima:
                 linha_intervalo = len(linhas)
-                linhas.append(
-                    [f"INTERVALO {intervalo[0].strftime('%H:%M')} as {intervalo[1].strftime('%H:%M')}", "", "", "", "", ""]
-                )
+                texto_intervalo = f"INTERVALO {intervalo[0].strftime('%H:%M')} as {intervalo[1].strftime('%H:%M')}"
+                linhas.append([(texto_intervalo, None), ("", None), ("", None), ("", None), ("", None), ("", None)])
                 intervalo_inserido = True
 
     if not intervalo_inserido:
         linha_intervalo = len(linhas)
-        linhas.append([f"INTERVALO {intervalo[0].strftime('%H:%M')} as {intervalo[1].strftime('%H:%M')}", "", "", "", "", ""])
+        texto_intervalo = f"INTERVALO {intervalo[0].strftime('%H:%M')} as {intervalo[1].strftime('%H:%M')}"
+        linhas.append([(texto_intervalo, None), ("", None), ("", None), ("", None), ("", None), ("", None)])
+
+    # Caixa alta em tudo -- facilita a leitura rapida do condutor durante a viagem.
+    return _DadosCondutorDia(
+        titulo_dia=titulo_dia.upper(),
+        titulo_condutor=titulo_condutor.upper(),
+        linhas=[[(texto.upper(), detalhe.upper() if detalhe else detalhe) for texto, detalhe in linha] for linha in linhas],
+        limites_leg=limites_leg,
+        linha_intervalo=linha_intervalo,
+    )
+
+
+def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.time] | None = None) -> bytes:
+    """Renderiza os dados de `_montar_dados_condutor_dia` como PDF (reportlab)."""
+    dados = _montar_dados_condutor_dia(viagens, intervalo)
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        topMargin=1.2 * cm,
+        bottomMargin=1.2 * cm,
+        leftMargin=1.5 * cm,
+        rightMargin=1.5 * cm,
+    )
+    elementos = []
+    elementos.append(Paragraph(dados.titulo_dia, _ESTILO_CABECALHO_DIA))
+    elementos.append(Paragraph(dados.titulo_condutor, _ESTILO_CABECALHO_CONDUTOR))
+    elementos.append(Spacer(1, 0.4 * cm))
+
+    limites_leg = dados.limites_leg
+    linha_intervalo = dados.linha_intervalo
+
+    linhas: list[list] = [[texto for texto, _ in dados.linhas[0]]]
+    for indice, linha in enumerate(dados.linhas[1:], start=1):
+        if indice == linha_intervalo:
+            linhas.append([texto for texto, _ in linha])
+        else:
+            linhas.append([_com_detalhe(texto, detalhe) if texto or detalhe else "" for texto, detalhe in linha])
 
     tabela = Table(linhas, colWidths=[2 * cm, 6.5 * cm, 2.3 * cm, 5.4 * cm, 5.4 * cm, 5.1 * cm], repeatRows=1)
     estilos = [
@@ -189,7 +223,7 @@ def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.tim
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("FONTSIZE", (0, 0), (-1, -1), 11),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f4f4")]),
     ]
@@ -204,6 +238,182 @@ def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.tim
     elementos.append(tabela)
 
     doc.build(elementos)
+    return buffer.getvalue()
+
+
+# --------------------------------------------------------------------------
+# PNG (mesma tabela do PDF, mas so a area de interesse, com margem pequena --
+# util pra colar num chat/WhatsApp sem o "papel" A4 em volta).
+# --------------------------------------------------------------------------
+
+_PNG_COL_LARGURAS = [90, 300, 105, 245, 245, 235]  # px, mesma proporcao das colWidths do PDF
+_PNG_MARGEM = 14
+_PNG_PADDING_CELULA = 6
+_PNG_COR_CABECALHO_BG = (45, 55, 72)  # #2d3748
+_PNG_COR_CABECALHO_TXT = (255, 255, 255)
+_PNG_COR_LINHA_PAR = (244, 244, 244)  # #f4f4f4
+_PNG_COR_LINHA_IMPAR = (255, 255, 255)
+_PNG_COR_INTERVALO_BG = (226, 232, 240)  # #e2e8f0
+_PNG_COR_GRADE = (128, 128, 128)
+_PNG_COR_TEXTO = (0, 0, 0)
+
+
+def _fonte_png(negrito: bool, tamanho: int) -> ImageFont.FreeTypeFont:
+    caminhos = (
+        ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
+        if negrito
+        else ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
+    )
+    for caminho in caminhos:
+        try:
+            return ImageFont.truetype(caminho, tamanho)
+        except OSError:
+            continue
+    return ImageFont.load_default(size=tamanho)
+
+
+def _quebrar_texto(texto: str, fonte: ImageFont.FreeTypeFont, largura_max: float) -> list[str]:
+    linhas: list[str] = []
+    for paragrafo in texto.splitlines() or [""]:
+        palavras = paragrafo.split(" ")
+        atual = ""
+        for palavra in palavras:
+            candidata = f"{atual} {palavra}".strip()
+            if fonte.getlength(candidata) <= largura_max or not atual:
+                atual = candidata
+            else:
+                linhas.append(atual)
+                atual = palavra
+        linhas.append(atual)
+    return linhas or [""]
+
+
+def _png_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.time] | None = None) -> bytes:
+    """Renderiza os dados de `_montar_dados_condutor_dia` como PNG, recortado
+    so na area da tabela (sem margem de pagina A4 como no PDF)."""
+    dados = _montar_dados_condutor_dia(viagens, intervalo)
+
+    fonte_titulo_dia = _fonte_png(True, 24)
+    fonte_titulo_condutor = _fonte_png(True, 20)
+    fonte_cabecalho = _fonte_png(True, 18)
+    fonte_celula = _fonte_png(False, 18)
+    fonte_detalhe = _fonte_png(False, 14)
+
+    largura_tabela = sum(_PNG_COL_LARGURAS)
+    largura_total = largura_tabela + 2 * _PNG_MARGEM
+
+    def altura_texto(fonte: ImageFont.FreeTypeFont) -> int:
+        bbox = fonte.getbbox("Ag")
+        return bbox[3] - bbox[1]
+
+    linha_intervalo = dados.linha_intervalo
+    linhas_layout: list[tuple[int, list[list[str]], list[list[str]]]] = []
+    for indice, linha in enumerate(dados.linhas):
+        if indice == linha_intervalo:
+            texto0 = linha[0][0]
+            n_linhas = max(1, len(_quebrar_texto(texto0, fonte_celula, largura_tabela - 2 * _PNG_PADDING_CELULA)))
+            altura = 2 * _PNG_PADDING_CELULA + n_linhas * (altura_texto(fonte_celula) + 4)
+            linhas_layout.append((altura, [], []))
+            continue
+        if indice == 0:
+            fonte = fonte_cabecalho
+            maior_altura = 0
+            linhas_texto_cabecalho: list[list[str]] = []
+            for coluna, (texto, _detalhe) in enumerate(linha):
+                largura_util = _PNG_COL_LARGURAS[coluna] - 2 * _PNG_PADDING_CELULA
+                texto_quebrado = _quebrar_texto(texto, fonte, largura_util)
+                linhas_texto_cabecalho.append(texto_quebrado)
+                maior_altura = max(maior_altura, 2 * _PNG_PADDING_CELULA + len(texto_quebrado) * (altura_texto(fonte) + 3))
+            linhas_layout.append((maior_altura, linhas_texto_cabecalho, []))
+            continue
+        linhas_texto: list[list[str]] = []
+        linhas_detalhe: list[list[str]] = []
+        maior_altura = 0
+        for coluna, (texto, detalhe) in enumerate(linha):
+            largura_util = _PNG_COL_LARGURAS[coluna] - 2 * _PNG_PADDING_CELULA
+            texto_quebrado = _quebrar_texto(texto, fonte_celula, largura_util) if texto else [""]
+            detalhe_quebrado = _quebrar_texto(detalhe, fonte_detalhe, largura_util) if detalhe else []
+            linhas_texto.append(texto_quebrado)
+            linhas_detalhe.append(detalhe_quebrado)
+            altura_coluna = (
+                2 * _PNG_PADDING_CELULA
+                + len(texto_quebrado) * (altura_texto(fonte_celula) + 3)
+                + len(detalhe_quebrado) * (altura_texto(fonte_detalhe) + 3)
+            )
+            maior_altura = max(maior_altura, altura_coluna)
+        linhas_layout.append((maior_altura, linhas_texto, linhas_detalhe))
+
+    altura_titulos = (
+        altura_texto(fonte_titulo_dia) + 6 + altura_texto(fonte_titulo_condutor) + 16
+    )
+    altura_tabela = sum(altura for altura, _, _ in linhas_layout)
+    altura_total = 2 * _PNG_MARGEM + altura_titulos + altura_tabela
+
+    imagem = Image.new("RGB", (largura_total, altura_total), (255, 255, 255))
+    desenho = ImageDraw.Draw(imagem)
+
+    y = _PNG_MARGEM
+    desenho.text((_PNG_MARGEM, y), dados.titulo_dia, font=fonte_titulo_dia, fill=_PNG_COR_TEXTO)
+    y += altura_texto(fonte_titulo_dia) + 6
+    desenho.text((_PNG_MARGEM, y), dados.titulo_condutor, font=fonte_titulo_condutor, fill=_PNG_COR_TEXTO)
+    y += altura_texto(fonte_titulo_condutor) + 16
+
+    for indice, (linha, (altura, linhas_texto, linhas_detalhe)) in enumerate(zip(dados.linhas, linhas_layout)):
+        eh_cabecalho = indice == 0
+        eh_intervalo = indice == linha_intervalo
+        x0 = _PNG_MARGEM
+        if eh_cabecalho:
+            desenho.rectangle([x0, y, x0 + largura_tabela, y + altura], fill=_PNG_COR_CABECALHO_BG)
+        elif eh_intervalo:
+            desenho.rectangle([x0, y, x0 + largura_tabela, y + altura], fill=_PNG_COR_INTERVALO_BG)
+        else:
+            cor_fundo = _PNG_COR_LINHA_IMPAR if indice % 2 == 1 else _PNG_COR_LINHA_PAR
+            desenho.rectangle([x0, y, x0 + largura_tabela, y + altura], fill=cor_fundo)
+
+        if eh_intervalo:
+            texto0 = linha[0][0]
+            largura_linha = fonte_celula.getlength(texto0)
+            xc = x0 + (largura_tabela - largura_linha) / 2
+            desenho.text((xc, y + _PNG_PADDING_CELULA), texto0, font=fonte_celula, fill=_PNG_COR_TEXTO)
+        elif eh_cabecalho:
+            x = x0
+            for coluna, largura_col in enumerate(_PNG_COL_LARGURAS):
+                ty = y + _PNG_PADDING_CELULA
+                for texto_linha in linhas_texto[coluna]:
+                    desenho.text((x + _PNG_PADDING_CELULA, ty), texto_linha, font=fonte_cabecalho, fill=_PNG_COR_CABECALHO_TXT)
+                    ty += altura_texto(fonte_cabecalho) + 3
+                x += largura_col
+        else:
+            x = x0
+            for coluna, largura_col in enumerate(_PNG_COL_LARGURAS):
+                ty = y + _PNG_PADDING_CELULA
+                for texto_linha in linhas_texto[coluna]:
+                    desenho.text((x + _PNG_PADDING_CELULA, ty), texto_linha, font=fonte_celula, fill=_PNG_COR_TEXTO)
+                    ty += altura_texto(fonte_celula) + 3
+                for detalhe_linha in linhas_detalhe[coluna]:
+                    desenho.text((x + _PNG_PADDING_CELULA, ty), detalhe_linha, font=fonte_detalhe, fill=(90, 90, 90))
+                    ty += altura_texto(fonte_detalhe) + 3
+                x += largura_col
+
+        # grade vertical entre colunas -- na linha do intervalo as colunas sao
+        # mescladas visualmente (igual ao SPAN do PDF), so a borda externa fica.
+        x = x0
+        if eh_intervalo:
+            desenho.line([(x0, y), (x0, y + altura)], fill=_PNG_COR_GRADE, width=1)
+        else:
+            for largura_col in _PNG_COL_LARGURAS:
+                desenho.line([(x, y), (x, y + altura)], fill=_PNG_COR_GRADE, width=1)
+                x += largura_col
+        desenho.line([(x0 + largura_tabela, y), (x0 + largura_tabela, y + altura)], fill=_PNG_COR_GRADE, width=1)
+
+        borda_grossa = indice in dados.limites_leg
+        desenho.line([(x0, y), (x0 + largura_tabela, y)], fill=_PNG_COR_CABECALHO_BG if borda_grossa else _PNG_COR_GRADE, width=2 if borda_grossa else 1)
+        y += altura
+
+    desenho.line([(_PNG_MARGEM, y), (_PNG_MARGEM + largura_tabela, y)], fill=_PNG_COR_GRADE, width=1)
+
+    buffer = io.BytesIO()
+    imagem.save(buffer, format="PNG")
     return buffer.getvalue()
 
 
@@ -292,6 +502,43 @@ def gerar_pdf_agendamento_bloco(db: Session, data: dt.date, bloco_id: int) -> by
     if not viagens:
         return None
     return _pdf_condutor_dia(viagens, None)
+
+
+def gerar_zip_agendamentos_png(db: Session, data: dt.date) -> bytes | None:
+    viagens = _viagens_do_dia(db, data)
+    if not viagens:
+        return None
+
+    buffer = io.BytesIO()
+    indefinido_seq = 0
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for pernas in _agrupar_para_exportacao(viagens):
+            condutor = pernas[0].condutor
+            if condutor is not None:
+                intervalo = intervalo_do_condutor(db, condutor.id, data)
+                nome_arquivo = nome_arquivo_seguro(f"{condutor.matricula}_{condutor.apelido or condutor.nome}")
+            else:
+                intervalo = None
+                indefinido_seq += 1
+                nome_arquivo = f"Indefinido_{indefinido_seq}"
+            zip_file.writestr(f"{nome_arquivo}.png", _png_condutor_dia(pernas, intervalo))
+    return buffer.getvalue()
+
+
+def gerar_png_agendamento_condutor(db: Session, data: dt.date, condutor_id: int) -> bytes | None:
+    viagens = _viagens_do_dia(db, data, condutor_id=condutor_id)
+    if not viagens:
+        return None
+    intervalo = intervalo_do_condutor(db, condutor_id, data)
+    return _png_condutor_dia(viagens, intervalo)
+
+
+def gerar_png_agendamento_bloco(db: Session, data: dt.date, bloco_id: int) -> bytes | None:
+    """Carro sem condutor atribuido -- ver `gerar_pdf_agendamento_bloco`."""
+    viagens = _viagens_do_dia(db, data, bloco_id=bloco_id)
+    if not viagens:
+        return None
+    return _png_condutor_dia(viagens, None)
 
 
 # --------------------------------------------------------------------------
