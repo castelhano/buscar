@@ -171,6 +171,10 @@ def alterar_hora_viagem(db: Session, viagem_id: int, nova_hora: dt.time) -> DiaS
     cada membro (saida/retorno conforme o sentido) -- ao contrario de
     `mover_membro`, aqui e o horario que muda pra bater com o carro, nao o
     contrario.
+
+    Se ja existir uma viagem no mesmo carro/sentido/horario de destino, os
+    membros sao fundidos nela (a viagem original, que ficaria orfa, e
+    removida) em vez de bloquear a alteracao.
     """
     viagem = db.get(ViagemBase, viagem_id)
     if viagem is None:
@@ -189,8 +193,6 @@ def alterar_hora_viagem(db: Session, viagem_id: int, nova_hora: dt.time) -> DiaS
         )
         .first()
     )
-    if conflito is not None:
-        raise ValueError("Ja existe uma viagem nesse sentido/horario nesse carro")
 
     for membro in viagem.membros:
         if viagem.sentido == Sentido.IDA:
@@ -198,7 +200,18 @@ def alterar_hora_viagem(db: Session, viagem_id: int, nova_hora: dt.time) -> DiaS
         else:
             membro.agenda.retorno = nova_hora
 
-    viagem.hora = nova_hora
+    if conflito is not None:
+        maior_ordem = db.query(func.max(MembroViagemBase.ordem)).filter(
+            MembroViagemBase.viagem_base_id == conflito.id
+        ).scalar() or 0
+        for indice, membro in enumerate(list(viagem.membros), start=1):
+            viagem.membros.remove(membro)
+            membro.ordem = maior_ordem + indice
+            conflito.membros.append(membro)
+        db.delete(viagem)
+    else:
+        viagem.hora = nova_hora
+
     db.commit()
     return dia_semana
 
