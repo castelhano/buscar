@@ -32,7 +32,7 @@ def upgrade() -> None:
         )
 
     op.execute("UPDATE usuario_excecao SET data_inicio = data, data_fim = data")
-    op.execute("UPDATE usuario_excecao SET operacao = CASE WHEN suspenso THEN 'Suspensao' ELSE 'Modificacao' END")
+    op.execute("UPDATE usuario_excecao SET operacao = CASE WHEN suspenso THEN 'SUSPENSAO' ELSE 'MODIFICACAO' END")
 
     with op.batch_alter_table('usuario_excecao', schema=None) as batch_op:
         batch_op.alter_column('data_inicio', nullable=False)
@@ -50,7 +50,7 @@ def downgrade() -> None:
         batch_op.add_column(sa.Column('suspenso', sa.Boolean(), nullable=True))
 
     op.execute("UPDATE usuario_excecao SET data = data_inicio")
-    op.execute("UPDATE usuario_excecao SET suspenso = (operacao = 'Suspensao')")
+    op.execute("UPDATE usuario_excecao SET suspenso = (operacao = 'SUSPENSAO')")
 
     with op.batch_alter_table('usuario_excecao', schema=None) as batch_op:
         batch_op.alter_column('data', nullable=False)
