@@ -5,6 +5,7 @@ import UsuariosPage from "./pages/UsuariosPage";
 import AgendamentoDiaPage from "./pages/AgendamentoDiaPage";
 import LoginPage from "./pages/LoginPage";
 import { useAuth } from "./auth/AuthContext";
+import { useAtalhosCampoData } from "./hooks/useAtalhosCampoData";
 
 const CHAVE_NAV_COLAPSADA = "buscar_nav_colapsada";
 
@@ -21,6 +22,7 @@ function iniciais(nome: string) {
 
 function App() {
   const { conta, logout } = useAuth();
+  useAtalhosCampoData();
   const [colapsada, setColapsada] = useState(() => {
     try {
       return localStorage.getItem(CHAVE_NAV_COLAPSADA) === "1";

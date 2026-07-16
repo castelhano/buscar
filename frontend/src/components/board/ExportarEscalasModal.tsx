@@ -3,6 +3,7 @@ import { api, ApiError } from "../../api/client";
 import { useList } from "../../api/hooks";
 import type { Condutor } from "../../api/types";
 import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
+import { amanhaIso } from "../../utils/data";
 
 interface Props {
   onFechar: () => void;
@@ -12,9 +13,9 @@ export default function ExportarEscalasModal({ onFechar }: Props) {
   useLockBodyScroll();
   const { data: condutores } = useList<Condutor>("condutores", "/condutores");
   const condutoresAtivos = (condutores ?? []).filter((c) => c.status === "Ativo");
-  const [inicio, setInicio] = useState("");
-  const [fim, setFim] = useState("");
-  const [formato, setFormato] = useState<"pdf" | "csv">("csv");
+  const [inicio, setInicio] = useState(amanhaIso);
+  const [fim, setFim] = useState(amanhaIso);
+  const [formato, setFormato] = useState<"pdf" | "csv">("pdf");
   const [condutorId, setCondutorId] = useState<number | "">("");
   const [erro, setErro] = useState<string | null>(null);
 
@@ -63,8 +64,8 @@ export default function ExportarEscalasModal({ onFechar }: Props) {
           <div className="campo">
             <label>Formato</label>
             <select value={formato} onChange={(e) => setFormato(e.target.value as "pdf" | "csv")}>
-              <option value="csv">CSV</option>
               <option value="pdf">PDF</option>
+              <option value="csv">CSV</option>
             </select>
           </div>
         </div>
