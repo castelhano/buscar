@@ -89,7 +89,7 @@ def exportar_escalas(
     else:
         condutores = (
             db.query(models.Condutor)
-            .filter(models.Condutor.status != models.StatusCondutor.DESLIGADO)
+            .filter(models.Condutor.status == models.StatusCondutor.ATIVO)
             .order_by(models.Condutor.nome)
             .all()
         )

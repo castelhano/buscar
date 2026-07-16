@@ -11,6 +11,7 @@ interface Props {
 export default function ExportarEscalasModal({ onFechar }: Props) {
   useLockBodyScroll();
   const { data: condutores } = useList<Condutor>("condutores", "/condutores");
+  const condutoresAtivos = (condutores ?? []).filter((c) => c.status === "Ativo");
   const [inicio, setInicio] = useState("");
   const [fim, setFim] = useState("");
   const [formato, setFormato] = useState<"pdf" | "csv">("csv");
@@ -52,7 +53,7 @@ export default function ExportarEscalasModal({ onFechar }: Props) {
             <label>Condutor</label>
             <select value={condutorId} onChange={(e) => setCondutorId(e.target.value ? Number(e.target.value) : "")}>
               <option value="">Todos</option>
-              {(condutores ?? []).map((c) => (
+              {condutoresAtivos.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.nome}
                 </option>
