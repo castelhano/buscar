@@ -3,12 +3,14 @@ import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
 
 interface Props {
   onFechar: () => void;
-  onConfirmar: (motivo: string) => void;
+  onConfirmar: (motivo: string, cancelarTodos: boolean) => void;
+  temOutrosAtendimentos?: boolean;
 }
 
-export default function CancelarPassageiroModal({ onFechar, onConfirmar }: Props) {
+export default function CancelarPassageiroModal({ onFechar, onConfirmar, temOutrosAtendimentos = true }: Props) {
   useLockBodyScroll();
   const [motivo, setMotivo] = useState("");
+  const [cancelarTodos, setCancelarTodos] = useState(true);
 
   return (
     <div className="modal-fundo" onClick={onFechar}>
@@ -24,8 +26,20 @@ export default function CancelarPassageiroModal({ onFechar, onConfirmar }: Props
             autoFocus
           />
         </div>
+        {temOutrosAtendimentos && (
+          <div className="campo">
+            <label>
+              <input
+                type="checkbox"
+                checked={cancelarTodos}
+                onChange={(e) => setCancelarTodos(e.target.checked)}
+              />{" "}
+              Cancelar todos os atendimentos
+            </label>
+          </div>
+        )}
         <div className="linha-toolbar" style={{ marginTop: "1rem" }}>
-          <button className="btn btn-perigo" onClick={() => onConfirmar(motivo)}>
+          <button className="btn btn-perigo" onClick={() => onConfirmar(motivo, cancelarTodos)}>
             Confirmar cancelamento
           </button>
           <button className="btn" onClick={onFechar}>

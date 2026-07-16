@@ -270,6 +270,28 @@ export default function AgendamentoDiaPage() {
     return e instanceof Error ? e.message : fallback;
   }
 
+  function outrosAtendimentosDoDia(passageiroId: number): ViagemDiaPassageiro[] {
+    const viagens = viagensQuery.data ?? [];
+    let atual: ViagemDiaPassageiro | null = null;
+    for (const v of viagens) {
+      const p = v.passageiros.find((p) => p.id === passageiroId);
+      if (p) {
+        atual = p;
+        break;
+      }
+    }
+    if (!atual) return [];
+    const outros: ViagemDiaPassageiro[] = [];
+    for (const v of viagens) {
+      for (const p of v.passageiros) {
+        if (p.id !== passageiroId && p.usuario_id === atual.usuario_id && p.status !== "Cancelado") {
+          outros.push(p);
+        }
+      }
+    }
+    return outros;
+  }
+
   const [modalAdicionar, setModalAdicionar] = useState<number | null>(null);
   const [modalAtribuir, setModalAtribuir] = useState<{
     viagemIds: number[];
@@ -789,15 +811,25 @@ export default function AgendamentoDiaPage() {
       {modalCancelar !== null && (
         <CancelarPassageiroModal
           onFechar={() => setModalCancelar(null)}
-          onConfirmar={(motivo) =>
+          temOutrosAtendimentos={outrosAtendimentosDoDia(modalCancelar).length > 0}
+          onConfirmar={(motivo, cancelarTodos) => {
+            const outros = cancelarTodos ? outrosAtendimentosDoDia(modalCancelar) : [];
             cancelarPassageiro.mutate(
               { id: modalCancelar, motivo },
               {
-                onSuccess: () => setModalCancelar(null),
+                onSuccess: () => {
+                  setModalCancelar(null);
+                  for (const p of outros) {
+                    cancelarPassageiro.mutate(
+                      { id: p.id, motivo },
+                      { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao cancelar outros atendimentos do passageiro")) },
+                    );
+                  }
+                },
                 onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao cancelar passageiro")),
               },
-            )
-          }
+            );
+          }}
         />
       )}
 
