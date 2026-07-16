@@ -89,10 +89,16 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
 
   const diasComDados = (estruturasQuery.data ?? []).filter(({ estrutura }) => estrutura.grupos.length > 0);
 
-  const matrizDia = useMemo(() => {
+  const matrizManha = useMemo(() => {
     if (escopo !== "dia") return null;
     const dados = diasComDados.find((d) => d.dia === diaSelecionado);
-    return dados ? montarMatrizDiaSimples(dados.estrutura.grupos) : null;
+    return dados ? montarMatrizDiaSimples(dados.estrutura.grupos, "Manha") : null;
+  }, [escopo, diasComDados, diaSelecionado]);
+
+  const matrizTarde = useMemo(() => {
+    if (escopo !== "dia") return null;
+    const dados = diasComDados.find((d) => d.dia === diaSelecionado);
+    return dados ? montarMatrizDiaSimples(dados.estrutura.grupos, "Tarde") : null;
   }, [escopo, diasComDados, diaSelecionado]);
 
   const matrizSemana = useMemo(() => {
@@ -114,7 +120,10 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
     return celula.porCarro.map((c: CarroNaCelula) => ({ titulo: labelCarroNoDia(dia, c.grupoId), viagens: c.viagens }));
   }
 
-  const semVazio = escopo === "dia" ? (matrizDia?.totalCarros ?? 0) === 0 : diasComDados.length === 0;
+  const semVazio =
+    escopo === "dia"
+      ? (matrizManha?.totalCarros ?? 0) === 0 && (matrizTarde?.totalCarros ?? 0) === 0
+      : diasComDados.length === 0;
 
   return (
     <div className="modal-fundo" onClick={onFechar}>
@@ -185,62 +194,75 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
           <p className="aviso-discreto">Nenhum carro cadastrado no molde base para essa selecao.</p>
         )}
 
-        {escopo === "dia" && matrizDia && matrizDia.totalCarros > 0 && (
-          <div className="ocupacao-matriz-wrap">
-            <table className="ocupacao-tabela">
-              <thead>
-                <tr>
-                  <th className="ocupacao-th-hora">Horario</th>
-                  {Array.from({ length: matrizDia.totalCarros }, (_, i) => (
-                    <th key={i}>Carro {i + 1}</th>
-                  ))}
-                  <th className="ocupacao-col-total">Total</th>
-                  <th className="ocupacao-col-percentual">%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {matrizDia.linhas.map((linha) => (
-                  <tr key={linha.hora}>
-                    <td className="ocupacao-td-hora">{formatarHoraCurta(linha.hora)}</td>
-                    {linha.porCarro.map((celula, indiceCarro) =>
-                      celula ? (
-                        <td key={indiceCarro}>
-                          <button
-                            type="button"
-                            className={`ocupacao-celula ocupacao-${celula.status}`}
-                            onClick={(e) =>
-                              abrirPopover(e, `Carro ${indiceCarro + 1} · ${formatarHoraCurta(linha.hora)}`, gruposPopoverCarro(celula))
-                            }
-                          >
-                            {celula.ocupados}
-                          </button>
-                        </td>
-                      ) : (
-                        <td key={indiceCarro}>
-                          <div className="ocupacao-celula ocupacao-vazia">–</div>
-                        </td>
-                      ),
-                    )}
-                    <td className="ocupacao-col-total">{linha.totalOcupados}</td>
-                    <td className="ocupacao-col-percentual">{percentual(linha.totalOcupados, matrizDia.totalGeral)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="ocupacao-linha-total">
-                  <td className="ocupacao-td-hora">Total</td>
-                  {matrizDia.totalPorCarro.map((total, indice) => (
-                    <td key={indice} className="ocupacao-col-total">
-                      {total}
-                    </td>
-                  ))}
-                  <td className="ocupacao-col-total">{matrizDia.totalGeral}</td>
-                  <td className="ocupacao-col-percentual"></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
+        {escopo === "dia" &&
+          [
+            { titulo: "Manha", matriz: matrizManha },
+            { titulo: "Tarde", matriz: matrizTarde },
+          ].map(
+            ({ titulo, matriz }) =>
+              matriz &&
+              matriz.totalCarros > 0 && (
+                <div key={titulo} className="ocupacao-matriz-wrap" style={{ marginTop: "0.6rem" }}>
+                  <div style={{ fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.2rem" }}>{titulo}</div>
+                  <table className="ocupacao-tabela">
+                    <thead>
+                      <tr>
+                        <th className="ocupacao-th-hora">Horario</th>
+                        {Array.from({ length: matriz.totalCarros }, (_, i) => (
+                          <th key={i}>{String(i + 1).padStart(2, "0")}</th>
+                        ))}
+                        <th className="ocupacao-col-total">Total</th>
+                        <th className="ocupacao-col-percentual">%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {matriz.linhas.map((linha) => (
+                        <tr key={linha.hora}>
+                          <td className="ocupacao-td-hora">{formatarHoraCurta(linha.hora)}</td>
+                          {linha.porCarro.map((celula, indiceCarro) =>
+                            celula ? (
+                              <td key={indiceCarro}>
+                                <button
+                                  type="button"
+                                  className={`ocupacao-celula ocupacao-${celula.status}`}
+                                  onClick={(e) =>
+                                    abrirPopover(
+                                      e,
+                                      `Carro ${indiceCarro + 1} · ${formatarHoraCurta(linha.hora)}`,
+                                      gruposPopoverCarro(celula),
+                                    )
+                                  }
+                                >
+                                  {celula.ocupados}
+                                </button>
+                              </td>
+                            ) : (
+                              <td key={indiceCarro}>
+                                <div className="ocupacao-celula ocupacao-vazia">–</div>
+                              </td>
+                            ),
+                          )}
+                          <td className="ocupacao-col-total">{linha.totalOcupados}</td>
+                          <td className="ocupacao-col-percentual">{percentual(linha.totalOcupados, matriz.totalGeral)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="ocupacao-linha-total">
+                        <td className="ocupacao-td-hora">Total</td>
+                        {matriz.totalPorCarro.map((total, indice) => (
+                          <td key={indice} className="ocupacao-col-total">
+                            {total}
+                          </td>
+                        ))}
+                        <td className="ocupacao-col-total">{matriz.totalGeral}</td>
+                        <td className="ocupacao-col-percentual"></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              ),
+          )}
 
         {escopo === "semana" && matrizSemana && matrizSemana.dias.length > 0 && (
           <div className="ocupacao-matriz-wrap">

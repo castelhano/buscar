@@ -1,8 +1,15 @@
 import type { DiaSemana, GrupoBase, MembroBase, Sentido, ViagemBase } from "../api/types";
+import { CORTE_TARDE_MINUTOS, minutosDaHora } from "../api/periodo";
 
 /** Assuncao fixa (sem campo de capacidade no modo Base -- ver GrupoBase): todo
  * carro tem 4 lugares por viagem. */
 export const CAPACIDADE_VIAGEM_BASE = 4;
+
+export type PeriodoOcupacao = "Manha" | "Tarde";
+
+export function periodoDaHora(hora: string): PeriodoOcupacao {
+  return minutosDaHora(hora) >= CORTE_TARDE_MINUTOS ? "Tarde" : "Manha";
+}
 
 export type StatusOcupacao = "livre" | "lotado" | "acima";
 
@@ -51,14 +58,19 @@ export interface MatrizDiaSimples {
   totalGeral: number;
 }
 
-export function montarMatrizDiaSimples(grupos: GrupoBase[]): MatrizDiaSimples {
-  const totalCarros = grupos.length;
-  const horas = horasDosGrupos(grupos);
+/** Filtra grupos/viagens para um periodo especifico antes de montar a matriz --
+ * carros sem nenhuma viagem no periodo nao entram como coluna, e as horas
+ * consideradas ficam restritas ao periodo, evitando colunas/linhas em branco
+ * quando um mesmo dia tem carros de manha e de tarde. */
+export function montarMatrizDiaSimples(grupos: GrupoBase[], periodo?: PeriodoOcupacao): MatrizDiaSimples {
+  const gruposDoPeriodo = periodo === undefined ? grupos : grupos.filter((g) => g.viagens.some((v) => periodoDaHora(v.hora) === periodo));
+  const totalCarros = gruposDoPeriodo.length;
+  const horas = horasDosGrupos(gruposDoPeriodo).filter((hora) => periodo === undefined || periodoDaHora(hora) === periodo);
 
   const linhas: LinhaHoraDia[] = horas.map((hora) => {
     const porCarro: (CelulaHoraCarro | null)[] = [];
     let totalOcupados = 0;
-    for (const grupo of grupos) {
+    for (const grupo of gruposDoPeriodo) {
       const viagensNaHora = grupo.viagens.filter((v) => v.hora === hora);
       if (viagensNaHora.length === 0) {
         porCarro.push(null);
@@ -75,7 +87,7 @@ export function montarMatrizDiaSimples(grupos: GrupoBase[]): MatrizDiaSimples {
     return { hora, porCarro, totalOcupados };
   });
 
-  const totalPorCarro = grupos.map((_, indice) => linhas.reduce((soma, l) => soma + (l.porCarro[indice]?.ocupados ?? 0), 0));
+  const totalPorCarro = gruposDoPeriodo.map((_, indice) => linhas.reduce((soma, l) => soma + (l.porCarro[indice]?.ocupados ?? 0), 0));
   const totalGeral = totalPorCarro.reduce((a, b) => a + b, 0);
 
   return { totalCarros, linhas, totalPorCarro, totalGeral };

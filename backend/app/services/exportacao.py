@@ -548,6 +548,9 @@ _ESTILO_OCUPACAO_PERCENTUAL = ParagraphStyle(
     textColor=colors.HexColor("#667085"),
 )
 _ESTILO_OCUPACAO_TITULO = ParagraphStyle("OcupacaoTitulo", parent=_ESTILOS["Title"], alignment=0)
+_ESTILO_OCUPACAO_CABECALHO_SECAO = ParagraphStyle(
+    "OcupacaoCabecalhoSecao", parent=_ESTILOS["Normal"], fontName="Helvetica-Bold", fontSize=10.5, leading=13
+)
 
 
 def _status_ocupacao_base(ocupados: int, capacidade: int) -> str:
@@ -580,14 +583,28 @@ def _horas_dos_grupos(grupos: list[dict]) -> list[dt.time]:
     return sorted({v["hora"] for g in grupos for v in g["viagens"]})
 
 
-def _montar_matriz_dia_simples(grupos: list[dict]) -> dict:
-    """Linhas = horario, colunas = carro (posicao no dia) -- visao de um dia so."""
-    horas = _horas_dos_grupos(grupos)
+def _periodo_da_hora_base(hora: dt.time) -> str:
+    return "Tarde" if hora >= CORTE_PERIODO_TARDE else "Manha"
+
+
+def _montar_matriz_dia_simples(grupos: list[dict], periodo: str | None = None) -> dict:
+    """Linhas = horario, colunas = carro (posicao no dia) -- visao de um dia so.
+
+    Quando `periodo` e informado, restringe carros/horarios aquele periodo --
+    carros sem viagem nele nao entram como coluna, evitando colunas/linhas em
+    branco quando o dia mistura carros de manha e de tarde.
+    """
+    grupos_periodo = (
+        grupos
+        if periodo is None
+        else [g for g in grupos if any(_periodo_da_hora_base(v["hora"]) == periodo for v in g["viagens"])]
+    )
+    horas = [h for h in _horas_dos_grupos(grupos_periodo) if periodo is None or _periodo_da_hora_base(h) == periodo]
     linhas = []
     for hora in horas:
         por_carro = []
         total_ocupados = 0
-        for grupo in grupos:
+        for grupo in grupos_periodo:
             viagens_na_hora = [v for v in grupo["viagens"] if v["hora"] == hora]
             if not viagens_na_hora:
                 por_carro.append(None)
@@ -599,10 +616,10 @@ def _montar_matriz_dia_simples(grupos: list[dict]) -> dict:
 
     total_por_carro = [
         sum(linha["por_carro"][i]["ocupados"] for linha in linhas if linha["por_carro"][i] is not None)
-        for i in range(len(grupos))
+        for i in range(len(grupos_periodo))
     ]
     return {
-        "total_carros": len(grupos),
+        "total_carros": len(grupos_periodo),
         "linhas": linhas,
         "total_por_carro": total_por_carro,
         "total_geral": sum(total_por_carro),
@@ -684,6 +701,28 @@ def gerar_pdf_ocupacao_base(db: Session, dias: list[DiaSemana], modo_semana: boo
     largura_total = 1.7 * cm
     largura_percentual = 1.3 * cm
 
+    def _tabela_ocupacao(linhas: list, cores_celulas: list, n_colunas_dado: int) -> Table:
+        linha_idx_total = len(linhas) - 1
+        largura_dado = min(1.7 * cm, (largura_util - largura_horario - largura_total - largura_percentual) / n_colunas_dado)
+        col_widths = [largura_horario] + [largura_dado] * n_colunas_dado + [largura_total, largura_percentual]
+
+        tabela = Table(linhas, colWidths=col_widths, repeatRows=1)
+        estilo = [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#3d4d63")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LINEABOVE", (0, linha_idx_total), (-1, linha_idx_total), 1.2, colors.HexColor("#2d3748")),
+            ("BACKGROUND", (0, linha_idx_total), (-1, linha_idx_total), colors.HexColor("#eef1f4")),
+        ]
+        for linha_idx, col_idx, cor in cores_celulas:
+            estilo.append(("BACKGROUND", (col_idx, linha_idx), (col_idx, linha_idx), cor))
+        tabela.setStyle(TableStyle(estilo))
+        return tabela
+
     if modo_semana:
         matriz = _montar_matriz_semana(estruturas)
         n_colunas_dado = len(estruturas)
@@ -725,59 +764,52 @@ def gerar_pdf_ocupacao_base(db: Session, dias: list[DiaSemana], modo_semana: boo
             )
         )
         linhas.append(linha_total)
+        elementos.append(_tabela_ocupacao(linhas, cores_celulas, n_colunas_dado))
     else:
         _, estrutura = estruturas[0]
-        matriz = _montar_matriz_dia_simples(estrutura["grupos"])
-        n_colunas_dado = max(matriz["total_carros"], 1)
+        for titulo_periodo, periodo in (("Manha", "Manha"), ("Tarde", "Tarde")):
+            matriz = _montar_matriz_dia_simples(estrutura["grupos"], periodo)
+            if matriz["total_carros"] == 0:
+                continue
+            n_colunas_dado = matriz["total_carros"]
 
-        cabecalho = [Paragraph("Horario", _ESTILO_OCUPACAO_CABECALHO)]
-        cabecalho += [Paragraph(f"Carro {i + 1}", _ESTILO_OCUPACAO_CABECALHO) for i in range(matriz["total_carros"])]
-        cabecalho += [Paragraph("Total", _ESTILO_OCUPACAO_CABECALHO), Paragraph("%", _ESTILO_OCUPACAO_CABECALHO)]
-        linhas.append(cabecalho)
+            linhas_periodo: list = []
+            cores_celulas_periodo: list[tuple[int, int, object]] = []
 
-        for linha_matriz in matriz["linhas"]:
-            linha: list = [Paragraph(_formatar_hora(linha_matriz["hora"]), _ESTILO_OCUPACAO_HORA)]
-            for celula in linha_matriz["por_carro"]:
-                if celula is None:
-                    linha.append("")
-                    cores_celulas.append((len(linhas), len(linha) - 1, _COR_OCUPACAO_VAZIA))
-                else:
-                    linha.append(Paragraph(str(celula["ocupados"]), _ESTILO_OCUPACAO_CELULA))
-                    cores_celulas.append((len(linhas), len(linha) - 1, _cor_status_ocupacao(celula["status"])))
-            linha.append(Paragraph(str(linha_matriz["total_ocupados"]), _ESTILO_OCUPACAO_TOTAL))
-            linha.append(
-                Paragraph(_percentual(linha_matriz["total_ocupados"], matriz["total_geral"]), _ESTILO_OCUPACAO_PERCENTUAL)
-            )
-            linhas.append(linha)
+            cabecalho = [Paragraph("Horario", _ESTILO_OCUPACAO_CABECALHO)]
+            cabecalho += [Paragraph(f"{i + 1:02d}", _ESTILO_OCUPACAO_CABECALHO) for i in range(matriz["total_carros"])]
+            cabecalho += [Paragraph("Total", _ESTILO_OCUPACAO_CABECALHO), Paragraph("%", _ESTILO_OCUPACAO_CABECALHO)]
+            linhas_periodo.append(cabecalho)
 
-        linha_total = [Paragraph("Total", _ESTILO_OCUPACAO_TOTAL)]
-        linha_total += [Paragraph(str(total_carro), _ESTILO_OCUPACAO_TOTAL) for total_carro in matriz["total_por_carro"]]
-        linha_total.append(Paragraph(str(matriz["total_geral"]), _ESTILO_OCUPACAO_TOTAL))
-        linha_total.append("")
-        linhas.append(linha_total)
+            for linha_matriz in matriz["linhas"]:
+                linha: list = [Paragraph(_formatar_hora(linha_matriz["hora"]), _ESTILO_OCUPACAO_HORA)]
+                for celula in linha_matriz["por_carro"]:
+                    if celula is None:
+                        linha.append("")
+                        cores_celulas_periodo.append((len(linhas_periodo), len(linha) - 1, _COR_OCUPACAO_VAZIA))
+                    else:
+                        linha.append(Paragraph(str(celula["ocupados"]), _ESTILO_OCUPACAO_CELULA))
+                        cores_celulas_periodo.append(
+                            (len(linhas_periodo), len(linha) - 1, _cor_status_ocupacao(celula["status"]))
+                        )
+                linha.append(Paragraph(str(linha_matriz["total_ocupados"]), _ESTILO_OCUPACAO_TOTAL))
+                linha.append(
+                    Paragraph(_percentual(linha_matriz["total_ocupados"], matriz["total_geral"]), _ESTILO_OCUPACAO_PERCENTUAL)
+                )
+                linhas_periodo.append(linha)
 
-    linha_idx_total = len(linhas) - 1
-    largura_dado = min(1.7 * cm, (largura_util - largura_horario - largura_total - largura_percentual) / n_colunas_dado)
-    col_widths = [largura_horario] + [largura_dado] * n_colunas_dado + [largura_total, largura_percentual]
+            linha_total = [Paragraph("Total", _ESTILO_OCUPACAO_TOTAL)]
+            linha_total += [Paragraph(str(total_carro), _ESTILO_OCUPACAO_TOTAL) for total_carro in matriz["total_por_carro"]]
+            linha_total.append(Paragraph(str(matriz["total_geral"]), _ESTILO_OCUPACAO_TOTAL))
+            linha_total.append("")
+            linhas_periodo.append(linha_total)
 
-    tabela = Table(linhas, colWidths=col_widths, repeatRows=1)
-    estilo = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#3d4d63")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN", (1, 0), (-1, -1), "CENTER"),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("LINEABOVE", (0, linha_idx_total), (-1, linha_idx_total), 1.2, colors.HexColor("#2d3748")),
-        ("BACKGROUND", (0, linha_idx_total), (-1, linha_idx_total), colors.HexColor("#eef1f4")),
-    ]
-    for linha_idx, col_idx, cor in cores_celulas:
-        estilo.append(("BACKGROUND", (col_idx, linha_idx), (col_idx, linha_idx), cor))
-    tabela.setStyle(TableStyle(estilo))
-    elementos.append(tabela)
+            elementos.append(Paragraph(titulo_periodo, _ESTILO_OCUPACAO_CABECALHO_SECAO))
+            elementos.append(Spacer(1, 0.15 * cm))
+            elementos.append(_tabela_ocupacao(linhas_periodo, cores_celulas_periodo, n_colunas_dado))
+            elementos.append(Spacer(1, 0.4 * cm))
 
-    elementos.append(Spacer(1, 0.5 * cm))
+    elementos.append(Spacer(1, 0.2 * cm))
     legenda = Table(
         [
             [
