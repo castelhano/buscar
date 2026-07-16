@@ -36,6 +36,7 @@ import CarroBaseCard from "../components/board/CarroBaseCard";
 import NaoClassificadosBasePanel from "../components/board/NaoClassificadosBasePanel";
 import SobrasPanel from "../components/board/SobrasPanel";
 import DesconsideradosPanel from "../components/board/DesconsideradosPanel";
+import CancelamentosPanel from "../components/board/CancelamentosPanel";
 import SemVagaPanel from "../components/board/SemVagaPanel";
 import AdicionarPassageiroModal from "../components/board/AdicionarPassageiroModal";
 import AtribuirModal from "../components/board/AtribuirModal";
@@ -719,7 +720,20 @@ export default function AgendamentoDiaPage() {
           />
         )}
 
-        {modo === "dia" && desconsideradosQuery.data && <DesconsideradosPanel desconsiderados={desconsideradosQuery.data} />}
+        {modo === "dia" && ((desconsideradosQuery.data?.length ?? 0) > 0 || (viagensQuery.data?.length ?? 0) > 0) && (
+          <div style={{ display: "flex", gap: "1rem", alignItems: "flex-start" }}>
+            {desconsideradosQuery.data && desconsideradosQuery.data.length > 0 && (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <DesconsideradosPanel desconsiderados={desconsideradosQuery.data} />
+              </div>
+            )}
+            {viagensQuery.data && (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <CancelamentosPanel viagens={viagensQuery.data} />
+              </div>
+            )}
+          </div>
+        )}
       </DndContext>
 
       {modalAdicionar !== null && (
