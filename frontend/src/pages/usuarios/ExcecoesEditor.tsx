@@ -27,9 +27,9 @@ interface FormState {
 }
 
 const rotulosOperacao: Record<OperacaoExcecao, string> = {
-  Adicao: "Incluir atendimento extra",
-  Modificacao: "Alterar atendimento",
-  Suspensao: "Suspender atendimento",
+  Adicao: "Incluir",
+  Modificacao: "Modificar",
+  Suspensao: "Suspender",
 };
 
 const vazio: FormState = {
@@ -195,7 +195,7 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
                   checked={form.acompanhante}
                   onChange={(e) => setForm({ ...form, acompanhante: e.target.checked })}
                 />
-                Acompanhante
+                Acomp
               </label>
             </>
           )}
