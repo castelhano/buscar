@@ -51,6 +51,12 @@ class LocalRead(ORMModel):
     observacao: str | None
 
 
+class LocalFixoUsuarioRead(BaseModel):
+    usuario_id: int
+    abbr: str
+    dias: list[DiaSemana]
+
+
 class LocalRecessoCreate(BaseModel):
     local_id: int
     data_inicio: dt.date

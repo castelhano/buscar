@@ -23,6 +23,16 @@ export const DIAS_SEMANA_LABEL: Record<DiaSemana, string> = {
   DOM: "Domingo",
 };
 
+export const DIAS_SEMANA_ABREV: Record<DiaSemana, string> = {
+  SEG: "Seg",
+  TER: "Ter",
+  QUA: "Qua",
+  QUI: "Qui",
+  SEX: "Sex",
+  SAB: "Sab",
+  DOM: "Dom",
+};
+
 const DIA_SEMANA_POR_WEEKDAY_JS: DiaSemana[] = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SAB"];
 
 /** `data` no formato YYYY-MM-DD, interpretada como data local (nao UTC) pra
@@ -43,6 +53,12 @@ export interface Local {
   tipo: TipoLocal;
   regiao_id: number;
   observacao: string | null;
+}
+
+export interface LocalFixoUsuario {
+  usuario_id: number;
+  abbr: string;
+  dias: DiaSemana[];
 }
 
 export interface LocalRecesso {

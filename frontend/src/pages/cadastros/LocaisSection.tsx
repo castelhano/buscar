@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useCreate, useList, useRemove, useUpdate } from "../../api/hooks";
 import type { Local, Regiao, TipoLocal } from "../../api/types";
 import ConfirmarModal from "../../components/board/ConfirmarModal";
+import LocalFixosModal from "../../components/board/LocalFixosModal";
 
 const TIPOS: TipoLocal[] = ["Escola", "Fisioterapia", "Equoterapia", "Trabalho", "Hemodialise", "Medico", "Outros"];
 
@@ -25,6 +26,7 @@ export default function LocaisSection() {
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [removendoId, setRemovendoId] = useState<number | null>(null);
   const [erroRemocao, setErroRemocao] = useState<string | null>(null);
+  const [fixosLocal, setFixosLocal] = useState<Local | null>(null);
 
   function payload() {
     return { nome: form.nome, tipo: form.tipo, regiao_id: form.regiao_id, observacao: form.observacao || null };
@@ -121,6 +123,9 @@ export default function LocaisSection() {
               <td>{nomeRegiao(l.regiao_id)}</td>
               <td>{l.observacao ?? "-"}</td>
               <td>
+                <button className="btn btn-sm" onClick={() => setFixosLocal(l)}>
+                  Fixos
+                </button>{" "}
                 <button className="btn btn-sm" onClick={() => editar(l)}>
                   Editar
                 </button>{" "}
@@ -148,6 +153,7 @@ export default function LocaisSection() {
           }
         />
       )}
+      {fixosLocal && <LocalFixosModal local={fixosLocal} onFechar={() => setFixosLocal(null)} />}
     </div>
   );
 }

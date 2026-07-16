@@ -98,6 +98,35 @@ def remover_local(local_id: int, db: Session = Depends(get_db)):
     db.commit()
 
 
+@router_locais.get("/{local_id}/fixos", response_model=list[schemas.LocalFixoUsuarioRead])
+def listar_fixos_local(local_id: int, db: Session = Depends(get_db)):
+    _get_or_404(db, models.Local, local_id)
+    linhas = (
+        db.query(models.UsuarioAgendaSemanal, models.Usuario)
+        .join(models.Usuario, models.UsuarioAgendaSemanal.usuario_id == models.Usuario.id)
+        .filter(
+            models.UsuarioAgendaSemanal.destino_id == local_id,
+            models.UsuarioAgendaSemanal.tipo == models.TipoAtendimento.FIXO,
+            models.UsuarioAgendaSemanal.ativo.is_(True),
+            models.Usuario.status == models.StatusAtivoInativo.ATIVO,
+        )
+        .order_by(models.Usuario.abbr)
+        .all()
+    )
+    ordem = list(models.DiaSemana)
+    agrupado: dict[int, schemas.LocalFixoUsuarioRead] = {}
+    for agenda, usuario in linhas:
+        item = agrupado.setdefault(
+            usuario.id, schemas.LocalFixoUsuarioRead(usuario_id=usuario.id, abbr=usuario.abbr, dias=[])
+        )
+        if agenda.dia_semana not in item.dias:
+            item.dias.append(agenda.dia_semana)
+    resultado = list(agrupado.values())
+    for item in resultado:
+        item.dias.sort(key=ordem.index)
+    return resultado
+
+
 # --------------------------------------------------------------------------
 # Local - recesso (periodo em que o local fica fechado, ex: recesso escolar)
 # --------------------------------------------------------------------------
