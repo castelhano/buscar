@@ -111,7 +111,10 @@ export default function CarroCard({
       {onAtribuir && (
         <>
           <div className="meta">
-            {empresa?.nome ?? "Sem empresa"} · {condutor?.nome ?? "Sem condutor"}
+            {empresa?.nome ?? "Sem empresa"} ·{" "}
+            <b style={{ textTransform: "uppercase" }}>
+              {condutor ? condutor.apelido || condutor.nome : "Sem condutor"}
+            </b>
           </div>
           {primeira.intervalo_inicio && primeira.intervalo_fim && (
             <div className="meta">

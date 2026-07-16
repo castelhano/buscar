@@ -408,6 +408,7 @@ def remover_viagem(viagem_id: int, db: Session = Depends(get_db)):
     if irmas:
         nova_ancora = irmas[0]
         nova_ancora.grupo_viagem_id = None
+        nova_ancora.ordem_exibicao = viagem.ordem_exibicao
         for irma in irmas[1:]:
             irma.grupo_viagem_id = nova_ancora.id
     db.delete(viagem)
