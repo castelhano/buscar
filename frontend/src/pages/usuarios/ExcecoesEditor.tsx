@@ -134,7 +134,7 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
         excecao sozinha ja garante a geracao nessas datas, sem precisar cadastrar agenda semanal pra isso.
       </p>
       {!somenteLeitura && (
-        <div className="linha-toolbar">
+        <div className="linha-toolbar" style={{ alignItems: "flex-end" }}>
           <div className="campo">
             <label>Data inicio</label>
             <input
@@ -167,39 +167,60 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
           </div>
           {form.operacao !== "Suspensao" && (
             <>
-              <input type="time" value={form.saida} onChange={(e) => setForm({ ...form, saida: e.target.value })} title="Saida" />
-              <input type="time" value={form.retorno} onChange={(e) => setForm({ ...form, retorno: e.target.value })} title="Retorno" />
-              <input placeholder="Origem" value={form.origem} onChange={(e) => setForm({ ...form, origem: e.target.value })} />
-              <select
-                value={form.regiao_origem_id}
-                onChange={(e) => setForm({ ...form, regiao_origem_id: e.target.value ? Number(e.target.value) : "" })}
-              >
-                <option value="">Regiao origem</option>
-                {regioes.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.nome}
-                  </option>
-                ))}
-              </select>
-              <select value={form.destino_id} onChange={(e) => setForm({ ...form, destino_id: e.target.value ? Number(e.target.value) : "" })}>
-                <option value="">Destino</option>
-                {locais.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.nome}
-                  </option>
-                ))}
-              </select>
-              <label style={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
-                <input
-                  type="checkbox"
-                  checked={form.acompanhante}
-                  onChange={(e) => setForm({ ...form, acompanhante: e.target.checked })}
-                />
-                Acomp
-              </label>
+              <div className="campo">
+                <label>Saida</label>
+                <input type="time" value={form.saida} onChange={(e) => setForm({ ...form, saida: e.target.value })} />
+              </div>
+              <div className="campo">
+                <label>Retorno</label>
+                <input type="time" value={form.retorno} onChange={(e) => setForm({ ...form, retorno: e.target.value })} />
+              </div>
+              <div className="campo">
+                <label>Origem</label>
+                <input placeholder="Origem" value={form.origem} onChange={(e) => setForm({ ...form, origem: e.target.value })} />
+              </div>
+              <div className="campo">
+                <label>Regiao origem</label>
+                <select
+                  value={form.regiao_origem_id}
+                  onChange={(e) => setForm({ ...form, regiao_origem_id: e.target.value ? Number(e.target.value) : "" })}
+                >
+                  <option value="">Regiao origem</option>
+                  {regioes.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="campo">
+                <label>Destino</label>
+                <select value={form.destino_id} onChange={(e) => setForm({ ...form, destino_id: e.target.value ? Number(e.target.value) : "" })}>
+                  <option value="">Destino</option>
+                  {locais.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="campo">
+                <label>Acomp</label>
+                <label style={{ display: "flex", gap: "0.25rem", alignItems: "center", height: "1.85rem" }}>
+                  <input
+                    type="checkbox"
+                    checked={form.acompanhante}
+                    onChange={(e) => setForm({ ...form, acompanhante: e.target.checked })}
+                  />
+                  Acomp
+                </label>
+              </div>
             </>
           )}
-          <input placeholder="Motivo" value={form.motivo} onChange={(e) => setForm({ ...form, motivo: e.target.value })} />
+          <div className="campo">
+            <label>Motivo</label>
+            <input placeholder="Motivo" value={form.motivo} onChange={(e) => setForm({ ...form, motivo: e.target.value })} />
+          </div>
           <button className="btn btn-primario" onClick={adicionar} disabled={salvarMutation.isPending}>
             {editandoId !== null ? "Salvar" : "Adicionar"}
           </button>
