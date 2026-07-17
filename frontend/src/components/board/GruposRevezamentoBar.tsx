@@ -49,9 +49,7 @@ export default function GruposRevezamentoBar({
                 style={{ padding: "0 0.3rem", fontSize: "0.7rem" }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (window.confirm(`Remover o grupo ${indice + 1}? Os carros ficam livres pra outro grupo.`)) {
-                    onRemoverGrupo(grupo.id);
-                  }
+                  onRemoverGrupo(grupo.id);
                 }}
               >
                 ×

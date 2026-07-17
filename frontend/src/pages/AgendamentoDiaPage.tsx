@@ -348,6 +348,7 @@ export default function AgendamentoDiaPage() {
   const [modalCopiarDia, setModalCopiarDia] = useState(false);
   const [modalLimparDia, setModalLimparDia] = useState(false);
   const [modalDestravarDia, setModalDestravarDia] = useState(false);
+  const [modalRemoverRevezamentoId, setModalRemoverRevezamentoId] = useState<number | null>(null);
   const [modalOrdemIndice, setModalOrdemIndice] = useState<number | null>(null);
   const [modalCondutoresRevezamentoId, setModalCondutoresRevezamentoId] = useState<number | null>(null);
   const [carrosSelecionadosRevezamento, setCarrosSelecionadosRevezamento] = useState<Set<number>>(new Set());
@@ -745,11 +746,7 @@ export default function AgendamentoDiaPage() {
               gruposRevezamento={estruturaBaseQuery.data?.grupos_revezamento ?? []}
               carrosSelecionadosCount={carrosSelecionadosRevezamento.size}
               onAbrirModalCondutores={(grupoRevezamentoId) => setModalCondutoresRevezamentoId(grupoRevezamentoId)}
-              onRemoverGrupo={(grupoRevezamentoId) =>
-                removerRevezamento.mutate(grupoRevezamentoId, {
-                  onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao remover grupo de revezamento")),
-                })
-              }
+              onRemoverGrupo={(grupoRevezamentoId) => setModalRemoverRevezamentoId(grupoRevezamentoId)}
               onCriarGrupo={() => {
                 const carroIds = [...carrosSelecionadosRevezamento];
                 criarRevezamento.mutate(undefined, {
@@ -999,6 +996,22 @@ export default function AgendamentoDiaPage() {
             destravarDia.mutate(undefined, {
               onSuccess: () => setModalDestravarDia(false),
               onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao destravar o dia")),
+            })
+          }
+        />
+      )}
+
+      {modalRemoverRevezamentoId !== null && (
+        <ConfirmarModal
+          titulo="Remover grupo de revezamento"
+          mensagem={`Remover o grupo ${
+            (estruturaBaseQuery.data?.grupos_revezamento ?? []).findIndex((g) => g.id === modalRemoverRevezamentoId) + 1
+          }? Os carros ficam livres pra outro grupo.`}
+          onFechar={() => setModalRemoverRevezamentoId(null)}
+          onConfirmar={() =>
+            removerRevezamento.mutate(modalRemoverRevezamentoId, {
+              onSuccess: () => setModalRemoverRevezamentoId(null),
+              onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao remover grupo de revezamento")),
             })
           }
         />
