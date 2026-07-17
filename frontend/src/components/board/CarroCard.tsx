@@ -118,43 +118,41 @@ export default function CarroCard({
           {regiaoNomes.join(" · ")}
         </span>
       </div>
+      <div className="meta">
+        {empresa?.nome ?? "Sem empresa"} ·{" "}
+        <b style={{ textTransform: "uppercase" }}>
+          {condutor ? condutor.apelido || condutor.nome : "Sem condutor"}
+        </b>
+      </div>
+      {primeira.intervalo_inicio && primeira.intervalo_fim && (
+        <div className="meta">
+          Intervalo {primeira.intervalo_inicio.slice(0, 5)} - {primeira.intervalo_fim.slice(0, 5)}
+        </div>
+      )}
       {onAtribuir && (
-        <>
-          <div className="meta">
-            {empresa?.nome ?? "Sem empresa"} ·{" "}
-            <b style={{ textTransform: "uppercase" }}>
-              {condutor ? condutor.apelido || condutor.nome : "Sem condutor"}
-            </b>
-          </div>
-          {primeira.intervalo_inicio && primeira.intervalo_fim && (
-            <div className="meta">
-              Intervalo {primeira.intervalo_inicio.slice(0, 5)} - {primeira.intervalo_fim.slice(0, 5)}
-            </div>
-          )}
-          <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.3rem" }}>
+        <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.3rem" }}>
+          <button
+            className="btn btn-sm"
+            onClick={() =>
+              onAtribuir({
+                viagemIds: pernas.map((v) => v.id),
+                condutorAtualId: primeira.condutor_id,
+                veiculoAtualId: primeira.veiculo_id,
+              })
+            }
+          >
+            Condutor/veiculo
+          </button>
+          {onLimparCondutorVeiculo && (primeira.condutor_id !== null || primeira.veiculo_id !== null) && (
             <button
               className="btn btn-sm"
-              onClick={() =>
-                onAtribuir({
-                  viagemIds: pernas.map((v) => v.id),
-                  condutorAtualId: primeira.condutor_id,
-                  veiculoAtualId: primeira.veiculo_id,
-                })
-              }
+              title="Remove condutor e veiculo do carro, mantendo as viagens e passageiros"
+              onClick={() => onLimparCondutorVeiculo(pernas.map((v) => v.id))}
             >
-              Condutor/veiculo
+              Limpar
             </button>
-            {onLimparCondutorVeiculo && (primeira.condutor_id !== null || primeira.veiculo_id !== null) && (
-              <button
-                className="btn btn-sm"
-                title="Remove condutor e veiculo do carro, mantendo as viagens e passageiros"
-                onClick={() => onLimparCondutorVeiculo(pernas.map((v) => v.id))}
-              >
-                Limpar
-              </button>
-            )}
-          </div>
-        </>
+          )}
+        </div>
       )}
 
       {pernas.map((viagem, indice) => (
