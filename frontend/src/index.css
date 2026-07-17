@@ -52,6 +52,9 @@ button {
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.08);
   transition: width 0.18s ease;
   overflow: hidden;
+  position: sticky;
+  top: 0;
+  height: 100vh;
 }
 
 .app-nav-colapsada {
@@ -157,12 +160,13 @@ button {
 }
 
 .app-nav-usuario {
-  margin-top: 0.75rem;
+  margin-top: auto;
   padding: 0.85rem 0.9rem 0;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
+  flex-shrink: 0;
 }
 
 .app-nav-usuario-info {
