@@ -69,13 +69,13 @@ def _com_detalhe(texto: str, detalhe: str | None) -> Paragraph:
 def _dados_origem(passageiro: ViagemDiaPassageiro) -> tuple[str, str | None]:
     if passageiro.sentido == Sentido.RETORNO:
         destino = passageiro.destino
-        return (destino.nome if destino else "-", None)
+        return (destino.nome if destino else "-", destino.observacao if destino else None)
     return (passageiro.origem or "-", passageiro.usuario.detalhe)
 
 
 def _dados_destino(passageiro: ViagemDiaPassageiro) -> tuple[str, str | None]:
     if passageiro.sentido == Sentido.RETORNO:
-        return (passageiro.origem or "-", None)
+        return (passageiro.origem or "-", passageiro.usuario.detalhe)
     destino = passageiro.destino
     return (destino.nome if destino else "-", destino.observacao if destino else None)
 
