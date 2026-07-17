@@ -11,6 +11,7 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { api } from "../api/client";
+import { agruparPorBloco, ancoraIdDoBloco } from "../api/blocos";
 import { useList } from "../api/hooks";
 import { CORTE_TARDE_MINUTOS, minutosDaHora, periodoDaViagem } from "../api/periodo";
 import { DIAS_SEMANA, DIAS_SEMANA_LABEL, diaSemanaFromData } from "../api/types";
@@ -56,11 +57,6 @@ function hoje() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function primeiraHora(viagem: ViagemDia): string {
-  const horas = viagem.passageiros.map((p) => p.hora).sort();
-  return horas[0] ?? viagem.horario_saida;
-}
-
 function periodoDaViagemBase(viagem: ViagemBase): "Manha" | "Tarde" {
   return minutosDaHora(viagem.hora) >= CORTE_TARDE_MINUTOS ? "Tarde" : "Manha";
 }
@@ -74,37 +70,6 @@ const collisionDetection: CollisionDetection = (args) => {
   const pointerCollisions = pointerWithin(args);
   return pointerCollisions.length > 0 ? pointerCollisions : closestCenter(args);
 };
-
-function agruparPorBloco(viagens: ViagemDia[]): ViagemDia[][] {
-  const grupos = new Map<number, ViagemDia[]>();
-  for (const viagem of viagens) {
-    const chave = viagem.grupo_viagem_id ?? viagem.id;
-    const grupo = grupos.get(chave);
-    if (grupo) grupo.push(viagem);
-    else grupos.set(chave, [viagem]);
-  }
-  const lista = [...grupos.values()];
-  for (const grupo of lista) {
-    grupo.sort((a, b) => primeiraHora(a).localeCompare(primeiraHora(b)));
-  }
-  // Reproduz a ordem definida na tela Base (GrupoBase.ordem_exibicao,
-  // gravada na ancora do bloco na geracao) em vez de reordenar por horario;
-  // carros sem ordem (abertos manualmente) vao pro fim, por horario.
-  const ordemDoBloco = (grupo: ViagemDia[]) => grupo.find((v) => v.grupo_viagem_id === null)?.ordem_exibicao ?? null;
-  lista.sort((a, b) => {
-    const ordemA = ordemDoBloco(a);
-    const ordemB = ordemDoBloco(b);
-    if (ordemA !== null && ordemB !== null) return ordemA - ordemB;
-    if (ordemA !== null) return -1;
-    if (ordemB !== null) return 1;
-    return primeiraHora(a[0]).localeCompare(primeiraHora(b[0]));
-  });
-  return lista;
-}
-
-function ancoraIdDoBloco(grupo: ViagemDia[]): number {
-  return grupo.find((v) => v.grupo_viagem_id === null)?.id ?? grupo[0].id;
-}
 
 export default function AgendamentoDiaPage() {
   const [data, setData] = useState(hoje());
@@ -1043,6 +1008,7 @@ export default function AgendamentoDiaPage() {
             <ModalCondutoresRevezamento
               grupoRevezamento={grupoRevezamento}
               numeroGrupo={numeroGrupo}
+              todosGruposRevezamento={estruturaBaseQuery.data?.grupos_revezamento ?? []}
               condutores={condutores ?? []}
               onFechar={() => setModalCondutoresRevezamentoId(null)}
               onSalvar={(condutorIds) =>

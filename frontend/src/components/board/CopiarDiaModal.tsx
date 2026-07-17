@@ -1,38 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api/client";
+import { agruparPorBloco, ancoraIdDoBloco } from "../../api/blocos";
 import type { ViagemDia } from "../../api/types";
 import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
-
-function primeiraHora(viagem: ViagemDia): string {
-  const horas = viagem.passageiros.map((p) => p.hora).sort();
-  return horas[0] ?? viagem.horario_saida;
-}
-
-function agruparPorBloco(viagens: ViagemDia[]): ViagemDia[][] {
-  const grupos = new Map<number, ViagemDia[]>();
-  for (const viagem of viagens) {
-    const chave = viagem.grupo_viagem_id ?? viagem.id;
-    const grupo = grupos.get(chave);
-    if (grupo) grupo.push(viagem);
-    else grupos.set(chave, [viagem]);
-  }
-  const lista = [...grupos.values()];
-  const ordemDoBloco = (grupo: ViagemDia[]) => grupo.find((v) => v.grupo_viagem_id === null)?.ordem_exibicao ?? null;
-  lista.sort((a, b) => {
-    const ordemA = ordemDoBloco(a);
-    const ordemB = ordemDoBloco(b);
-    if (ordemA !== null && ordemB !== null) return ordemA - ordemB;
-    if (ordemA !== null) return -1;
-    if (ordemB !== null) return 1;
-    return primeiraHora(a[0]).localeCompare(primeiraHora(b[0]));
-  });
-  return lista;
-}
-
-function ancoraIdDoBloco(grupo: ViagemDia[]): number {
-  return grupo.find((v) => v.grupo_viagem_id === null)?.id ?? grupo[0].id;
-}
 
 interface Props {
   dataDestino: string;
@@ -45,6 +16,10 @@ export default function CopiarDiaModal({ dataDestino, onFechar, onConfirmar, env
   useLockBodyScroll();
   const [dataOrigem, setDataOrigem] = useState("");
   const [selecionados, setSelecionados] = useState<Set<number>>(new Set());
+  // Data cujos carros ja foram auto-marcados no carregamento -- sem isso,
+  // desmarcar manualmente todos os carros faria o efeito abaixo remarcar
+  // tudo de novo no proximo render (selecionados.size voltando a 0).
+  const [dataAutoSelecionada, setDataAutoSelecionada] = useState<string | null>(null);
 
   const viagensOrigemQuery = useQuery({
     queryKey: ["viagens", dataOrigem],
@@ -59,14 +34,11 @@ export default function CopiarDiaModal({ dataDestino, onFechar, onConfirmar, env
     setSelecionados(new Set());
   }
 
-  function marcarTodosAposCarregar(gruposCarregados: ViagemDia[][]) {
-    setSelecionados(new Set(gruposCarregados.map(ancoraIdDoBloco)));
-  }
-
   // Marca todos os carros como selecionados assim que a lista do dia
   // escolhido termina de carregar (comportamento padrao: copia tudo).
-  if (viagensOrigemQuery.isSuccess && selecionados.size === 0 && blocos.length > 0 && dataOrigem !== "") {
-    marcarTodosAposCarregar(blocos);
+  if (viagensOrigemQuery.isSuccess && dataOrigem !== "" && dataAutoSelecionada !== dataOrigem && blocos.length > 0) {
+    setDataAutoSelecionada(dataOrigem);
+    setSelecionados(new Set(blocos.map(ancoraIdDoBloco)));
   }
 
   function alternar(ancoraId: number) {
