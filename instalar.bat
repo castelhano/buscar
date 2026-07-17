@@ -4,10 +4,10 @@ setlocal
 echo === Instalando backend ===
 cd /d "%~dp0backend"
 
-if not exist .venv (
-    python -m venv .venv
+if not exist venv (
+    python -m venv venv
 )
-call .venv\Scripts\activate.bat
+call venv\Scripts\activate.bat
 if errorlevel 1 (
     echo Erro ao criar/ativar o ambiente virtual do backend.
     pause

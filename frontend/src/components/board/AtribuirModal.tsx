@@ -20,10 +20,15 @@ function iniciaisEmpresa(nome: string): string {
   return nome.slice(0, 2).toUpperCase();
 }
 
+function prefixoPeriodo(condutor: Condutor): string {
+  return condutor.periodo === "Manha" ? "1P" : "2P";
+}
+
 function labelCondutor(condutor: Condutor, empresas: Empresa[]): string {
   const empresa = empresas.find((e) => e.id === condutor.empresa_id);
   const nome = condutor.apelido || condutor.nome;
-  return empresa ? `${nome} - ${iniciaisEmpresa(empresa.nome)}` : nome;
+  const prefixo = prefixoPeriodo(condutor);
+  return empresa ? `${prefixo} ${nome} - ${iniciaisEmpresa(empresa.nome)}` : `${prefixo} ${nome}`;
 }
 
 function Badge({

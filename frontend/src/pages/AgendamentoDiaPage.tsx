@@ -1010,6 +1010,7 @@ export default function AgendamentoDiaPage() {
               numeroGrupo={numeroGrupo}
               todosGruposRevezamento={estruturaBaseQuery.data?.grupos_revezamento ?? []}
               condutores={condutores ?? []}
+              empresas={empresas ?? []}
               onFechar={() => setModalCondutoresRevezamentoId(null)}
               onSalvar={(condutorIds) =>
                 definirCondutoresRevezamento.mutate(

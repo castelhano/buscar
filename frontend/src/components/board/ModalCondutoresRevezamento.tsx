@@ -1,10 +1,21 @@
 import { useState } from "react";
-import type { Condutor, GrupoRevezamento } from "../../api/types";
+import type { Condutor, Empresa, GrupoRevezamento } from "../../api/types";
 import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
 import { corRevezamento } from "./coresRevezamento";
 
-function labelCondutor(condutor: Condutor): string {
-  return `${condutor.matricula} · ${condutor.apelido || condutor.nome}`;
+function iniciaisEmpresa(nome: string): string {
+  return nome.slice(0, 2).toUpperCase();
+}
+
+function prefixoPeriodo(condutor: Condutor): string {
+  return condutor.periodo === "Manha" ? "1P" : "2P";
+}
+
+function labelCondutor(condutor: Condutor, empresas: Empresa[]): string {
+  const empresa = empresas.find((e) => e.id === condutor.empresa_id);
+  const nome = condutor.apelido || condutor.nome;
+  const prefixo = prefixoPeriodo(condutor);
+  return empresa ? `${prefixo} ${nome} - ${iniciaisEmpresa(empresa.nome)}` : `${prefixo} ${nome}`;
 }
 
 interface Props {
@@ -12,6 +23,7 @@ interface Props {
   numeroGrupo: number;
   todosGruposRevezamento: GrupoRevezamento[];
   condutores: Condutor[];
+  empresas: Empresa[];
   onFechar: () => void;
   onSalvar: (condutorIds: number[]) => void;
 }
@@ -21,6 +33,7 @@ export default function ModalCondutoresRevezamento({
   numeroGrupo,
   todosGruposRevezamento,
   condutores,
+  empresas,
   onFechar,
   onSalvar,
 }: Props) {
@@ -81,7 +94,7 @@ export default function ModalCondutoresRevezamento({
                   onClick={() => alternar(c.id)}
                 >
                   {selecionado ? `${posicao + 1}. ` : ""}
-                  {labelCondutor(c)}
+                  {labelCondutor(c, empresas)}
                   {!selecionado && outroGrupo ? ` (G${outroGrupo.numero})` : ""}
                 </button>
               );
