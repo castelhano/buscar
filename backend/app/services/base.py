@@ -9,8 +9,12 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
+    Condutor,
     DiaSemana,
     GrupoBase,
+    GrupoRevezamento,
+    GrupoRevezamentoCarro,
+    GrupoRevezamentoCondutor,
     Local,
     MembroViagemBase,
     Sentido,
@@ -39,10 +43,21 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
             joinedload(GrupoBase.viagens)
             .joinedload(ViagemBase.membros)
             .joinedload(MembroViagemBase.agenda)
-            .joinedload(UsuarioAgendaSemanal.usuario)
+            .joinedload(UsuarioAgendaSemanal.usuario),
         )
         .filter(GrupoBase.dia_semana == dia_semana)
         .order_by(GrupoBase.ordem_exibicao, GrupoBase.id)
+        .all()
+    )
+
+    revezamentos_db = (
+        db.query(GrupoRevezamento)
+        .options(
+            joinedload(GrupoRevezamento.carros),
+            joinedload(GrupoRevezamento.condutores).joinedload(GrupoRevezamentoCondutor.condutor),
+        )
+        .filter(GrupoRevezamento.dia_semana == dia_semana)
+        .order_by(GrupoRevezamento.id)
         .all()
     )
 
@@ -120,7 +135,24 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
     ]
     nao_classificados.sort(key=lambda p: (p["hora"], p["usuario_nome"]))
 
-    return {"grupos": grupos_saida, "nao_classificados": nao_classificados}
+    revezamentos_saida = [
+        {
+            "id": revezamento.id,
+            "dia_semana": revezamento.dia_semana,
+            "rotulo": revezamento.rotulo,
+            "deslocamento": revezamento.deslocamento,
+            "carros": [
+                {"grupo_base_id": carro.grupo_base_id, "ordem": carro.ordem} for carro in revezamento.carros
+            ],
+            "condutores": [
+                {"condutor_id": gc.condutor_id, "ordem": gc.ordem, "nome": gc.condutor.nome, "apelido": gc.condutor.apelido}
+                for gc in revezamento.condutores
+            ],
+        }
+        for revezamento in revezamentos_db
+    ]
+
+    return {"grupos": grupos_saida, "nao_classificados": nao_classificados, "grupos_revezamento": revezamentos_saida}
 
 
 def criar_grupo(db: Session, dia_semana: DiaSemana) -> GrupoBase:
@@ -156,6 +188,69 @@ def criar_viagem(db: Session, grupo_id: int, sentido: Sentido, hora: dt.time) ->
     db.commit()
     db.refresh(viagem)
     return viagem
+
+
+def criar_grupo_revezamento(db: Session, dia_semana: DiaSemana, rotulo: str | None = None) -> GrupoRevezamento:
+    revezamento = GrupoRevezamento(dia_semana=dia_semana, rotulo=rotulo)
+    db.add(revezamento)
+    db.commit()
+    db.refresh(revezamento)
+    return revezamento
+
+
+def remover_grupo_revezamento(db: Session, grupo_revezamento_id: int) -> None:
+    revezamento = db.get(GrupoRevezamento, grupo_revezamento_id)
+    if revezamento is None:
+        raise ValueError("Grupo de revezamento nao encontrado")
+    db.delete(revezamento)
+    db.commit()
+
+
+def definir_carros_revezamento(db: Session, grupo_revezamento_id: int, grupo_base_ids: list[int]) -> DiaSemana:
+    """Substitui a lista inteira de carros (vagas, na ordem recebida) desse
+    `GrupoRevezamento` -- cada `GrupoBase` so pode pertencer a um grupo de
+    revezamento por vez (ver `GrupoRevezamentoCarro`); se algum carro recebido
+    ja pertencia a outro grupo, e movido pra este (a tela usa isso pra
+    permitir "mover" um carro entre grupos so marcando o checkbox dele).
+    """
+    revezamento = db.get(GrupoRevezamento, grupo_revezamento_id)
+    if revezamento is None:
+        raise ValueError("Grupo de revezamento nao encontrado")
+    grupos = db.query(GrupoBase).filter(GrupoBase.id.in_(grupo_base_ids)).all()
+    if len(grupos) != len(set(grupo_base_ids)):
+        raise ValueError("Carro nao encontrado")
+    if any(g.dia_semana != revezamento.dia_semana for g in grupos):
+        raise ValueError("Carro pertence a outro dia da semana")
+    if grupo_base_ids:
+        db.query(GrupoRevezamentoCarro).filter(GrupoRevezamentoCarro.grupo_base_id.in_(grupo_base_ids)).delete(
+            synchronize_session=False
+        )
+    db.query(GrupoRevezamentoCarro).filter(GrupoRevezamentoCarro.grupo_revezamento_id == grupo_revezamento_id).delete(
+        synchronize_session=False
+    )
+    for indice, grupo_base_id in enumerate(grupo_base_ids):
+        db.add(GrupoRevezamentoCarro(grupo_revezamento_id=grupo_revezamento_id, grupo_base_id=grupo_base_id, ordem=indice))
+    db.commit()
+    return revezamento.dia_semana
+
+
+def definir_condutores_revezamento(db: Session, grupo_revezamento_id: int, condutor_ids: list[int]) -> DiaSemana:
+    """Substitui a lista inteira de condutores (fila, na ordem recebida) desse
+    `GrupoRevezamento`. Nao exige que o tamanho bata com o numero de carros --
+    isso e checado (com aviso, sem travar) na hora da geracao, ver
+    `services.geracao._condutor_do_slot`.
+    """
+    revezamento = db.get(GrupoRevezamento, grupo_revezamento_id)
+    if revezamento is None:
+        raise ValueError("Grupo de revezamento nao encontrado")
+    encontrados = db.query(Condutor.id).filter(Condutor.id.in_(condutor_ids)).count()
+    if encontrados != len(set(condutor_ids)):
+        raise ValueError("Condutor nao encontrado")
+    db.query(GrupoRevezamentoCondutor).filter(GrupoRevezamentoCondutor.grupo_revezamento_id == grupo_revezamento_id).delete()
+    for indice, condutor_id in enumerate(condutor_ids):
+        db.add(GrupoRevezamentoCondutor(grupo_revezamento_id=grupo_revezamento_id, condutor_id=condutor_id, ordem=indice))
+    db.commit()
+    return revezamento.dia_semana
 
 
 def remover_viagem(db: Session, viagem_id: int) -> None:

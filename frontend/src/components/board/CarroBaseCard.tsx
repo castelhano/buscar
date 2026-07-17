@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
-import type { GrupoBase, Local, Regiao, Sentido, ViagemBase } from "../../api/types";
+import type { GrupoBase, GrupoRevezamento, Local, Regiao, Sentido, ViagemBase } from "../../api/types";
 import ViagemBaseBlock from "./ViagemBaseBlock";
+import { corRevezamento } from "./coresRevezamento";
 
 interface Props {
   grupo: GrupoBase;
@@ -10,6 +11,10 @@ interface Props {
   periodo: "Manha" | "Tarde";
   locais: Local[];
   regioes: Regiao[];
+  revezamento: { grupo: GrupoRevezamento; numeroGrupo: number; ordem: number } | null;
+  selecionadoPraRevezamento: boolean;
+  onToggleSelecaoRevezamento: (grupoId: number, marcado: boolean) => void;
+  onSairDoGrupoRevezamento: (grupoRevezamentoId: number) => void;
   onNovaViagem: (grupoId: number, sentido: Sentido, hora: string) => void;
   onRemoverGrupo: (grupoId: number) => void;
   onRemoverViagem: (viagemId: number) => void;
@@ -24,6 +29,10 @@ export default function CarroBaseCard({
   periodo,
   locais,
   regioes,
+  revezamento,
+  selecionadoPraRevezamento,
+  onToggleSelecaoRevezamento,
+  onSairDoGrupoRevezamento,
   onNovaViagem,
   onRemoverGrupo,
   onRemoverViagem,
@@ -45,16 +54,63 @@ export default function CarroBaseCard({
   const regiaoNomes = [...new Set(regiaoIds)].map((id) => regioes.find((r) => r.id === id)?.nome ?? "?");
   const carroVazio = grupo.viagens.every((v) => v.membros.length === 0);
 
+  const n = revezamento?.grupo.condutores.length ?? 0;
+  const proximoCondutor =
+    revezamento && n > 0
+      ? revezamento.grupo.condutores[(((revezamento.ordem - revezamento.grupo.deslocamento) % n) + n) % n]
+      : null;
+  const configIncompleta = revezamento != null && revezamento.grupo.carros.length !== revezamento.grupo.condutores.length;
+  const cor = revezamento ? corRevezamento(revezamento.grupo.id) : undefined;
+
   return (
-    <div ref={setNodeRef} className="carro-card" style={{ outline: isOver ? "2px solid var(--cor-primaria)" : "none" }}>
+    <div
+      ref={setNodeRef}
+      className="carro-card"
+      style={{
+        outline: isOver ? "2px solid var(--cor-primaria)" : "none",
+        borderLeft: cor ? `4px solid ${cor}` : undefined,
+      }}
+    >
       <div className="carro-card-topo">
         <div className="titulo">{grupo.rotulo ?? `Carro ${indice + 1}`}</div>
-        {regiaoNomes.length > 0 && (
-          <span className="tag tag-regiao" title="Regioes dos passageiros">
-            {regiaoNomes.join(" · ")}
-          </span>
-        )}
+        <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+          {regiaoNomes.length > 0 && (
+            <span className="tag tag-regiao" title="Regioes dos passageiros">
+              {regiaoNomes.join(" · ")}
+            </span>
+          )}
+          {revezamento == null && (
+            <input
+              type="checkbox"
+              checked={selecionadoPraRevezamento}
+              onChange={(e) => onToggleSelecaoRevezamento(grupo.id, e.target.checked)}
+              title="Selecionar pra criar ou entrar num grupo de revezamento"
+            />
+          )}
+        </div>
       </div>
+
+      {revezamento && (
+        <div className="meta" style={{ fontSize: "0.75rem", color: cor }}>
+          Grupo {revezamento.numeroGrupo} · vaga {revezamento.ordem + 1}
+          {configIncompleta ? (
+            <span title="Numero de carros e condutores do grupo de revezamento nao bate -- rodizio desativado ate corrigir">
+              {" "}
+              · config. incompleta
+            </span>
+          ) : (
+            proximoCondutor && <span> · próximo: {proximoCondutor.apelido || proximoCondutor.nome}</span>
+          )}
+          {" · "}
+          <button
+            className="btn btn-sm"
+            style={{ fontSize: "0.7rem", padding: "0.1rem 0.4rem" }}
+            onClick={() => onSairDoGrupoRevezamento(revezamento.grupo.id)}
+          >
+            sair do grupo
+          </button>
+        </div>
+      )}
 
       {viagensExibir.map((viagem) => (
         <ViagemBaseBlock

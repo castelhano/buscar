@@ -354,6 +354,93 @@ class GrupoBase(Base):
     )
 
 
+class GrupoRevezamento(Base):
+    """Amarra N carros conceituais (`GrupoBase`) a N condutores, em vagas
+    fixas -- a cada geracao de dia util desse `dia_semana`, `deslocamento`
+    avanca uma posicao (ciclando), fazendo cada condutor migrar pra proxima
+    vaga (ver `services.geracao._condutor_do_slot`). Fim de semana nao usa
+    isso (rodizio alfabetico por periodo, ver `RodizioCondutorFimDeSemana`).
+    """
+
+    __tablename__ = "grupo_revezamento"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dia_semana: Mapped[DiaSemana] = mapped_column(_enum(DiaSemana), index=True)
+    rotulo: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    deslocamento: Mapped[int] = mapped_column(Integer, default=0)
+
+    carros: Mapped[list["GrupoRevezamentoCarro"]] = relationship(
+        back_populates="grupo_revezamento", cascade="all, delete-orphan",
+        order_by="GrupoRevezamentoCarro.ordem",
+    )
+    condutores: Mapped[list["GrupoRevezamentoCondutor"]] = relationship(
+        back_populates="grupo_revezamento", cascade="all, delete-orphan",
+        order_by="GrupoRevezamentoCondutor.ordem",
+    )
+
+
+class GrupoRevezamentoCarro(Base):
+    """Uma vaga (posicao `ordem`) do grupo de revezamento, ocupada por um
+    `GrupoBase` -- um carro so pode pertencer a um grupo de revezamento.
+    """
+
+    __tablename__ = "grupo_revezamento_carro"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    grupo_revezamento_id: Mapped[int] = mapped_column(ForeignKey("grupo_revezamento.id", ondelete="CASCADE"))
+    grupo_base_id: Mapped[int] = mapped_column(ForeignKey("grupo_base.id", ondelete="CASCADE"))
+    ordem: Mapped[int] = mapped_column(Integer)
+
+    grupo_revezamento: Mapped["GrupoRevezamento"] = relationship(back_populates="carros")
+    grupo_base: Mapped["GrupoBase"] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint("grupo_revezamento_id", "ordem", name="uq_grev_carro_ordem"),
+        UniqueConstraint("grupo_base_id", name="uq_grev_carro_grupo_base"),
+    )
+
+
+class GrupoRevezamentoCondutor(Base):
+    """Um condutor na fila do grupo de revezamento, na posicao `ordem` --
+    determina em qual vaga ele entra a cada geracao (junto com `deslocamento`).
+    """
+
+    __tablename__ = "grupo_revezamento_condutor"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    grupo_revezamento_id: Mapped[int] = mapped_column(ForeignKey("grupo_revezamento.id", ondelete="CASCADE"))
+    condutor_id: Mapped[int] = mapped_column(ForeignKey("condutor.id", ondelete="CASCADE"))
+    ordem: Mapped[int] = mapped_column(Integer)
+
+    grupo_revezamento: Mapped["GrupoRevezamento"] = relationship(back_populates="condutores")
+    condutor: Mapped["Condutor"] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint("grupo_revezamento_id", "ordem", name="uq_grev_condutor_ordem"),
+        UniqueConstraint("grupo_revezamento_id", "condutor_id", name="uq_grev_condutor_unico"),
+    )
+
+
+class RodizioCondutorFimDeSemana(Base):
+    """Ponteiro do rodizio alfabetico de condutor no sabado/domingo, um por
+    periodo (Manha/Tarde) -- independente de `GrupoBase`, que so existe pro
+    rodizio de dia util. Atualizado ao final de cada geracao de fim de
+    semana (ver `services.geracao._proximo_condutor_alfabetico`).
+    """
+
+    __tablename__ = "rodizio_condutor_fim_de_semana"
+
+    periodo: Mapped[PeriodoCondutor] = mapped_column(_enum(PeriodoCondutor), primary_key=True)
+    ultimo_condutor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("condutor.id", ondelete="SET NULL"), nullable=True
+    )
+    atualizado_em: Mapped[dt.datetime] = mapped_column(
+        default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow
+    )
+
+    ultimo_condutor: Mapped["Condutor | None"] = relationship()
+
+
 class ViagemBase(Base):
     """Um horario (Ida ou Retorno) dentro de um `GrupoBase` -- vira uma
     `ViagemDia` na geracao real, tentando reaproveitar o mesmo veiculo das

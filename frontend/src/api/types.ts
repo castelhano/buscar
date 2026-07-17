@@ -225,6 +225,27 @@ export interface GrupoBase {
   viagens: ViagemBase[];
 }
 
+export interface GrupoRevezamentoCarro {
+  grupo_base_id: number;
+  ordem: number;
+}
+
+export interface GrupoRevezamentoCondutor {
+  condutor_id: number;
+  ordem: number;
+  nome: string;
+  apelido: string | null;
+}
+
+export interface GrupoRevezamento {
+  id: number;
+  dia_semana: DiaSemana;
+  rotulo: string | null;
+  deslocamento: number;
+  carros: GrupoRevezamentoCarro[];
+  condutores: GrupoRevezamentoCondutor[];
+}
+
 export interface NaoClassificadoBase {
   agenda_id: number;
   usuario_id: number;
@@ -242,6 +263,7 @@ export interface NaoClassificadoBase {
 export interface EstruturaBase {
   grupos: GrupoBase[];
   nao_classificados: NaoClassificadoBase[];
+  grupos_revezamento: GrupoRevezamento[];
 }
 
 export interface Frequencia {

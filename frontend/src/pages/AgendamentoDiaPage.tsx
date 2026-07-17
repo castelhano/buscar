@@ -21,6 +21,7 @@ import type {
   EstruturaBase,
   Empresa,
   GrupoBase,
+  GrupoRevezamento,
   Local,
   Regiao,
   Sentido,
@@ -33,6 +34,8 @@ import type {
 } from "../api/types";
 import CarroCard from "../components/board/CarroCard";
 import CarroBaseCard from "../components/board/CarroBaseCard";
+import GruposRevezamentoBar from "../components/board/GruposRevezamentoBar";
+import ModalCondutoresRevezamento from "../components/board/ModalCondutoresRevezamento";
 import NaoClassificadosBasePanel from "../components/board/NaoClassificadosBasePanel";
 import SobrasPanel from "../components/board/SobrasPanel";
 import DesconsideradosPanel from "../components/board/DesconsideradosPanel";
@@ -229,6 +232,24 @@ export default function AgendamentoDiaPage() {
     }) => api.patch<EstruturaBase>(`/base/membros/${agendaId}/mover`, { sentido, grupo_base_id: grupoBaseId, hora, ordem }),
     onSuccess: atualizarEstruturaBase,
   });
+  const criarRevezamento = useMutation({
+    mutationFn: () => api.post<EstruturaBase>(`/base/${diaSemanaBase}/revezamentos`, {}),
+    onSuccess: atualizarEstruturaBase,
+  });
+  const removerRevezamento = useMutation({
+    mutationFn: (grupoRevezamentoId: number) => api.delete<EstruturaBase>(`/base/revezamentos/${grupoRevezamentoId}`),
+    onSuccess: atualizarEstruturaBase,
+  });
+  const definirCarrosRevezamento = useMutation({
+    mutationFn: ({ grupoRevezamentoId, grupoBaseIds }: { grupoRevezamentoId: number; grupoBaseIds: number[] }) =>
+      api.put<EstruturaBase>(`/base/revezamentos/${grupoRevezamentoId}/carros`, { grupo_base_ids: grupoBaseIds }),
+    onSuccess: atualizarEstruturaBase,
+  });
+  const definirCondutoresRevezamento = useMutation({
+    mutationFn: ({ grupoRevezamentoId, condutorIds }: { grupoRevezamentoId: number; condutorIds: number[] }) =>
+      api.put<EstruturaBase>(`/base/revezamentos/${grupoRevezamentoId}/condutores`, { condutor_ids: condutorIds }),
+    onSuccess: atualizarEstruturaBase,
+  });
   const atribuir = useMutation({
     mutationFn: (dados: { viagemIds: number[]; condutor_id: number | null; veiculo_id: number | null }) =>
       api.patch("/viagens/atribuir-bloco", {
@@ -328,6 +349,8 @@ export default function AgendamentoDiaPage() {
   const [modalLimparDia, setModalLimparDia] = useState(false);
   const [modalDestravarDia, setModalDestravarDia] = useState(false);
   const [modalOrdemIndice, setModalOrdemIndice] = useState<number | null>(null);
+  const [modalCondutoresRevezamentoId, setModalCondutoresRevezamentoId] = useState<number | null>(null);
+  const [carrosSelecionadosRevezamento, setCarrosSelecionadosRevezamento] = useState<Set<number>>(new Set());
   const [erro, setErro] = useState<string | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -499,6 +522,13 @@ export default function AgendamentoDiaPage() {
   const gruposBaseDoPeriodo: { grupo: GrupoBase; viagensExibir: ViagemBase[] }[] = (estruturaBaseQuery.data?.grupos ?? [])
     .map((grupo) => ({ grupo, viagensExibir: grupo.viagens.filter((v) => periodoDaViagemBase(v) === periodo) }))
     .filter(({ grupo, viagensExibir }) => viagensExibir.length > 0 || grupo.viagens.length === 0);
+
+  const revezamentoPorGrupoBase = new Map<number, { grupo: GrupoRevezamento; numeroGrupo: number; ordem: number }>();
+  (estruturaBaseQuery.data?.grupos_revezamento ?? []).forEach((revezamento, indice) => {
+    for (const carro of revezamento.carros) {
+      revezamentoPorGrupoBase.set(carro.grupo_base_id, { grupo: revezamento, numeroGrupo: indice + 1, ordem: carro.ordem });
+    }
+  });
 
   return (
     <div>
@@ -710,7 +740,43 @@ export default function AgendamentoDiaPage() {
             )}
           </div>
         ) : (
-          <div className="board-layout">
+          <>
+            <GruposRevezamentoBar
+              gruposRevezamento={estruturaBaseQuery.data?.grupos_revezamento ?? []}
+              carrosSelecionadosCount={carrosSelecionadosRevezamento.size}
+              onAbrirModalCondutores={(grupoRevezamentoId) => setModalCondutoresRevezamentoId(grupoRevezamentoId)}
+              onRemoverGrupo={(grupoRevezamentoId) =>
+                removerRevezamento.mutate(grupoRevezamentoId, {
+                  onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao remover grupo de revezamento")),
+                })
+              }
+              onCriarGrupo={() => {
+                const carroIds = [...carrosSelecionadosRevezamento];
+                criarRevezamento.mutate(undefined, {
+                  onSuccess: (estrutura) => {
+                    const novoId = Math.max(...estrutura.grupos_revezamento.map((g) => g.id));
+                    definirCarrosRevezamento.mutate(
+                      { grupoRevezamentoId: novoId, grupoBaseIds: carroIds },
+                      { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao salvar carros do grupo")) },
+                    );
+                  },
+                  onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao criar grupo de revezamento")),
+                });
+                setCarrosSelecionadosRevezamento(new Set());
+              }}
+              onAdicionarAoGrupo={(grupoRevezamentoId) => {
+                const grupoRevezamento = estruturaBaseQuery.data?.grupos_revezamento.find((g) => g.id === grupoRevezamentoId);
+                const carrosAtuais = grupoRevezamento?.carros.map((c) => c.grupo_base_id) ?? [];
+                const novosCarros = [...carrosAtuais, ...carrosSelecionadosRevezamento];
+                definirCarrosRevezamento.mutate(
+                  { grupoRevezamentoId, grupoBaseIds: novosCarros },
+                  { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao adicionar carros ao grupo")) },
+                );
+                setCarrosSelecionadosRevezamento(new Set());
+              }}
+              onLimparSelecao={() => setCarrosSelecionadosRevezamento(new Set())}
+            />
+            <div className="board-layout">
             <div className="board">
               {gruposBaseDoPeriodo.map(({ grupo, viagensExibir }, indice) => (
                 <CarroBaseCard
@@ -721,6 +787,26 @@ export default function AgendamentoDiaPage() {
                   periodo={periodo}
                   locais={locais ?? []}
                   regioes={regioes ?? []}
+                  revezamento={revezamentoPorGrupoBase.get(grupo.id) ?? null}
+                  selecionadoPraRevezamento={carrosSelecionadosRevezamento.has(grupo.id)}
+                  onToggleSelecaoRevezamento={(grupoId, marcado) =>
+                    setCarrosSelecionadosRevezamento((atual) => {
+                      const nova = new Set(atual);
+                      if (marcado) nova.add(grupoId);
+                      else nova.delete(grupoId);
+                      return nova;
+                    })
+                  }
+                  onSairDoGrupoRevezamento={(grupoRevezamentoId) => {
+                    const grupoRevezamento = estruturaBaseQuery.data?.grupos_revezamento.find((g) => g.id === grupoRevezamentoId);
+                    const carrosRestantes = (grupoRevezamento?.carros ?? [])
+                      .map((c) => c.grupo_base_id)
+                      .filter((id) => id !== grupo.id);
+                    definirCarrosRevezamento.mutate(
+                      { grupoRevezamentoId, grupoBaseIds: carrosRestantes },
+                      { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao sair do grupo de revezamento")) },
+                    );
+                  }}
                   onNovaViagem={(grupoId, sentido, hora) =>
                     criarViagemBase.mutate(
                       { grupoId, sentido, hora: `${hora}:00` },
@@ -757,7 +843,8 @@ export default function AgendamentoDiaPage() {
               locais={locais ?? []}
               regioes={regioes ?? []}
             />
-          </div>
+            </div>
+          </>
         )}
 
         {modo === "dia" && sobrasQuery.data && (
@@ -933,6 +1020,33 @@ export default function AgendamentoDiaPage() {
           }
         />
       )}
+
+      {modalCondutoresRevezamentoId !== null &&
+        (() => {
+          const grupoRevezamento = estruturaBaseQuery.data?.grupos_revezamento.find((g) => g.id === modalCondutoresRevezamentoId);
+          if (!grupoRevezamento) return null;
+          const numeroGrupo = (estruturaBaseQuery.data?.grupos_revezamento ?? []).findIndex((g) => g.id === modalCondutoresRevezamentoId) + 1;
+          return (
+            <ModalCondutoresRevezamento
+              grupoRevezamento={grupoRevezamento}
+              numeroGrupo={numeroGrupo}
+              condutores={condutores ?? []}
+              onFechar={() => setModalCondutoresRevezamentoId(null)}
+              onSalvar={(condutorIds) =>
+                definirCondutoresRevezamento.mutate(
+                  { grupoRevezamentoId: grupoRevezamento.id, condutorIds },
+                  {
+                    onSuccess: (estrutura) => {
+                      atualizarEstruturaBase(estrutura);
+                      setModalCondutoresRevezamentoId(null);
+                    },
+                    onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao salvar condutores do grupo")),
+                  },
+                )
+              }
+            />
+          );
+        })()}
 
       {modalOrdemIndice !== null && (
         <ReordenarPosicaoModal

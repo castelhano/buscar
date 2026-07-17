@@ -7,10 +7,14 @@ from app.database import get_db
 from app.services.base import (
     alterar_hora_viagem,
     criar_grupo,
+    criar_grupo_revezamento,
     criar_viagem,
+    definir_carros_revezamento,
+    definir_condutores_revezamento,
     mover_membro,
     montar_estrutura_base,
     remover_grupo,
+    remover_grupo_revezamento,
     remover_membro,
     remover_viagem,
 )
@@ -70,6 +74,40 @@ def criar_viagem_base(grupo_id: int, payload: schemas.ViagemBaseCreate, db: Sess
     except ValueError as erro:
         raise HTTPException(status_code=400, detail=str(erro)) from erro
     return montar_estrutura_base(db, grupo.dia_semana)
+
+
+@router.post("/{dia_semana}/revezamentos", response_model=schemas.EstruturaBaseRead, status_code=201)
+def criar_grupo_revezamento_base(dia_semana: models.DiaSemana, payload: schemas.GrupoRevezamentoCreate, db: Session = Depends(get_db)):
+    criar_grupo_revezamento(db, dia_semana, payload.rotulo)
+    return montar_estrutura_base(db, dia_semana)
+
+
+@router.delete("/revezamentos/{grupo_revezamento_id}", response_model=schemas.EstruturaBaseRead)
+def remover_grupo_revezamento_base(grupo_revezamento_id: int, db: Session = Depends(get_db)):
+    revezamento = db.get(models.GrupoRevezamento, grupo_revezamento_id)
+    if revezamento is None:
+        raise HTTPException(status_code=404, detail=f"Grupo de revezamento {grupo_revezamento_id} nao encontrado")
+    dia_semana = revezamento.dia_semana
+    remover_grupo_revezamento(db, grupo_revezamento_id)
+    return montar_estrutura_base(db, dia_semana)
+
+
+@router.put("/revezamentos/{grupo_revezamento_id}/carros", response_model=schemas.EstruturaBaseRead)
+def definir_carros_revezamento_base(grupo_revezamento_id: int, payload: schemas.CarrosRevezamentoSet, db: Session = Depends(get_db)):
+    try:
+        dia_semana = definir_carros_revezamento(db, grupo_revezamento_id, payload.grupo_base_ids)
+    except ValueError as erro:
+        raise HTTPException(status_code=400, detail=str(erro)) from erro
+    return montar_estrutura_base(db, dia_semana)
+
+
+@router.put("/revezamentos/{grupo_revezamento_id}/condutores", response_model=schemas.EstruturaBaseRead)
+def definir_condutores_revezamento_base(grupo_revezamento_id: int, payload: schemas.CondutoresRevezamentoSet, db: Session = Depends(get_db)):
+    try:
+        dia_semana = definir_condutores_revezamento(db, grupo_revezamento_id, payload.condutor_ids)
+    except ValueError as erro:
+        raise HTTPException(status_code=400, detail=str(erro)) from erro
+    return montar_estrutura_base(db, dia_semana)
 
 
 @router.delete("/viagens/{viagem_id}", response_model=schemas.EstruturaBaseRead)

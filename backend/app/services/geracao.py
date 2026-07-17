@@ -1,7 +1,6 @@
 import datetime as dt
 from collections import defaultdict
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
@@ -9,10 +8,13 @@ from app.models import (
     CondutorFerias,
     DiaSemana,
     GrupoBase,
+    GrupoRevezamento,
+    GrupoRevezamentoCondutor,
     Local,
     LocalRecesso,
     OperacaoExcecao,
     PeriodoCondutor,
+    RodizioCondutorFimDeSemana,
     Sentido,
     StatusAtendimentoDia,
     StatusAtivoInativo,
@@ -272,18 +274,10 @@ def montar_pernas(
     return pernas_por_regiao
 
 
-def _empresas_com_veiculo_ativo(db: Session) -> set[int]:
-    """Empresas que tem pelo menos um veiculo ATIVO -- uma empresa pode
-    atender uma regiao (`empresa_regiao`) sem ter frota nenhuma hoje, o que
-    nao conta como opcao real pra viabilizar um grupo_base cross-regiao.
-    """
-    return {row[0] for row in db.query(Veiculo.empresa_id).filter(Veiculo.status == StatusVeiculo.ATIVO).distinct()}
-
-
 def _mapa_empresas_por_regiao(db: Session) -> dict[int, list[int]]:
     """Empresas de cada regiao, pre-carregado uma unica vez por geracao --
-    antes era consultado de novo a cada carro aberto e a cada viagem na
-    atribuicao de condutor.
+    usado hoje so pra restringir candidatos de condutor no rodizio alfabetico
+    de fim de semana (`_proximo_condutor_alfabetico`).
     """
     resultado: dict[int, list[int]] = defaultdict(list)
     for empresa_id, regiao_id in db.query(empresa_regiao.c.empresa_id, empresa_regiao.c.regiao_id).all():
@@ -311,13 +305,19 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
 
     Cada `GrupoBase` (carro conceitual curado na tela Base) vira um unico
     carro real ao longo do dia -- a geracao nunca divide o que foi definido
-    manualmente: se existir empresa (com veiculo ativo) que atenda todas as
-    regioes tocadas pelo grupo no dia, aloca condutor/veiculo normalmente
-    (reaproveitando o mesmo veiculo entre as viagens do grupo quando possivel);
-    senao, gera do jeito que esta definido mesmo assim, so sem condutor/
-    veiculo (fica pra atribuicao manual). O excedente de capacidade tambem so
-    gera alerta visual (lugares ocupados acima da capacidade), nunca remove
-    ninguem.
+    manualmente: sempre cria a `ViagemDia`, mesmo sem condutor/veiculo. O
+    excedente de capacidade tambem so gera alerta visual (lugares ocupados
+    acima da capacidade), nunca remove ninguem.
+
+    Condutor e escolhido depois, em `_atribuir_condutores`, por uma de duas
+    estrategias conforme o dia da semana: em dia util, se o `GrupoBase` for
+    uma vaga de algum `GrupoRevezamento`, o condutor da vaga e determinado
+    pela posicao (`ordem`) e pelo deslocamento atual do grupo de revezamento
+    (`_condutor_do_slot`); em sabado/domingo, rodizio alfabetico continuo por
+    periodo (`RodizioCondutorFimDeSemana`), independente de grupo. Em ambos os
+    casos, o veiculo da viagem e o `Condutor.veiculo_preferencial_id` do
+    condutor escalado, se disponivel -- senao a viagem fica so com condutor,
+    sem veiculo (fica pra atribuicao manual so do veiculo).
 
     Quem nao esta em nenhum grupo (ou caiu fora por excecao pontual do dia,
     ex: horario mudou e nao bate mais com a viagem_base) nao entra em carro
@@ -339,10 +339,7 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
         f"[geracao] {data} ({dia_semana.name}): {len(agendas)} agendas Fixo + {len(excecoes)} excecoes encontradas"
     )
     locais_regiao = dict(db.query(Local.id, Local.regiao_id).all())
-    ultimos_usos_veiculo = _ultimos_usos(db, ViagemDia.veiculo_id, data)
-    ultimos_usos_condutor = _ultimos_usos(db, ViagemDia.condutor_id, data)
     empresas_por_regiao = _mapa_empresas_por_regiao(db)
-    empresas_com_veiculo = _empresas_com_veiculo_ativo(db)
 
     pernas_por_regiao = montar_pernas(agendas, excecoes, locais_em_recesso, locais_regiao)
     pernas_por_agenda_sentido = {
@@ -350,12 +347,11 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     }
 
     todas_viagens: list[ViagemDia] = []
-    janelas: dict[int, tuple[dt.time, dt.time]] = {}
     ocupacao: dict[tuple[int, Sentido, dt.time], int] = defaultdict(int)
     regioes_por_viagem: dict[int, set[int]] = defaultdict(set)
     proximo_ordem: dict[int, int] = {}
-    avisos_emitidos: set[tuple] = set()
     consumidos: set[tuple[int, Sentido]] = set()
+    grupo_por_viagem_id: dict[int, int] = {}
 
     grupos_base = (
         db.query(GrupoBase)
@@ -366,20 +362,16 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     )
     for grupo in grupos_base:
         _gerar_carro_do_grupo_base(
-            db,
             grupo,
             pernas_por_agenda_sentido,
             data,
+            db,
             todas_viagens,
-            janelas,
             ocupacao,
             regioes_por_viagem,
             proximo_ordem,
-            avisos_emitidos,
-            ultimos_usos_veiculo,
-            empresas_por_regiao,
-            empresas_com_veiculo,
             consumidos,
+            grupo_por_viagem_id,
         )
 
     pernas_residuais = [perna for chave, perna in pernas_por_agenda_sentido.items() if chave not in consumidos]
@@ -387,7 +379,7 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     _deixar_para_alocacao_manual(db, pernas_residuais, data)
 
     db.flush()
-    _atribuir_condutores(db, todas_viagens, data, ultimos_usos_condutor, empresas_por_regiao)
+    _atribuir_condutores(db, todas_viagens, data, dia_semana, grupo_por_viagem_id, empresas_por_regiao)
     db.commit()
     for viagem in todas_viagens:
         db.refresh(viagem)
@@ -400,8 +392,9 @@ def _regioes_do_grupo_base(
 ) -> tuple[list[tuple[ViagemBase, list[dict]]], set[int]]:
     """Pra cada viagem_base do grupo, filtra so os membros elegiveis hoje
     (excecao/recesso podem ter tirado alguem), e devolve junto o conjunto de
-    regioes tocadas pelo grupo inteiro no dia -- e essa uniao que decide se
-    existe empresa capaz de atender o grupo como um carro so.
+    regioes tocadas pelo grupo inteiro no dia -- usado so como rotulo/regiao_id
+    da `ViagemDia` gerada (condutor/veiculo sao resolvidos depois, em
+    `_atribuir_condutores`, a partir do `GrupoRevezamento`).
     """
     viagens_membros: list[tuple[ViagemBase, list[dict]]] = []
     regioes: set[int] = set()
@@ -430,78 +423,45 @@ def _regioes_do_grupo_base(
 
 
 def _gerar_carro_do_grupo_base(
-    db: Session,
     grupo: GrupoBase,
     pernas_por_agenda_sentido: dict[tuple[int, Sentido], dict],
     data: dt.date,
+    db: Session,
     todas_viagens: list[ViagemDia],
-    janelas: dict[int, tuple[dt.time, dt.time]],
     ocupacao: dict[tuple[int, Sentido, dt.time], int],
     regioes_por_viagem: dict[int, set[int]],
     proximo_ordem: dict[int, int],
-    avisos_emitidos: set[tuple],
-    ultimos_usos_veiculo: dict[int, dt.date],
-    empresas_por_regiao: dict[int, list[int]],
-    empresas_com_veiculo: set[int],
     consumidos: set[tuple[int, Sentido]],
+    grupo_por_viagem_id: dict[int, int],
 ) -> None:
+    """Sempre cria a `ViagemDia` de cada perna do grupo, sem condutor/veiculo
+    (essa atribuicao acontece depois, em `_atribuir_condutores`, a partir do
+    `GrupoRevezamento` -- ver docstring de `gerar_agendamento_dia`).
+    """
     viagens_membros, regioes = _regioes_do_grupo_base(grupo, pernas_por_agenda_sentido)
     if not viagens_membros:
         return  # ninguem do grupo esta elegivel hoje
 
-    empresa_ids: list[int] = []
-    if regioes:
-        intersecao = set(empresas_por_regiao.get(next(iter(regioes)), []))
-        for regiao_id in regioes:
-            intersecao &= set(empresas_por_regiao.get(regiao_id, []))
-        intersecao &= empresas_com_veiculo
-        empresa_ids = sorted(intersecao)
-        if not empresa_ids:
-            print(
-                f"[geracao] grupo_base_id={grupo.id}: nenhuma empresa com frota atende as regioes "
-                f"{sorted(regioes)}, gerado sem condutor/veiculo pra atribuicao manual"
-            )
-
     rotulo_regiao = min(regioes) if regioes else None
-    veiculo_do_grupo: int | None = None
     ancora_id: int | None = None
 
     for viagem_base, membros in viagens_membros:
-        viagem = None
-        if empresa_ids:
-            viagem = _abrir_carro(
-                db,
-                rotulo_regiao,
-                viagem_base.hora,
-                data,
-                todas_viagens,
-                janelas,
-                avisos_emitidos,
-                ultimos_usos_veiculo,
-                empresa_ids,
-                veiculo_preferido_id=veiculo_do_grupo,
+        lugares_totais = sum(2 if m["acompanhante"] else 1 for m in membros)
+        regiao_da_viagem = rotulo_regiao
+        if regiao_da_viagem is None:
+            regiao_da_viagem = regiao_alocacao(
+                viagem_base.sentido, membros[0]["regiao_origem_id"], membros[0]["regiao_destino_id"]
             )
-            if viagem is not None:
-                veiculo_do_grupo = viagem.veiculo_id
-                todas_viagens.append(viagem)
-
-        if viagem is None:
-            lugares_totais = sum(2 if m["acompanhante"] else 1 for m in membros)
-            regiao_da_viagem = rotulo_regiao
-            if regiao_da_viagem is None:
-                regiao_da_viagem = regiao_alocacao(
-                    viagem_base.sentido, membros[0]["regiao_origem_id"], membros[0]["regiao_destino_id"]
-                )
-            viagem = ViagemDia(
-                data=data,
-                regiao_id=regiao_da_viagem,
-                horario_saida=horario_garagem(viagem_base.hora),
-                capacidade=max(lugares_totais, 1),
-                status=StatusViagemDia.PLANEJADA,
-            )
-            db.add(viagem)
-            db.flush()
-            todas_viagens.append(viagem)
+        viagem = ViagemDia(
+            data=data,
+            regiao_id=regiao_da_viagem,
+            horario_saida=horario_garagem(viagem_base.hora),
+            capacidade=max(lugares_totais, 1),
+            status=StatusViagemDia.PLANEJADA,
+        )
+        db.add(viagem)
+        db.flush()
+        todas_viagens.append(viagem)
 
         # A primeira perna aberta pro grupo vira a ancora do bloco; as
         # seguintes (ex: retorno da tarde) apontam pra ela via grupo_viagem_id,
@@ -511,6 +471,8 @@ def _gerar_carro_do_grupo_base(
             viagem.ordem_exibicao = grupo.ordem_exibicao
         elif viagem.grupo_viagem_id is None:
             viagem.grupo_viagem_id = ancora_id
+
+        grupo_por_viagem_id[viagem.id] = grupo.id
 
         for indice, perna in enumerate(membros):
             db.add(
@@ -560,136 +522,69 @@ def _deixar_para_alocacao_manual(db: Session, pernas: list[dict], data: dt.date)
         )
 
 
-def _veiculo_se_livre(
-    db: Session,
-    veiculo_id: int,
-    empresa_ids: list[int],
-    todas_viagens: list[ViagemDia],
-    janelas: dict[int, tuple[dt.time, dt.time]],
-    inicio: dt.time,
-    fim: dt.time,
-) -> Veiculo | None:
-    """Confirma se um veiculo especifico (o "veiculo do grupo", pra manter o
-    mesmo carro ao longo do dia) ainda serve: pertence a uma empresa elegivel,
-    esta ATIVO, e nao tem janela sobreposta com outro carro do dia."""
+_FIM_DE_SEMANA = (DiaSemana.SAB, DiaSemana.DOM)
+
+
+def _veiculo_disponivel(db: Session, veiculo_id: int, viagem: ViagemDia, viagens: list[ViagemDia]) -> Veiculo | None:
+    """O veiculo da viagem e sempre o `veiculo_preferencial_id` do condutor
+    escalado: confirma que esse veiculo esta ATIVO e sem sobreposicao de
+    horario com outro uso dele no dia -- senao a viagem fica so com condutor,
+    sem veiculo (o rodizio de condutor nunca pula a vez por causa disso).
+    """
     veiculo = db.get(Veiculo, veiculo_id)
-    if veiculo is None or veiculo.status != StatusVeiculo.ATIVO or veiculo.empresa_id not in empresa_ids:
+    if veiculo is None or veiculo.status != StatusVeiculo.ATIVO:
         return None
-    for outra in todas_viagens:
-        if outra.veiculo_id != veiculo_id:
+    inicio = viagem.horario_saida
+    fim = fim_viagem(viagem)
+    for outra in viagens:
+        if outra.id == viagem.id or outra.veiculo_id != veiculo_id:
             continue
-        janela = janelas.get(outra.id)
-        if janela and janelas_sobrepoem(inicio, fim, janela[0], janela[1]):
+        if janelas_sobrepoem(inicio, fim, outra.horario_saida, fim_viagem(outra)):
             return None
     return veiculo
 
 
-def _abrir_carro(
-    db: Session,
-    regiao_id: int,
-    hora: dt.time,
-    data: dt.date,
-    todas_viagens: list[ViagemDia],
-    janelas: dict[int, tuple[dt.time, dt.time]],
-    avisos_emitidos: set[tuple],
-    ultimos_usos_veiculo: dict[int, dt.date],
-    empresa_ids: list[int],
-    veiculo_preferido_id: int | None = None,
-) -> ViagemDia | None:
-    """Abre um carro pra uma regiao/horario. `veiculo_preferido_id` (opcional)
-    tenta reaproveitar o mesmo veiculo de uma viagem irma do mesmo
-    `grupo_base` ao longo do dia antes de cair no rodizio normal -- e isso que
-    faz um grupo virar um unico carro real, mesmo com viagens em horarios
-    bem separados.
-    """
-    if not empresa_ids:
-        chave_aviso = ("sem_empresa", regiao_id)
-        if chave_aviso not in avisos_emitidos:
-            avisos_emitidos.add(chave_aviso)
-            print(f"[geracao] regiao_id={regiao_id}: nenhuma empresa vinculada (empresa_regiao vazio pra essa regiao)")
-        return None
-
-    horario_saida = horario_garagem(hora)
-
-    veiculo = None
-    if veiculo_preferido_id is not None:
-        veiculo = _veiculo_se_livre(db, veiculo_preferido_id, empresa_ids, todas_viagens, janelas, horario_saida, hora)
-    if veiculo is None:
-        veiculo = _proximo_veiculo_livre(db, empresa_ids, todas_viagens, janelas, horario_saida, hora, ultimos_usos_veiculo)
-    if veiculo is None:
-        chave_aviso = ("sem_veiculo", regiao_id, hora)
-        if chave_aviso not in avisos_emitidos:
-            avisos_emitidos.add(chave_aviso)
-            print(
-                f"[geracao] regiao_id={regiao_id} hora={hora}: empresas {empresa_ids} sem veiculo ativo/livre nesse horario"
-            )
-        return None  # sem veiculo disponivel na regiao/horario para abrir novo carro
-
-    viagem = ViagemDia(
-        data=data,
-        regiao_id=regiao_id,
-        empresa_id=veiculo.empresa_id,
-        veiculo_id=veiculo.id,
-        horario_saida=horario_saida,
-        capacidade=veiculo.capacidade,
-        status=StatusViagemDia.PLANEJADA,
-    )
-    db.add(viagem)
-    db.flush()
-    janelas[viagem.id] = (horario_saida, hora)
-    return viagem
-
-
-def _proximo_veiculo_livre(
-    db: Session,
-    empresa_ids: list[int],
-    todas_viagens: list[ViagemDia],
-    janelas: dict[int, tuple[dt.time, dt.time]],
-    inicio: dt.time,
-    fim: dt.time,
-    ultimos_usos_veiculo: dict[int, dt.date],
-) -> Veiculo | None:
-    """Escolhe o proximo veiculo (rodizio) livre para o intervalo [inicio, fim].
-
-    Um veiculo ja usado hoje em outro carro continua elegivel desde que os
-    intervalos nao se sobreponham -- e assim que o mesmo carro/condutor acaba
-    fazendo mais de uma viagem no dia (ex: 06h00 e depois 07h00).
-    """
-    candidatos = (
-        db.query(Veiculo)
-        .filter(Veiculo.empresa_id.in_(empresa_ids), Veiculo.status == StatusVeiculo.ATIVO)
-        .all()
-    )
-
-    def livre(veiculo_id: int) -> bool:
-        for outra in todas_viagens:
-            if outra.veiculo_id != veiculo_id:
-                continue
-            janela = janelas.get(outra.id)
-            if janela and janelas_sobrepoem(inicio, fim, janela[0], janela[1]):
-                return False
-        return True
-
-    disponiveis = [v for v in candidatos if livre(v.id)]
-    if not disponiveis:
-        return None
-    disponiveis.sort(key=lambda v: ultimos_usos_veiculo.get(v.id, dt.date.min))
-    return disponiveis[0]
+def _condutor_livre(condutor_id: int, viagem: ViagemDia, viagens: list[ViagemDia]) -> bool:
+    inicio = viagem.horario_saida
+    fim = fim_viagem(viagem)
+    for outra in viagens:
+        if outra.id == viagem.id or outra.condutor_id != condutor_id:
+            continue
+        if janelas_sobrepoem(inicio, fim, outra.horario_saida, fim_viagem(outra)):
+            return False
+    return True
 
 
 def _atribuir_condutores(
     db: Session,
     viagens: list[ViagemDia],
     data: dt.date,
-    ultimos_usos_condutor: dict[int, dt.date],
+    dia_semana: DiaSemana,
+    grupo_por_viagem_id: dict[int, int],
     empresas_por_regiao: dict[int, list[int]],
 ) -> None:
-    """Atribui condutor a cada viagem, priorizando quem foi usado ha mais tempo
-    (rodizio entre dias), mas permitindo reaproveitar o mesmo condutor em
-    carros do mesmo dia que nao se sobrepoem (ex: o mesmo condutor faz a
-    viagem das 06h00 e depois a das 07h00). So considera condutores do mesmo
-    periodo da viagem (`Condutor.periodo`, corte as 14h00) -- um condutor de
-    Manha nunca e escalado numa viagem de Tarde e vice-versa.
+    """Atribui condutor (e, a partir dele, veiculo) a cada viagem gerada, por
+    uma de duas estrategias conforme o dia da semana (nunca mistura condutor
+    de Manha com viagem de Tarde e vice-versa, corte as 14h00):
+
+    - Dia util: se o `GrupoBase` da viagem for uma vaga de algum
+      `GrupoRevezamento`, o condutor e o da posicao calculada por
+      `_condutor_do_slot` (ordem da vaga + deslocamento atual do grupo).
+      Fora de qualquer grupo de revezamento, fica sem condutor (manual).
+    - Sabado/domingo: rodizio alfabetico continuo por periodo, independente de
+      grupo (`RodizioCondutorFimDeSemana`) -- ver `_proximo_condutor_alfabetico`.
+
+    Em ambos os casos, uma vez definido o condutor, o veiculo da viagem e o
+    `Condutor.veiculo_preferencial_id` dele, se disponivel (ver
+    `_veiculo_disponivel`) -- se nao, a viagem fica so com condutor, sem
+    veiculo; o rodizio de condutor nunca pula a vez por causa do veiculo.
+
+    O deslocamento de cada `GrupoRevezamento` do dia so e gravado apos o laco
+    inteiro, e persistido no mesmo commit das viagens (`gerar_agendamento_dia`)
+    -- se a geracao falhar no meio, o deslocamento nao avanca sem viagem de
+    fato gerada. Avanca pra **todos** os grupos de revezamento desse dia da
+    semana, mesmo que alguma vaga deles nao tenha gerado viagem hoje (giro por
+    calendario, nao por quem efetivamente rodou).
     """
     em_ferias = {
         f.condutor_id
@@ -697,28 +592,122 @@ def _atribuir_condutores(
             CondutorFerias.data_inicio <= data, CondutorFerias.data_fim >= data
         )
     }
+    eh_fim_de_semana = dia_semana in _FIM_DE_SEMANA
+    pendentes_periodo: dict[PeriodoCondutor, int] = {}
+
+    revezamentos: list[GrupoRevezamento] = []
+    slot_por_grupo_base: dict[int, tuple[GrupoRevezamento, int]] = {}
+    if not eh_fim_de_semana:
+        revezamentos = (
+            db.query(GrupoRevezamento)
+            .options(
+                joinedload(GrupoRevezamento.carros),
+                joinedload(GrupoRevezamento.condutores).joinedload(GrupoRevezamentoCondutor.condutor),
+            )
+            .filter(GrupoRevezamento.dia_semana == dia_semana)
+            .all()
+        )
+        slot_por_grupo_base = {
+            carro.grupo_base_id: (revezamento, carro.ordem)
+            for revezamento in revezamentos
+            for carro in revezamento.carros
+        }
 
     for viagem in viagens:
-        if viagem.veiculo_id is None:
-            continue  # sem veiculo (grupo_base inviavel/sem frota) -- espera atribuicao manual
-        empresa_ids = empresas_por_regiao.get(viagem.regiao_id, [])
-        if not empresa_ids:
+        if eh_fim_de_semana:
+            empresa_ids = empresas_por_regiao.get(viagem.regiao_id, [])
+            condutor = _proximo_condutor_alfabetico(db, viagem, viagens, em_ferias, empresa_ids, pendentes_periodo)
+        else:
+            grupo_id = grupo_por_viagem_id.get(viagem.id)
+            slot = slot_por_grupo_base.get(grupo_id) if grupo_id is not None else None
+            if slot is None:
+                continue  # carro fora de qualquer grupo de revezamento -- so manual
+            revezamento, ordem = slot
+            condutor = _condutor_do_slot(revezamento, ordem, viagem, viagens, em_ferias)
+
+        if condutor is None:
             continue
+        viagem.condutor_id = condutor.id
+        if condutor.veiculo_preferencial_id is not None:
+            veiculo = _veiculo_disponivel(db, condutor.veiculo_preferencial_id, viagem, viagens)
+            if veiculo is not None:
+                viagem.veiculo_id = veiculo.id
+                viagem.empresa_id = veiculo.empresa_id
+                viagem.capacidade = veiculo.capacidade
 
-        condutor = _proximo_condutor_livre(db, empresa_ids, em_ferias, viagens, viagem, ultimos_usos_condutor)
-        if condutor is not None:
-            viagem.condutor_id = condutor.id
+    for periodo, condutor_id in pendentes_periodo.items():
+        registro = db.get(RodizioCondutorFimDeSemana, periodo)
+        if registro is None:
+            registro = RodizioCondutorFimDeSemana(periodo=periodo)
+            db.add(registro)
+        registro.ultimo_condutor_id = condutor_id
+
+    for revezamento in revezamentos:
+        if revezamento.condutores:
+            revezamento.deslocamento = (revezamento.deslocamento + 1) % len(revezamento.condutores)
 
 
-def _proximo_condutor_livre(
-    db: Session,
-    empresa_ids: list[int],
-    em_ferias: set[int],
-    viagens: list[ViagemDia],
+def _condutor_do_slot(
+    revezamento: GrupoRevezamento,
+    ordem: int,
     viagem: ViagemDia,
-    ultimos_usos_condutor: dict[int, dt.date],
+    viagens: list[ViagemDia],
+    em_ferias: set[int],
 ) -> Condutor | None:
+    """Escolhe o condutor da vaga `ordem` desse `GrupoRevezamento`: a fila de
+    condutores (`condutores`, na ordem cadastrada na tela Base) e deslocada
+    por `deslocamento` posicoes -- indice = (ordem - deslocamento) % N. Nao
+    substitui por outro condutor da fila se o da vez estiver indisponivel
+    (inativo/ferias/periodo errado/horario sobreposto): a vaga so fica sem
+    condutor nesse dia, sem pular a vez de ninguem.
+    """
+    condutores = revezamento.condutores
+    carros = revezamento.carros
+    n = len(condutores)
+    if n == 0 or n != len(carros):
+        print(
+            f"[geracao] grupo_revezamento_id={revezamento.id}: numero de condutores ({n}) "
+            f"diferente do numero de carros ({len(carros)}), rodizio desativado"
+        )
+        return None
+
+    indice = (ordem - revezamento.deslocamento) % n
+    condutor = condutores[indice].condutor
     periodo = _periodo_da_viagem(viagem)
+    if condutor.status != StatusCondutor.ATIVO or condutor.periodo != periodo or condutor.id in em_ferias:
+        print(
+            f"[geracao] viagem_id={viagem.id} grupo_revezamento_id={revezamento.id} vaga={ordem}: "
+            f"condutor {condutor.nome} indisponivel ({periodo.value}), vaga fica sem condutor"
+        )
+        return None
+    if not _condutor_livre(condutor.id, viagem, viagens):
+        print(
+            f"[geracao] viagem_id={viagem.id} grupo_revezamento_id={revezamento.id} vaga={ordem}: "
+            f"condutor {condutor.nome} ja escalado em horario sobreposto hoje, vaga fica sem condutor"
+        )
+        return None
+    return condutor
+
+
+def _proximo_condutor_alfabetico(
+    db: Session,
+    viagem: ViagemDia,
+    viagens: list[ViagemDia],
+    em_ferias: set[int],
+    empresa_ids: list[int],
+    pendentes_periodo: dict[PeriodoCondutor, int],
+) -> Condutor | None:
+    """Escolhe o condutor da viagem no rodizio alfabetico de fim de semana:
+    ordena por nome os condutores ATIVOS do periodo/empresas elegiveis, e
+    continua a partir de `RodizioCondutorFimDeSemana.ultimo_condutor_id`
+    daquele periodo (ou do que ja avancou nesse mesmo laco, via
+    `pendentes_periodo`), ciclando -- pula quem estiver de ferias/indisponivel
+    sem travar.
+    """
+    periodo = _periodo_da_viagem(viagem)
+    if not empresa_ids:
+        return None
+
     candidatos = (
         db.query(Condutor)
         .filter(
@@ -726,60 +715,31 @@ def _proximo_condutor_livre(
             Condutor.status == StatusCondutor.ATIVO,
             Condutor.periodo == periodo,
         )
+        .order_by(Condutor.nome)
         .all()
     )
     candidatos = [c for c in candidatos if c.id not in em_ferias]
     if not candidatos:
-        print(f"[geracao] viagem_id={viagem.id} regiao_id={viagem.regiao_id} periodo={periodo.value}: sem condutor {periodo.value} disponivel")
+        print(f"[geracao] viagem_id={viagem.id} periodo={periodo.value}: sem condutor {periodo.value} disponivel")
         return None
 
-    inicio = viagem.horario_saida
-    fim = fim_viagem(viagem)
-
-    def livre(condutor_id: int) -> bool:
-        for outra in viagens:
-            if outra.id == viagem.id or outra.condutor_id != condutor_id:
-                continue
-            if janelas_sobrepoem(inicio, fim, outra.horario_saida, fim_viagem(outra)):
-                return False
-        return True
-
-    def mesmo_veiculo_do_dia(condutor_id: int) -> bool:
-        """Um condutor so opera um unico veiculo por dia: se ja foi escalado
-        noutra viagem hoje, essa viagem precisa ser do mesmo veiculo."""
-        for outra in viagens:
-            if outra.id == viagem.id or outra.condutor_id != condutor_id:
-                continue
-            if outra.veiculo_id != viagem.veiculo_id:
-                return False
-        return True
-
-    disponiveis = [c for c in candidatos if livre(c.id) and mesmo_veiculo_do_dia(c.id)]
-    if not disponiveis:
+    por_id = {c.id: c for c in candidatos}
+    ordem_ids = [c.id for c in candidatos]
+    elegiveis = {c.id for c in candidatos if _condutor_livre(c.id, viagem, viagens)}
+    if not elegiveis:
         print(
-            f"[geracao] viagem_id={viagem.id} regiao_id={viagem.regiao_id} veiculo_id={viagem.veiculo_id}: "
-            "nenhum condutor livre com o mesmo veiculo do dia"
+            f"[geracao] viagem_id={viagem.id}: nenhum condutor livre nesse horario (rodizio fim de semana)"
         )
         return None
 
-    if viagem.veiculo_id is not None:
-        preferenciais = [c for c in disponiveis if c.veiculo_preferencial_id == viagem.veiculo_id]
-        if preferenciais:
-            return preferenciais[0]
-
-    disponiveis.sort(key=lambda c: ultimos_usos_condutor.get(c.id, dt.date.min))
-    return disponiveis[0]
-
-
-def _ultimos_usos(db: Session, coluna, antes_de: dt.date) -> dict[int, dt.date]:
-    """Ultima data de uso (antes de `antes_de`) de cada valor de `coluna`
-    (condutor_id ou veiculo_id) em ViagemDia -- uma unica query agregada em
-    vez de uma query por candidato dentro do sort() de rodizio.
-    """
-    linhas = (
-        db.query(coluna, func.max(ViagemDia.data))
-        .filter(coluna.isnot(None), ViagemDia.data < antes_de)
-        .group_by(coluna)
-        .all()
-    )
-    return dict(linhas)
+    ultimo_id = pendentes_periodo.get(periodo)
+    if ultimo_id is None:
+        registro = db.get(RodizioCondutorFimDeSemana, periodo)
+        ultimo_id = registro.ultimo_condutor_id if registro else None
+    inicio = (ordem_ids.index(ultimo_id) + 1) if ultimo_id in ordem_ids else 0
+    for deslocamento in range(len(ordem_ids)):
+        candidato_id = ordem_ids[(inicio + deslocamento) % len(ordem_ids)]
+        if candidato_id in elegiveis:
+            pendentes_periodo[periodo] = candidato_id
+            return por_id[candidato_id]
+    return None

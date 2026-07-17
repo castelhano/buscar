@@ -368,6 +368,27 @@ class GrupoBaseRead(BaseModel):
     viagens: list[ViagemBaseRead] = []
 
 
+class GrupoRevezamentoCarroRead(BaseModel):
+    grupo_base_id: int
+    ordem: int
+
+
+class GrupoRevezamentoCondutorRead(BaseModel):
+    condutor_id: int
+    ordem: int
+    nome: str
+    apelido: str | None
+
+
+class GrupoRevezamentoRead(BaseModel):
+    id: int
+    dia_semana: DiaSemana
+    rotulo: str | None
+    deslocamento: int
+    carros: list[GrupoRevezamentoCarroRead] = []
+    condutores: list[GrupoRevezamentoCondutorRead] = []
+
+
 class NaoClassificadoRead(BaseModel):
     agenda_id: int
     usuario_id: int
@@ -385,6 +406,7 @@ class NaoClassificadoRead(BaseModel):
 class EstruturaBaseRead(BaseModel):
     grupos: list[GrupoBaseRead]
     nao_classificados: list[NaoClassificadoRead]
+    grupos_revezamento: list[GrupoRevezamentoRead] = []
 
 
 class ViagemBaseCreate(BaseModel):
@@ -401,6 +423,18 @@ class MembroBaseMover(BaseModel):
 
 class ViagemBaseAlterarHora(BaseModel):
     hora: dt.time
+
+
+class GrupoRevezamentoCreate(BaseModel):
+    rotulo: str | None = None
+
+
+class CarrosRevezamentoSet(BaseModel):
+    grupo_base_ids: list[int]
+
+
+class CondutoresRevezamentoSet(BaseModel):
+    condutor_ids: list[int]
 
 
 class ViagemDiaAbrir(BaseModel):
