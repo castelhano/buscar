@@ -314,6 +314,112 @@ def limpar_dia(data: dt.date, db: Session = Depends(get_db)):
     db.commit()
 
 
+@router.post("/copiar", response_model=list[schemas.ViagemDiaRead], status_code=201)
+def copiar_dia(payload: schemas.ViagemDiaCopiar, db: Session = Depends(get_db)):
+    """Copia carros (blocos) escolhidos de `data_origem` pra `data_destino`,
+    duplicando ViagemDia e passageiros. So aceita destino vazio (sem nenhum
+    registro) pra nao arriscar sobrescrever agendamento ja existente.
+    """
+    _verificar_dia_destravado(db, payload.data_destino)
+
+    tem_dado_no_destino = (
+        db.query(models.ViagemDia.id).filter(models.ViagemDia.data == payload.data_destino).first() is not None
+        or db.query(models.ViagemDiaPassageiro.id)
+        .filter(models.ViagemDiaPassageiro.viagem_dia_id.is_(None), models.ViagemDiaPassageiro.data == payload.data_destino)
+        .first()
+        is not None
+    )
+    if tem_dado_no_destino:
+        raise HTTPException(status_code=409, detail="O dia destino ja possui agendamento")
+
+    ancora_ids = list(dict.fromkeys(payload.ancora_ids))
+    if not ancora_ids:
+        raise HTTPException(status_code=400, detail="Nenhum carro selecionado para copiar")
+
+    ancoras = db.query(models.ViagemDia).filter(models.ViagemDia.id.in_(ancora_ids)).all()
+    por_id = {v.id: v for v in ancoras}
+    for ancora_id in ancora_ids:
+        ancora = por_id.get(ancora_id)
+        if ancora is None:
+            raise HTTPException(status_code=404, detail=f"ViagemDia {ancora_id} nao encontrada")
+        if ancora.data != payload.data_origem:
+            raise HTTPException(status_code=400, detail=f"Viagem {ancora_id} nao pertence a data de origem informada")
+        if ancora.grupo_viagem_id is not None:
+            raise HTTPException(status_code=400, detail=f"Viagem {ancora_id} nao e a ancora do bloco")
+
+    viagens_a_copiar = (
+        db.query(models.ViagemDia)
+        .options(joinedload(models.ViagemDia.passageiros))
+        .filter(
+            (models.ViagemDia.id.in_(ancora_ids)) | (models.ViagemDia.grupo_viagem_id.in_(ancora_ids)),
+        )
+        .all()
+    )
+
+    novas_viagens: list[models.ViagemDia] = []
+    for ancora_id in ancora_ids:
+        ancora = por_id[ancora_id]
+        pernas = [ancora] + [v for v in viagens_a_copiar if v.grupo_viagem_id == ancora_id]
+
+        nova_ancora = models.ViagemDia(
+            data=payload.data_destino,
+            regiao_id=ancora.regiao_id,
+            empresa_id=ancora.empresa_id,
+            condutor_id=ancora.condutor_id,
+            veiculo_id=ancora.veiculo_id,
+            horario_saida=ancora.horario_saida,
+            capacidade=ancora.capacidade,
+            status=models.StatusViagemDia.PLANEJADA,
+            ordem_exibicao=ancora.ordem_exibicao,
+        )
+        db.add(nova_ancora)
+        db.flush()
+        novas_viagens.append(nova_ancora)
+
+        for perna in pernas:
+            viagem_destino = nova_ancora
+            if perna.id != ancora.id:
+                nova_perna = models.ViagemDia(
+                    data=payload.data_destino,
+                    regiao_id=perna.regiao_id,
+                    empresa_id=perna.empresa_id,
+                    condutor_id=perna.condutor_id,
+                    veiculo_id=perna.veiculo_id,
+                    horario_saida=perna.horario_saida,
+                    capacidade=perna.capacidade,
+                    status=models.StatusViagemDia.PLANEJADA,
+                    grupo_viagem_id=nova_ancora.id,
+                )
+                db.add(nova_perna)
+                db.flush()
+                novas_viagens.append(nova_perna)
+                viagem_destino = nova_perna
+
+            for passageiro in perna.passageiros:
+                db.add(
+                    models.ViagemDiaPassageiro(
+                        viagem_dia_id=viagem_destino.id,
+                        usuario_id=passageiro.usuario_id,
+                        sentido=passageiro.sentido,
+                        hora=passageiro.hora,
+                        origem=passageiro.origem,
+                        regiao_origem_id=passageiro.regiao_origem_id,
+                        destino_id=passageiro.destino_id,
+                        regiao_destino_id=passageiro.regiao_destino_id,
+                        acompanhante=passageiro.acompanhante,
+                        ordem=passageiro.ordem,
+                        status=models.StatusAtendimentoDia.AGENDADO,
+                        observacoes=passageiro.observacoes,
+                        fixo=passageiro.fixo,
+                    )
+                )
+
+    db.commit()
+    viagens_do_dia = _query_viagens(db, payload.data_destino)
+    contexto = _construir_contexto_dia(db, payload.data_destino, viagens_do_dia)
+    return [_serializar_viagem(v, contexto) for v in viagens_do_dia]
+
+
 @router.patch("/{viagem_id}/atribuir", response_model=schemas.ViagemDiaRead)
 def atribuir_condutor_veiculo(viagem_id: int, payload: schemas.ViagemDiaAtribuir, db: Session = Depends(get_db)):
     viagem = _get_viagem_ou_404(db, viagem_id)

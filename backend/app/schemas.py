@@ -319,6 +319,12 @@ class ReordenarBlocosPayload(BaseModel):
     ancora_ids: list[int]
 
 
+class ViagemDiaCopiar(BaseModel):
+    data_origem: dt.date
+    data_destino: dt.date
+    ancora_ids: list[int]
+
+
 class DiaTravadoRead(BaseModel):
     data: dt.date
     travado: bool

@@ -47,6 +47,7 @@ import OcupacaoBaseModal from "../components/board/OcupacaoBaseModal";
 import CancelarPassageiroModal from "../components/board/CancelarPassageiroModal";
 import ConfirmarModal from "../components/board/ConfirmarModal";
 import ReordenarPosicaoModal from "../components/board/ReordenarPosicaoModal";
+import CopiarDiaModal from "../components/board/CopiarDiaModal";
 
 function hoje() {
   return new Date().toISOString().slice(0, 10);
@@ -278,6 +279,11 @@ export default function AgendamentoDiaPage() {
     mutationFn: () => api.post("/viagens/destravar", undefined, { data }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["travamento", data] }),
   });
+  const copiarDia = useMutation({
+    mutationFn: ({ dataOrigem, ancoraIds }: { dataOrigem: string; ancoraIds: number[] }) =>
+      api.post<ViagemDia[]>("/viagens/copiar", { data_origem: dataOrigem, data_destino: data, ancora_ids: ancoraIds }),
+    onSuccess: invalidarDia,
+  });
 
   function mensagemErro(e: unknown, fallback: string): string {
     return e instanceof Error ? e.message : fallback;
@@ -318,6 +324,7 @@ export default function AgendamentoDiaPage() {
   const [modalCancelar, setModalCancelar] = useState<number | null>(null);
   const [modalRemoverPassageiro, setModalRemoverPassageiro] = useState<number | null>(null);
   const [modalEditarPassageiro, setModalEditarPassageiro] = useState<ViagemDiaPassageiro | null>(null);
+  const [modalCopiarDia, setModalCopiarDia] = useState(false);
   const [modalLimparDia, setModalLimparDia] = useState(false);
   const [modalDestravarDia, setModalDestravarDia] = useState(false);
   const [modalOrdemIndice, setModalOrdemIndice] = useState<number | null>(null);
@@ -573,6 +580,11 @@ export default function AgendamentoDiaPage() {
             disabled={gerar.isPending}
           >
             Gerar agendamento do dia
+          </button>
+        )}
+        {modo === "dia" && !diaTemAlgumRegistro && !viagensQuery.isLoading && (
+          <button className="btn" onClick={() => setModalCopiarDia(true)}>
+            Copiar de outro dia
           </button>
         )}
         {modo === "base" && (
@@ -901,6 +913,23 @@ export default function AgendamentoDiaPage() {
               onSuccess: () => setModalDestravarDia(false),
               onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao destravar o dia")),
             })
+          }
+        />
+      )}
+
+      {modalCopiarDia && (
+        <CopiarDiaModal
+          dataDestino={data}
+          enviando={copiarDia.isPending}
+          onFechar={() => setModalCopiarDia(false)}
+          onConfirmar={(dataOrigem, ancoraIds) =>
+            copiarDia.mutate(
+              { dataOrigem, ancoraIds },
+              {
+                onSuccess: () => setModalCopiarDia(false),
+                onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao copiar agendamento do dia")),
+              },
+            )
           }
         />
       )}
