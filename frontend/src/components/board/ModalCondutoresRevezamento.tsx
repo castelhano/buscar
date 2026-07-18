@@ -41,9 +41,14 @@ export default function ModalCondutoresRevezamento({
   const [selecionados, setSelecionados] = useState<number[]>(
     grupoRevezamento.condutores.map((c) => c.condutor_id),
   );
+  const [filtroEmpresa, setFiltroEmpresa] = useState<number | "">("");
+  const [filtroPeriodo, setFiltroPeriodo] = useState<"" | "Manha" | "Tarde">("");
 
   const cor = corRevezamento(grupoRevezamento.id);
-  const condutoresAtivos = condutores.filter((c) => c.status === "Ativo");
+  const condutoresAtivos = condutores
+    .filter((c) => c.status === "Ativo")
+    .filter((c) => filtroEmpresa === "" || c.empresa_id === filtroEmpresa)
+    .filter((c) => filtroPeriodo === "" || c.periodo === filtroPeriodo);
 
   // Condutor ja escalado em OUTRO grupo de revezamento -- mostrado na cor
   // desse outro grupo pra deixar claro, ao montar um grupo novo, quem ja
@@ -73,6 +78,39 @@ export default function ModalCondutoresRevezamento({
           revezamento (1º clicado assume a vaga 1 primeiro).
         </div>
 
+        <div style={{ display: "flex", gap: "0.3rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
+          <select
+            value={filtroEmpresa}
+            onChange={(e) => setFiltroEmpresa(e.target.value ? Number(e.target.value) : "")}
+          >
+            <option value="">Empresa</option>
+            {empresas.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.nome}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filtroPeriodo}
+            onChange={(e) => setFiltroPeriodo(e.target.value as "" | "Manha" | "Tarde")}
+          >
+            <option value="">Periodo</option>
+            <option value="Manha">Manha (1P)</option>
+            <option value="Tarde">Tarde (2P)</option>
+          </select>
+          {(filtroEmpresa !== "" || filtroPeriodo !== "") && (
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                setFiltroEmpresa("");
+                setFiltroPeriodo("");
+              }}
+            >
+              Limpar filtros
+            </button>
+          )}
+        </div>
+
         <div className="campo">
           <div className="badge-grade">
             {condutoresAtivos.map((c) => {
@@ -86,9 +124,9 @@ export default function ModalCondutoresRevezamento({
                   className="badge-selecao"
                   title={outroGrupo ? `Ja esta no Grupo ${outroGrupo.numero}` : undefined}
                   style={{
-                    background: selecionado ? cor : undefined,
+                    background: selecionado ? cor : outroGrupo?.cor,
                     borderColor: selecionado ? cor : outroGrupo?.cor ?? cor,
-                    color: selecionado ? "#fff" : outroGrupo?.cor,
+                    color: selecionado || outroGrupo ? "#fff" : undefined,
                     fontWeight: selecionado ? 600 : undefined,
                   }}
                   onClick={() => alternar(c.id)}
