@@ -206,6 +206,7 @@ class UsuarioCreate(BaseModel):
     nome: str
     abbr: str
     status: StatusAtivoInativo = StatusAtivoInativo.ATIVO
+    contato: str | None = None
     detalhe: str | None = None
     observacao: str | None = None
 
@@ -216,6 +217,7 @@ class UsuarioRead(ORMModel):
     abbr: str
     data_cadastro: dt.date
     status: StatusAtivoInativo
+    contato: str | None
     detalhe: str | None
     observacao: str | None
 

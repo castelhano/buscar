@@ -12,11 +12,12 @@ interface FormState {
   nome: string;
   abbr: string;
   status: StatusAtivoInativo;
+  contato: string;
   detalhe: string;
   observacao: string;
 }
 
-const vazio: FormState = { nome: "", abbr: "", status: "Ativo", detalhe: "", observacao: "" };
+const vazio: FormState = { nome: "", abbr: "", status: "Ativo", contato: "", detalhe: "", observacao: "" };
 
 export default function UsuariosPage() {
   const { isAdmin } = useAuth();
@@ -74,6 +75,7 @@ export default function UsuariosPage() {
         nome: detalhe.data.nome,
         abbr: detalhe.data.abbr,
         status: detalhe.data.status,
+        contato: detalhe.data.contato ?? "",
         detalhe: detalhe.data.detalhe ?? "",
         observacao: detalhe.data.observacao ?? "",
       });
@@ -98,6 +100,7 @@ export default function UsuariosPage() {
         nome: form.nome,
         abbr: form.abbr,
         status: form.status,
+        contato: form.contato || null,
         detalhe: form.detalhe || null,
         observacao: form.observacao || null,
       },
@@ -119,6 +122,7 @@ export default function UsuariosPage() {
           nome: basico.nome,
           abbr: basico.abbr,
           status: basico.status,
+          contato: basico.contato || null,
           detalhe: basico.detalhe || null,
           observacao: basico.observacao || null,
         },
@@ -194,6 +198,10 @@ export default function UsuariosPage() {
                   <option value="Inativo">Inativo</option>
                 </select>
               </div>
+              <div className="campo">
+                <label>Contato</label>
+                <input value={form.contato} onChange={(e) => setForm({ ...form, contato: e.target.value })} />
+              </div>
               <div className="campo" style={{ flex: 1 }}>
                 <label>Detalhe</label>
                 <input value={form.detalhe} onChange={(e) => setForm({ ...form, detalhe: e.target.value })} />
@@ -242,6 +250,14 @@ export default function UsuariosPage() {
                     <option value="Ativo">Ativo</option>
                     <option value="Inativo">Inativo</option>
                   </select>
+                </div>
+                <div className="campo">
+                  <label>Contato</label>
+                  <input
+                    value={basico.contato}
+                    onChange={(e) => setBasico({ ...basico, contato: e.target.value })}
+                    disabled={!isAdmin}
+                  />
                 </div>
                 <div className="campo" style={{ flex: 1 }}>
                   <label>Detalhe</label>

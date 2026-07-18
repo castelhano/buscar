@@ -109,6 +109,7 @@ export interface Usuario {
   abbr: string;
   data_cadastro: string;
   status: StatusAtivoInativo;
+  contato: string | null;
   detalhe: string | null;
   observacao: string | null;
 }
