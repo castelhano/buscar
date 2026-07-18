@@ -496,6 +496,14 @@ export default function AgendamentoDiaPage() {
     }
   });
 
+  // Numeracao global (pra bater com o "Grupo N" mostrado no card do carro),
+  // mas so exibe na barra os grupos que tem pelo menos um carro no periodo
+  // aberto (Manha/Tarde) -- grupo de manha nao deve aparecer olhando a tarde.
+  const gruposBaseIdsDoPeriodo = new Set(gruposBaseDoPeriodo.map(({ grupo }) => grupo.id));
+  const gruposRevezamentoDoPeriodo = (estruturaBaseQuery.data?.grupos_revezamento ?? [])
+    .map((grupo, indice) => ({ grupo, numeroGrupo: indice + 1 }))
+    .filter(({ grupo }) => grupo.carros.some((c) => gruposBaseIdsDoPeriodo.has(c.grupo_base_id)));
+
   return (
     <div>
       <h2>Agendamento do dia</h2>
@@ -708,7 +716,7 @@ export default function AgendamentoDiaPage() {
         ) : (
           <>
             <GruposRevezamentoBar
-              gruposRevezamento={estruturaBaseQuery.data?.grupos_revezamento ?? []}
+              gruposRevezamento={gruposRevezamentoDoPeriodo}
               carrosSelecionadosCount={carrosSelecionadosRevezamento.size}
               onAbrirModalCondutores={(grupoRevezamentoId) => setModalCondutoresRevezamentoId(grupoRevezamentoId)}
               onRemoverGrupo={(grupoRevezamentoId) => setModalRemoverRevezamentoId(grupoRevezamentoId)}

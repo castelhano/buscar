@@ -2,7 +2,7 @@ import type { GrupoRevezamento } from "../../api/types";
 import { corRevezamento } from "./coresRevezamento";
 
 interface Props {
-  gruposRevezamento: GrupoRevezamento[];
+  gruposRevezamento: { grupo: GrupoRevezamento; numeroGrupo: number }[];
   carrosSelecionadosCount: number;
   onAbrirModalCondutores: (grupoRevezamentoId: number) => void;
   onRemoverGrupo: (grupoRevezamentoId: number) => void;
@@ -23,7 +23,7 @@ export default function GruposRevezamentoBar({
   return (
     <div style={{ marginBottom: "0.6rem" }}>
       <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center" }}>
-        {gruposRevezamento.map((grupo, indice) => {
+        {gruposRevezamento.map(({ grupo, numeroGrupo }) => {
           const cor = corRevezamento(grupo.id);
           const configIncompleta = grupo.carros.length !== grupo.condutores.length;
           return (
@@ -41,7 +41,7 @@ export default function GruposRevezamentoBar({
               onClick={() => onAbrirModalCondutores(grupo.id)}
               title="Clique pra editar os condutores desse grupo"
             >
-              Grupo {indice + 1} ({grupo.carros.length} carro{grupo.carros.length === 1 ? "" : "s"},{" "}
+              Grupo {numeroGrupo} ({grupo.carros.length} carro{grupo.carros.length === 1 ? "" : "s"},{" "}
               {grupo.condutores.length} condutor{grupo.condutores.length === 1 ? "" : "es"})
               {configIncompleta && <span title="Numero de carros e condutores nao bate -- rodizio desativado"> ⚠</span>}
               <button
@@ -65,9 +65,9 @@ export default function GruposRevezamentoBar({
           <button className="btn btn-sm btn-primario" onClick={onCriarGrupo}>
             Criar grupo
           </button>
-          {gruposRevezamento.map((grupo, indice) => (
+          {gruposRevezamento.map(({ grupo, numeroGrupo }) => (
             <button key={grupo.id} className="btn btn-sm" onClick={() => onAdicionarAoGrupo(grupo.id)}>
-              + Grupo {indice + 1}
+              + Grupo {numeroGrupo}
             </button>
           ))}
           <button className="btn btn-sm" onClick={onLimparSelecao}>
