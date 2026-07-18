@@ -60,6 +60,11 @@ def nome_arquivo_seguro(nome: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "_", nome).strip("_") or "sem_nome"
 
 
+def _matricula_padded(matricula: str) -> str:
+    """Matricula com 6 digitos, preenchendo com zero a esquerda."""
+    return matricula.zfill(6)
+
+
 def _com_detalhe(texto: str, detalhe: str | None) -> Paragraph:
     """Texto principal da celula + endereco detalhado numa linha extra, menor."""
     html = escape(texto)
@@ -128,7 +133,7 @@ def _montar_dados_condutor_dia(
 
     titulo_dia = f"{primeira.data.strftime('%d/%m/%Y')} ({dia_semana_nome}) - {regiao.nome if regiao else '-'}"
     titulo_condutor = (
-        f"{condutor.matricula if condutor else '-'} {condutor.nome if condutor else '-'} "
+        f"{_matricula_padded(condutor.matricula) if condutor else '-'} {condutor.nome if condutor else '-'} "
         f"{hora_inicio} - {hora_fim} | VEICULO: {veiculo.prefixo if veiculo else '-'}"
     )
 
@@ -1126,16 +1131,17 @@ def _linhas_escala(db: Session, condutores: list, inicio: dt.date, fim: dt.date)
             dias.add(d)
             d += dt.timedelta(days=1)
 
-    viagens_por_condutor_dia: dict[tuple[int, dt.date], ViagemDia] = {
-        (v.condutor_id, v.data): v
-        for v in db.query(ViagemDia)
+    pernas_por_condutor_dia: dict[tuple[int, dt.date], list[ViagemDia]] = {}
+    for v in (
+        db.query(ViagemDia)
         .options(joinedload(ViagemDia.passageiros))
         .filter(ViagemDia.condutor_id.in_(condutor_ids), ViagemDia.data >= inicio, ViagemDia.data <= fim)
-    }
+    ):
+        pernas_por_condutor_dia.setdefault((v.condutor_id, v.data), []).append(v)
 
     linhas = []
     for condutor in condutores:
-        condutor_label = f"{condutor.matricula} - {condutor.apelido or condutor.nome}"
+        condutor_label = f"{_matricula_padded(condutor.matricula)} - {condutor.apelido or condutor.nome}"
         d = inicio
         while d <= fim:
             frequencia = frequencias.get((condutor.id, d))
@@ -1163,8 +1169,13 @@ def _linhas_escala(db: Session, condutores: list, inicio: dt.date, fim: dt.date)
                         "hora_saida": None,
                     }
                 )
-            elif (condutor.id, d) in viagens_por_condutor_dia:
-                viagem = viagens_por_condutor_dia[(condutor.id, d)]
+            elif (condutor.id, d) in pernas_por_condutor_dia:
+                # saida da garagem e so na primeira perna do dia; o turno so
+                # encerra (garagem + TEMPO_ENCERRAMENTO_CONDUTOR_MINUTOS) apos
+                # a ultima -- sem ordenar, uma leg do meio do dia podia
+                # aparecer como se fosse a saida da garagem.
+                pernas = sorted(pernas_por_condutor_dia[(condutor.id, d)], key=_hora_referencia)
+                primeira_perna, ultima_perna = pernas[0], pernas[-1]
                 # sem Frequencia lancada pra esse (condutor, dia) -- ja
                 # confirmado pelo "if frequencia is not None" acima -- entao
                 # intervalo_do_condutor so cairia no padrao do periodo mesmo;
@@ -1175,10 +1186,10 @@ def _linhas_escala(db: Session, condutores: list, inicio: dt.date, fim: dt.date)
                         "condutor": condutor_label,
                         "data": d,
                         "tipo": "Trabalhado",
-                        "hora_entrada": viagem.horario_saida,
+                        "hora_entrada": primeira_perna.horario_saida,
                         "intervalo_inicio": intervalo[0] if intervalo else None,
                         "intervalo_fim": intervalo[1] if intervalo else None,
-                        "hora_saida": fim_turno_condutor(viagem),
+                        "hora_saida": fim_turno_condutor(ultima_perna),
                     }
                 )
             else:
