@@ -20,6 +20,8 @@ from app.models import (
     CondutorFerias,
     DiaSemana,
     Frequencia,
+    GrupoRevezamento,
+    GrupoRevezamentoCondutor,
     Sentido,
     StatusAtendimentoDia,
     StatusCondutor,
@@ -1214,6 +1216,31 @@ def gerar_csv_escalas(db: Session, condutores: list, inicio: dt.date, fim: dt.da
                 _formatar_hora(linha["hora_saida"]),
             ]
         )
+    return buffer.getvalue().encode("utf-8-sig")
+
+
+def gerar_csv_grupos_revezamento(db: Session, dia_semana: DiaSemana) -> bytes:
+    """Uma coluna por grupo de revezamento (Grupo 1, Grupo 2, ...) e, abaixo,
+    a fila de condutores desse grupo na ordem cadastrada -- espelha o layout
+    da barra de grupos na tela Base, so que em planilha.
+    """
+    revezamentos = (
+        db.query(GrupoRevezamento)
+        .options(joinedload(GrupoRevezamento.condutores).joinedload(GrupoRevezamentoCondutor.condutor))
+        .filter(GrupoRevezamento.dia_semana == dia_semana)
+        .order_by(GrupoRevezamento.id)
+        .all()
+    )
+    colunas = [
+        [condutor.condutor.apelido or condutor.condutor.nome for condutor in revezamento.condutores]
+        for revezamento in revezamentos
+    ]
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, delimiter=";")
+    writer.writerow([f"Grupo {indice + 1}" for indice in range(len(colunas))])
+    max_linhas = max((len(coluna) for coluna in colunas), default=0)
+    for linha in range(max_linhas):
+        writer.writerow([coluna[linha] if linha < len(coluna) else "" for coluna in colunas])
     return buffer.getvalue().encode("utf-8-sig")
 
 

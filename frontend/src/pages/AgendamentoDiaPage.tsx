@@ -613,6 +613,18 @@ export default function AgendamentoDiaPage() {
             Ocupacao
           </button>
         )}
+        {modo === "base" && (
+          <button
+            className="btn"
+            onClick={() =>
+              api
+                .download(`/base/${diaSemanaBase}/revezamentos/csv`)
+                .catch((e: unknown) => setErro(mensagemErro(e, "Erro ao baixar grupos")))
+            }
+          >
+            Grupos
+          </button>
+        )}
         {modo === "dia" && !travado && (
           <button className="btn" onClick={() => setModalAbrirCarro(true)}>
             + Abrir carro

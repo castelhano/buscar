@@ -19,7 +19,7 @@ from app.services.base import (
     remover_membro,
     remover_viagem,
 )
-from app.services.exportacao import gerar_pdf_ocupacao_base
+from app.services.exportacao import gerar_csv_grupos_revezamento, gerar_pdf_ocupacao_base
 
 router = APIRouter(prefix="/base", tags=["base"], dependencies=[Depends(obter_conta_atual)])
 
@@ -47,6 +47,17 @@ def baixar_ocupacao_base(
 @router.get("/{dia_semana}", response_model=schemas.EstruturaBaseRead)
 def obter_estrutura(dia_semana: models.DiaSemana, db: Session = Depends(get_db)):
     return montar_estrutura_base(db, dia_semana)
+
+
+@router.get("/{dia_semana}/revezamentos/csv")
+def baixar_grupos_revezamento_csv(dia_semana: models.DiaSemana, db: Session = Depends(get_db)):
+    conteudo = gerar_csv_grupos_revezamento(db, dia_semana)
+    nome_arquivo = f"grupos_revezamento_{dia_semana.value}.csv"
+    return Response(
+        content=conteudo,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{nome_arquivo}"'},
+    )
 
 
 @router.post("/{dia_semana}/grupos", response_model=schemas.EstruturaBaseRead, status_code=201)
