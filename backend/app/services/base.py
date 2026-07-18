@@ -198,6 +198,24 @@ def criar_grupo_revezamento(db: Session, dia_semana: DiaSemana, rotulo: str | No
     return revezamento
 
 
+def girar_grupo_revezamento(db: Session, grupo_revezamento_id: int) -> DiaSemana:
+    """Avanca manualmente o `deslocamento` do grupo em 1 posicao (mod N de
+    condutores) -- mesmo ajuste que a geracao faz sozinha a cada dia gerado
+    (ver `services.geracao._atribuir_condutores`). Usado pra escalonar o
+    ponto de partida de grupos de dias da semana diferentes (ex: Segunda
+    comeca em 0, Terca em 1, Quarta em 2...), fazendo o rodizio girar dia a
+    dia dentro da mesma semana, nao so semana a semana.
+    """
+    revezamento = db.get(GrupoRevezamento, grupo_revezamento_id)
+    if revezamento is None:
+        raise ValueError("Grupo de revezamento nao encontrado")
+    n = len(revezamento.condutores)
+    if n > 0:
+        revezamento.deslocamento = (revezamento.deslocamento + 1) % n
+    db.commit()
+    return revezamento.dia_semana
+
+
 def remover_grupo_revezamento(db: Session, grupo_revezamento_id: int) -> None:
     revezamento = db.get(GrupoRevezamento, grupo_revezamento_id)
     if revezamento is None:

@@ -215,6 +215,10 @@ export default function AgendamentoDiaPage() {
       api.put<EstruturaBase>(`/base/revezamentos/${grupoRevezamentoId}/condutores`, { condutor_ids: condutorIds }),
     onSuccess: atualizarEstruturaBase,
   });
+  const girarRevezamento = useMutation({
+    mutationFn: (grupoRevezamentoId: number) => api.post<EstruturaBase>(`/base/revezamentos/${grupoRevezamentoId}/girar`, {}),
+    onSuccess: atualizarEstruturaBase,
+  });
   const atribuir = useMutation({
     mutationFn: (dados: { viagemIds: number[]; condutor_id: number | null; veiculo_id: number | null }) =>
       api.patch("/viagens/atribuir-bloco", {
@@ -720,6 +724,11 @@ export default function AgendamentoDiaPage() {
               carrosSelecionadosCount={carrosSelecionadosRevezamento.size}
               onAbrirModalCondutores={(grupoRevezamentoId) => setModalCondutoresRevezamentoId(grupoRevezamentoId)}
               onRemoverGrupo={(grupoRevezamentoId) => setModalRemoverRevezamentoId(grupoRevezamentoId)}
+              onGirarGrupo={(grupoRevezamentoId) =>
+                girarRevezamento.mutate(grupoRevezamentoId, {
+                  onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao girar o rodizio do grupo")),
+                })
+              }
               onCriarGrupo={() => {
                 const carroIds = [...carrosSelecionadosRevezamento];
                 criarRevezamento.mutate(undefined, {

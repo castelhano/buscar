@@ -6,6 +6,7 @@ interface Props {
   carrosSelecionadosCount: number;
   onAbrirModalCondutores: (grupoRevezamentoId: number) => void;
   onRemoverGrupo: (grupoRevezamentoId: number) => void;
+  onGirarGrupo: (grupoRevezamentoId: number) => void;
   onCriarGrupo: () => void;
   onAdicionarAoGrupo: (grupoRevezamentoId: number) => void;
   onLimparSelecao: () => void;
@@ -16,6 +17,7 @@ export default function GruposRevezamentoBar({
   carrosSelecionadosCount,
   onAbrirModalCondutores,
   onRemoverGrupo,
+  onGirarGrupo,
   onCriarGrupo,
   onAdicionarAoGrupo,
   onLimparSelecao,
@@ -44,6 +46,18 @@ export default function GruposRevezamentoBar({
               Grupo {numeroGrupo} ({grupo.carros.length} carro{grupo.carros.length === 1 ? "" : "s"},{" "}
               {grupo.condutores.length} condutor{grupo.condutores.length === 1 ? "" : "es"})
               {configIncompleta && <span title="Numero de carros e condutores nao bate -- rodizio desativado"> ⚠</span>}
+              <button
+                className="btn btn-sm"
+                style={{ padding: "0 0.3rem", fontSize: "0.7rem" }}
+                title={`Deslocamento atual: ${grupo.deslocamento}. Clique pra avancar o rodizio desse grupo em 1 posicao (mesmo ajuste que a geracao faz sozinha) -- usa isso pra escalonar o ponto de partida de cada dia da semana`}
+                disabled={grupo.condutores.length === 0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onGirarGrupo(grupo.id);
+                }}
+              >
+                ↻ {grupo.deslocamento}
+              </button>
               <button
                 className="btn btn-sm"
                 style={{ padding: "0 0.3rem", fontSize: "0.7rem" }}

@@ -11,6 +11,7 @@ from app.services.base import (
     criar_viagem,
     definir_carros_revezamento,
     definir_condutores_revezamento,
+    girar_grupo_revezamento,
     mover_membro,
     montar_estrutura_base,
     remover_grupo,
@@ -105,6 +106,15 @@ def definir_carros_revezamento_base(grupo_revezamento_id: int, payload: schemas.
 def definir_condutores_revezamento_base(grupo_revezamento_id: int, payload: schemas.CondutoresRevezamentoSet, db: Session = Depends(get_db)):
     try:
         dia_semana = definir_condutores_revezamento(db, grupo_revezamento_id, payload.condutor_ids)
+    except ValueError as erro:
+        raise HTTPException(status_code=400, detail=str(erro)) from erro
+    return montar_estrutura_base(db, dia_semana)
+
+
+@router.post("/revezamentos/{grupo_revezamento_id}/girar", response_model=schemas.EstruturaBaseRead)
+def girar_grupo_revezamento_base(grupo_revezamento_id: int, db: Session = Depends(get_db)):
+    try:
+        dia_semana = girar_grupo_revezamento(db, grupo_revezamento_id)
     except ValueError as erro:
         raise HTTPException(status_code=400, detail=str(erro)) from erro
     return montar_estrutura_base(db, dia_semana)
