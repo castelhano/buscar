@@ -30,7 +30,6 @@ export default function SobrasPanel({ sobras, onMarcarFolga, aplicando }: Props)
             <label key={c.id} className="sobras-item">
               <span>
                 <input type="checkbox" checked={selecionados.includes(c.id)} onChange={() => alternar(c.id)} /> {c.nome}
-                {c.em_ferias && <span className="tag" style={{ marginLeft: "0.4rem" }}>Ferias</span>}
               </span>
             </label>
           ))}

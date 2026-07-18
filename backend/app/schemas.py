@@ -477,12 +477,8 @@ class FrequenciaRead(ORMModel):
 # Sobras (carros/condutores nao escalados no dia)
 # --------------------------------------------------------------------------
 
-class CondutorSobraRead(CondutorRead):
-    em_ferias: bool = False
-
-
 class SobrasRead(BaseModel):
-    condutores: list[CondutorSobraRead]
+    condutores: list[CondutorRead]
     veiculos: list[VeiculoRead]
 
 

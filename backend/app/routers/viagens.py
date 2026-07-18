@@ -813,9 +813,9 @@ def sobras(data: dt.date, db: Session = Depends(get_db)):
         .all()
     )
     condutores_sobrando = [
-        schemas.CondutorSobraRead.model_validate(c).model_copy(update={"em_ferias": c.id in em_ferias})
+        schemas.CondutorRead.model_validate(c)
         for c in condutores
-        if c.id not in usados_condutor and c.id not in em_folga
+        if c.id not in usados_condutor and c.id not in em_folga and c.id not in em_ferias
     ]
 
     veiculos = db.query(models.Veiculo).filter(models.Veiculo.status == models.StatusVeiculo.ATIVO).all()

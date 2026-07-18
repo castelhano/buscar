@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
@@ -322,6 +322,16 @@ export default function AgendamentoDiaPage() {
   const [modalCondutoresRevezamentoId, setModalCondutoresRevezamentoId] = useState<number | null>(null);
   const [carrosSelecionadosRevezamento, setCarrosSelecionadosRevezamento] = useState<Set<number>>(new Set());
   const [erro, setErro] = useState<string | null>(null);
+  const erroBoxRef = useRef<HTMLDivElement>(null);
+
+  // A pagina e longa (carros, grupos, sobras ficam bem abaixo) -- sem isso,
+  // um erro disparado la embaixo aparece so no topo, fora da tela, e parece
+  // que "nada aconteceu".
+  useEffect(() => {
+    if (erro) {
+      erroBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [erro]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -513,7 +523,7 @@ export default function AgendamentoDiaPage() {
       <h2>Agendamento do dia</h2>
 
       {erro && (
-        <div className="erro-box" onClick={() => setErro(null)} style={{ cursor: "pointer" }}>
+        <div ref={erroBoxRef} className="erro-box" onClick={() => setErro(null)} style={{ cursor: "pointer" }}>
           {erro} (clique para fechar)
         </div>
       )}

@@ -279,12 +279,8 @@ export interface Frequencia {
   observacao: string | null;
 }
 
-export interface CondutorSobra extends Condutor {
-  em_ferias: boolean;
-}
-
 export interface Sobras {
-  condutores: CondutorSobra[];
+  condutores: Condutor[];
   veiculos: Veiculo[];
 }
 
