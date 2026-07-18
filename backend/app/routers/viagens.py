@@ -19,8 +19,15 @@ from app.services.exportacao import (
     gerar_zip_agendamentos_png,
     nome_arquivo_seguro,
 )
+from app.services.dia import dia_semana_from_date
 from app.services.frequencia import INTERVALO_PADRAO_POR_PERIODO
-from app.services.geracao import _periodo_da_viagem, gerar_agendamento_dia, horario_garagem, listar_desconsiderados_dia
+from app.services.geracao import (
+    _periodo_da_viagem,
+    gerar_agendamento_dia,
+    horario_garagem,
+    listar_desconsiderados_dia,
+    reverter_giro_revezamento,
+)
 from app.services.recursos import fim_viagem, janelas_sobrepoem
 
 router = APIRouter(prefix="/viagens", tags=["viagens"], dependencies=[Depends(obter_conta_atual)])
@@ -298,11 +305,23 @@ def limpar_dia(data: dt.date, db: Session = Depends(get_db)):
     Tambem apaga os "sem vaga" orfaos (viagem_dia_id NULL) daquela data --
     sem isso, gerar/limpar/gerar de novo acumula orfaos duplicados de
     tentativas anteriores no painel de Sem Vaga.
+
+    Se a geracao apagada tinha de fato rodado (havia `ViagemDia` ou orfao pra
+    essa data), desfaz tambem o giro do rodizio de condutor de dia util
+    (`GrupoRevezamento.deslocamento`, ver `reverter_giro_revezamento`) --
+    senao um ciclo gerar/limpar/gerar avanca o rodizio duas vezes pra uma
+    unica ocorrencia real do dia da semana.
     """
     _verificar_dia_destravado(db, data)
     viagem_ids = [
         row[0] for row in db.query(models.ViagemDia.id).filter(models.ViagemDia.data == data).all()
     ]
+    havia_orfao = (
+        db.query(models.ViagemDiaPassageiro.id)
+        .filter(models.ViagemDiaPassageiro.viagem_dia_id.is_(None), models.ViagemDiaPassageiro.data == data)
+        .first()
+        is not None
+    )
     if viagem_ids:
         db.query(models.ViagemDiaPassageiro).filter(
             models.ViagemDiaPassageiro.viagem_dia_id.in_(viagem_ids)
@@ -311,6 +330,8 @@ def limpar_dia(data: dt.date, db: Session = Depends(get_db)):
     db.query(models.ViagemDiaPassageiro).filter(
         models.ViagemDiaPassageiro.viagem_dia_id.is_(None), models.ViagemDiaPassageiro.data == data
     ).delete(synchronize_session=False)
+    if viagem_ids or havia_orfao:
+        reverter_giro_revezamento(db, dia_semana_from_date(data))
     db.commit()
 
 

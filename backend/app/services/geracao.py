@@ -647,6 +647,30 @@ def _atribuir_condutores(
             revezamento.deslocamento = (revezamento.deslocamento + 1) % len(revezamento.condutores)
 
 
+def reverter_giro_revezamento(db: Session, dia_semana: DiaSemana) -> None:
+    """Desfaz o giro de `GrupoRevezamento.deslocamento` que `_atribuir_condutores`
+    aplica a cada geracao completa de um dia util -- chamado por
+    `routers.viagens.limpar_dia` quando a geracao apagada tinha de fato rodado
+    (existia `ViagemDia`/orfao pra data), pra manter o rodizio consistente num
+    ciclo gerar/limpar/gerar (sem isso, o giro avanca de novo na proxima
+    geracao e fica duplicado pra sempre nas ocorrencias seguintes desse dia da
+    semana). Fim de semana nao usa `deslocamento` (ve `_proximo_condutor_alfabetico`),
+    entao nao ha o que reverter.
+    """
+    if dia_semana in _FIM_DE_SEMANA:
+        return
+    revezamentos = (
+        db.query(GrupoRevezamento)
+        .options(joinedload(GrupoRevezamento.condutores))
+        .filter(GrupoRevezamento.dia_semana == dia_semana)
+        .all()
+    )
+    for revezamento in revezamentos:
+        n = len(revezamento.condutores)
+        if n:
+            revezamento.deslocamento = (revezamento.deslocamento - 1) % n
+
+
 def _condutor_do_slot(
     revezamento: GrupoRevezamento,
     ordem: int,
