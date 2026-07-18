@@ -156,6 +156,8 @@ def _montar_dados_condutor_dia(
             nome = passageiro.usuario.abbr or passageiro.usuario.nome
             if passageiro.acompanhante:
                 nome = f"{nome} + ACOMP"
+            if passageiro.usuario.contato:
+                nome = f"{nome} | {passageiro.usuario.contato}"
             linhas.append(
                 [
                     (passageiro.hora.strftime("%H:%M"), None),
