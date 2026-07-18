@@ -39,6 +39,11 @@ export default function CondutoresSection() {
   const [removendoId, setRemovendoId] = useState<number | null>(null);
   const [erroRemocao, setErroRemocao] = useState<string | null>(null);
 
+  const [filtroEmpresa, setFiltroEmpresa] = useState<number | "">("");
+  const [filtroVeiculo, setFiltroVeiculo] = useState<number | "" | "vazio">("");
+  const [filtroStatus, setFiltroStatus] = useState<StatusCondutor | "">("");
+  const [filtroPeriodo, setFiltroPeriodo] = useState<PeriodoCondutor | "">("");
+
   function payload(f: FormState) {
     return {
       empresa_id: f.empresa_id,
@@ -82,11 +87,57 @@ export default function CondutoresSection() {
     return empresas?.find((e) => e.id === id)?.nome ?? "-";
   }
 
+  function carroPreferencial(id: number | null) {
+    if (id === null) return "-";
+    return veiculos?.find((v) => v.id === id)?.prefixo ?? "-";
+  }
+
   const veiculosDaEmpresa = (veiculos ?? []).filter((v) => v.empresa_id === form.empresa_id);
+
+  const temFiltroAtivo = filtroEmpresa !== "" || filtroVeiculo !== "" || filtroStatus !== "" || filtroPeriodo !== "";
+
+  function limparFiltros() {
+    setFiltroEmpresa("");
+    setFiltroVeiculo("");
+    setFiltroStatus("");
+    setFiltroPeriodo("");
+  }
+
+  const condutoresFiltrados = (condutores ?? []).filter((c) => {
+    if (filtroEmpresa !== "" && c.empresa_id !== filtroEmpresa) return false;
+    if (filtroVeiculo === "vazio" && c.veiculo_preferencial_id !== null) return false;
+    if (filtroVeiculo !== "" && filtroVeiculo !== "vazio" && c.veiculo_preferencial_id !== filtroVeiculo) return false;
+    if (filtroStatus !== "" && c.status !== filtroStatus) return false;
+    if (filtroPeriodo !== "" && c.periodo !== filtroPeriodo) return false;
+    return true;
+  });
+
+  // Uma van so deveria ter um condutor ativo por periodo -- agrupa os ativos
+  // por (veiculo, periodo) e marca quem estiver num grupo com mais de um.
+  const grupoPorVeiculoPeriodo = new Map<string, Condutor[]>();
+  for (const c of condutores ?? []) {
+    if (c.status !== "Ativo" || c.veiculo_preferencial_id === null) continue;
+    const chave = `${c.veiculo_preferencial_id}-${c.periodo}`;
+    const grupo = grupoPorVeiculoPeriodo.get(chave) ?? [];
+    grupo.push(c);
+    grupoPorVeiculoPeriodo.set(chave, grupo);
+  }
+  const condutoresEmConflito = new Map<number, Condutor[]>();
+  for (const grupo of grupoPorVeiculoPeriodo.values()) {
+    if (grupo.length < 2) continue;
+    for (const c of grupo) condutoresEmConflito.set(c.id, grupo.filter((outro) => outro.id !== c.id));
+  }
+  const vansEmConflito = new Set([...grupoPorVeiculoPeriodo.values()].filter((g) => g.length >= 2).map((g) => g[0].veiculo_preferencial_id));
 
   return (
     <div>
       {error && <div className="erro-box">Erro ao carregar condutores.</div>}
+      {vansEmConflito.size > 0 && (
+        <div className="aviso-discreto" style={{ marginBottom: "0.5rem" }}>
+          ⚠ {vansEmConflito.size} van{vansEmConflito.size === 1 ? "" : "s"} com mais de um condutor ativo no mesmo
+          periodo.
+        </div>
+      )}
       {erroRemocao && (
         <div className="erro-box" onClick={() => setErroRemocao(null)} style={{ cursor: "pointer" }}>
           {erroRemocao} (clique para fechar)
@@ -162,25 +213,93 @@ export default function CondutoresSection() {
           </button>
         )}
       </div>
+      <div className="linha-toolbar">
+        <div className="campo">
+          <label>Empresa</label>
+          <select value={filtroEmpresa} onChange={(e) => setFiltroEmpresa(e.target.value ? Number(e.target.value) : "")}>
+            <option value="">Todas</option>
+            {(empresas ?? []).map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="campo">
+          <label>Van</label>
+          <select
+            value={filtroVeiculo}
+            onChange={(e) => setFiltroVeiculo(e.target.value === "vazio" ? "vazio" : e.target.value ? Number(e.target.value) : "")}
+          >
+            <option value="">Todas</option>
+            <option value="vazio">Vazio (sem carro)</option>
+            {(veiculos ?? []).map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.prefixo}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="campo">
+          <label>Status</label>
+          <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value as StatusCondutor | "")}>
+            <option value="">Todos</option>
+            {STATUS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="campo">
+          <label>Periodo</label>
+          <select value={filtroPeriodo} onChange={(e) => setFiltroPeriodo(e.target.value as PeriodoCondutor | "")}>
+            <option value="">Todos</option>
+            {PERIODOS.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button className="btn btn-sm" onClick={limparFiltros} disabled={!temFiltroAtivo}>
+          Limpar filtros
+        </button>
+      </div>
       <table>
         <thead>
           <tr>
             <th>Nome</th>
             <th>Matricula</th>
             <th>Empresa</th>
+            <th>Van</th>
             <th>Status</th>
             <th>Periodo</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
-          {(condutores ?? []).map((c) => (
+          {condutoresFiltrados.map((c) => (
             <tr key={c.id}>
               <td>
                 {c.nome} {c.apelido && <span className="tag">{c.apelido}</span>}
               </td>
               <td>{c.matricula}</td>
               <td>{nomeEmpresa(c.empresa_id)}</td>
+              <td>
+                {carroPreferencial(c.veiculo_preferencial_id)}
+                {condutoresEmConflito.has(c.id) && (
+                  <span
+                    title={`Tambem preferido por: ${condutoresEmConflito
+                      .get(c.id)!
+                      .map((outro) => outro.apelido || outro.nome)
+                      .join(", ")} (mesmo periodo)`}
+                  >
+                    {" "}
+                    ⚠
+                  </span>
+                )}
+              </td>
               <td>
                 <span className={`tag ${c.status === "Ativo" ? "tag-ativo" : c.status !== "Afastado" ? "tag-inativo" : ""}`}>{c.status}</span>
               </td>
