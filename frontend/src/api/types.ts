@@ -281,7 +281,8 @@ export interface Frequencia {
 
 export interface Sobras {
   condutores: Condutor[];
-  veiculos: Veiculo[];
+  veiculos_manha: Veiculo[];
+  veiculos_tarde: Veiculo[];
 }
 
 export interface UsuarioDesconsiderado {

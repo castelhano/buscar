@@ -39,13 +39,22 @@ export default function SobrasPanel({ sobras, onMarcarFolga, aplicando }: Props)
           </button>
         </div>
         <div className="sobras-lista">
-          <h4>Veiculos ({sobras.veiculos.length})</h4>
-          {sobras.veiculos.map((v) => (
+          <h4>Veiculos sobrando de manha ({sobras.veiculos_manha.length})</h4>
+          {sobras.veiculos_manha.map((v) => (
             <div key={v.id} className="sobras-item">
               <span>{v.prefixo} ({v.placa})</span>
             </div>
           ))}
-          {sobras.veiculos.length === 0 && <p style={{ color: "var(--cor-texto-suave)", fontSize: "0.85rem" }}>Nenhum veiculo sobrando.</p>}
+          {sobras.veiculos_manha.length === 0 && <p style={{ color: "var(--cor-texto-suave)", fontSize: "0.85rem" }}>Nenhum veiculo sobrando.</p>}
+        </div>
+        <div className="sobras-lista">
+          <h4>Veiculos sobrando a tarde ({sobras.veiculos_tarde.length})</h4>
+          {sobras.veiculos_tarde.map((v) => (
+            <div key={v.id} className="sobras-item">
+              <span>{v.prefixo} ({v.placa})</span>
+            </div>
+          ))}
+          {sobras.veiculos_tarde.length === 0 && <p style={{ color: "var(--cor-texto-suave)", fontSize: "0.85rem" }}>Nenhum veiculo sobrando.</p>}
         </div>
       </div>
     </div>

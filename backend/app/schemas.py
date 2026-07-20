@@ -479,7 +479,8 @@ class FrequenciaRead(ORMModel):
 
 class SobrasRead(BaseModel):
     condutores: list[CondutorRead]
-    veiculos: list[VeiculoRead]
+    veiculos_manha: list[VeiculoRead]
+    veiculos_tarde: list[VeiculoRead]
 
 
 # --------------------------------------------------------------------------

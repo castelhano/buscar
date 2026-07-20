@@ -814,7 +814,18 @@ def remover_passageiro(passageiro_id: int, db: Session = Depends(get_db)):
 def sobras(data: dt.date, db: Session = Depends(get_db)):
     viagens_do_dia = db.query(models.ViagemDia).filter(models.ViagemDia.data == data).all()
     usados_condutor = {v.condutor_id for v in viagens_do_dia if v.condutor_id is not None}
-    usados_veiculo = {v.veiculo_id for v in viagens_do_dia if v.veiculo_id is not None}
+    # Veiculo livre e calculado por periodo (nao pelo dia inteiro): um veiculo
+    # usado so de manha deve aparecer como sobrando a tarde, e vice-versa.
+    usados_veiculo_manha = {
+        v.veiculo_id
+        for v in viagens_do_dia
+        if v.veiculo_id is not None and _periodo_da_viagem(v) == models.PeriodoCondutor.MANHA
+    }
+    usados_veiculo_tarde = {
+        v.veiculo_id
+        for v in viagens_do_dia
+        if v.veiculo_id is not None and _periodo_da_viagem(v) == models.PeriodoCondutor.TARDE
+    }
     em_ferias = {
         f.condutor_id
         for f in db.query(models.CondutorFerias).filter(
@@ -840,9 +851,18 @@ def sobras(data: dt.date, db: Session = Depends(get_db)):
     ]
 
     veiculos = db.query(models.Veiculo).filter(models.Veiculo.status == models.StatusVeiculo.ATIVO).all()
-    veiculos_sobrando = [schemas.VeiculoRead.model_validate(v) for v in veiculos if v.id not in usados_veiculo]
+    veiculos_sobrando_manha = [
+        schemas.VeiculoRead.model_validate(v) for v in veiculos if v.id not in usados_veiculo_manha
+    ]
+    veiculos_sobrando_tarde = [
+        schemas.VeiculoRead.model_validate(v) for v in veiculos if v.id not in usados_veiculo_tarde
+    ]
 
-    return schemas.SobrasRead(condutores=condutores_sobrando, veiculos=veiculos_sobrando)
+    return schemas.SobrasRead(
+        condutores=condutores_sobrando,
+        veiculos_manha=veiculos_sobrando_manha,
+        veiculos_tarde=veiculos_sobrando_tarde,
+    )
 
 
 @router.get("/desconsiderados", response_model=list[schemas.UsuarioDesconsideradoRead])
