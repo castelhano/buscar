@@ -8,6 +8,18 @@ TEMPO_ENCERRAMENTO_CONDUTOR_MINUTOS = 90
 PDF de agendamento quanto no horario de saida lancado na escala/frequencia."""
 
 
+def inicio_viagem(viagem: ViagemDia) -> dt.time:
+    """Horario do primeiro atendimento da viagem (ou o proprio horario de saida, se nao houver passageiros).
+
+    Usado (junto com `fim_viagem`) pra calcular a janela de ocupacao real de
+    condutor/veiculo -- `horario_saida` e so a estimativa de saida da garagem
+    (relevante pra exportacao de agendamento/frequencia), nao reflete o
+    atendimento em si e nao deve entrar em checagem de conflito.
+    """
+    horas = [p.hora for p in viagem.passageiros if p.status != StatusAtendimentoDia.CANCELADO]
+    return min(horas) if horas else viagem.horario_saida
+
+
 def fim_viagem(viagem: ViagemDia) -> dt.time:
     """Horario do ultimo atendimento da viagem (ou o proprio horario de saida, se nao houver passageiros)."""
     horas = [p.hora for p in viagem.passageiros if p.status != StatusAtendimentoDia.CANCELADO]

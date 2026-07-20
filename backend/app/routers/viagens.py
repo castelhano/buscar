@@ -27,7 +27,7 @@ from app.services.geracao import (
     listar_desconsiderados_dia,
     reverter_giro_revezamento,
 )
-from app.services.recursos import fim_viagem, janelas_sobrepoem
+from app.services.recursos import fim_viagem, inicio_viagem, janelas_sobrepoem
 
 router = APIRouter(prefix="/viagens", tags=["viagens"], dependencies=[Depends(obter_conta_atual)])
 
@@ -97,14 +97,21 @@ class _ContextoDia:
     conflitos_veiculo: dict[int, models.ViagemDia]
 
 
+def _ancora_bloco(viagem: models.ViagemDia) -> int:
+    return viagem.grupo_viagem_id if viagem.grupo_viagem_id is not None else viagem.id
+
+
 def _mapa_conflitos(viagens: list[models.ViagemDia], campo: str) -> dict[int, models.ViagemDia]:
     """Pra cada viagem, acha a primeira outra viagem do mesmo dia usando o
     mesmo condutor/veiculo em horario sobreposto -- calculado em memoria sobre
     a lista do dia ja carregada, sem uma query por viagem.
 
-    Duas viagens do mesmo carro/condutor no mesmo dia sao normais (dois turnos)
-    desde que uma termine (ultimo atendimento) antes da outra comecar (horario
-    de saida) -- so sinaliza quando os intervalos se sobrepoem.
+    Duas viagens do mesmo carro (mesmo bloco/`grupo_viagem_id`) nunca sao
+    conflito entre si -- e o mesmo carro, nao dois usos concorrentes do
+    condutor/veiculo. So sinaliza sobreposicao entre viagens de **carros
+    diferentes** que acabaram com o mesmo condutor/veiculo. A janela usada e
+    o atendimento real (`inicio_viagem`/`fim_viagem`), nunca `horario_saida`
+    (saida de garagem e so estimativa de exportacao, nao ocupacao real).
     """
     por_recurso: dict[int, list[models.ViagemDia]] = defaultdict(list)
     for v in viagens:
@@ -115,11 +122,17 @@ def _mapa_conflitos(viagens: list[models.ViagemDia], campo: str) -> dict[int, mo
     resultado: dict[int, models.ViagemDia] = {}
     for grupo in por_recurso.values():
         for v in grupo:
+            inicio_v = inicio_viagem(v)
             fim_v = fim_viagem(v)
+            ancora_v = _ancora_bloco(v)
             for outra in grupo:
-                if outra.id == v.id or outra.status == models.StatusViagemDia.CANCELADA:
+                if (
+                    outra.id == v.id
+                    or outra.status == models.StatusViagemDia.CANCELADA
+                    or _ancora_bloco(outra) == ancora_v
+                ):
                     continue
-                if janelas_sobrepoem(v.horario_saida, fim_v, outra.horario_saida, fim_viagem(outra)):
+                if janelas_sobrepoem(inicio_v, fim_v, inicio_viagem(outra), fim_viagem(outra)):
                     resultado[v.id] = outra
                     break
     return resultado

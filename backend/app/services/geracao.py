@@ -32,7 +32,7 @@ from app.models import (
     empresa_regiao,
 )
 from app.services.dia import dia_semana_from_date
-from app.services.recursos import fim_viagem, janelas_sobrepoem
+from app.services.recursos import fim_viagem, inicio_viagem, janelas_sobrepoem
 
 TEMPO_SAIDA_GARAGEM_MINUTOS = 60
 CORTE_PERIODO_TARDE = dt.time(14, 0)
@@ -535,32 +535,44 @@ def _deixar_para_alocacao_manual(db: Session, pernas: list[dict], data: dt.date)
 _FIM_DE_SEMANA = (DiaSemana.SAB, DiaSemana.DOM)
 
 
-def _veiculo_disponivel(db: Session, veiculo_id: int, viagem: ViagemDia, viagens: list[ViagemDia]) -> Veiculo | None:
-    """O veiculo da viagem e sempre o `veiculo_preferencial_id` do condutor
+def _veiculo_disponivel(db: Session, veiculo_id: int, pernas: list[ViagemDia], viagens: list[ViagemDia]) -> Veiculo | None:
+    """O veiculo das `pernas` (todas as viagens de um mesmo carro/periodo, ver
+    `_atribuir_condutores`) e sempre o `veiculo_preferencial_id` do condutor
     escalado: confirma que esse veiculo esta ATIVO e sem sobreposicao de
-    horario com outro uso dele no dia -- senao a viagem fica so com condutor,
-    sem veiculo (o rodizio de condutor nunca pula a vez por causa disso).
+    horario de atendimento com outro carro que ja o esteja usando -- senao as
+    pernas ficam so com condutor, sem veiculo (o rodizio de condutor nunca
+    pula a vez por causa disso). A janela usada e o atendimento real
+    (`inicio_viagem`/`fim_viagem`, primeiro ao ultimo passageiro), nunca
+    `horario_saida` (saida de garagem e so estimativa de exportacao, nao
+    ocupacao real). Pernas do mesmo grupo nunca conflitam entre si -- e o
+    mesmo carro, nao dois usos concorrentes do veiculo.
     """
     veiculo = db.get(Veiculo, veiculo_id)
     if veiculo is None or veiculo.status != StatusVeiculo.ATIVO:
         return None
-    inicio = viagem.horario_saida
-    fim = fim_viagem(viagem)
+    ids_do_grupo = {p.id for p in pernas}
+    inicio = min(inicio_viagem(p) for p in pernas)
+    fim = max(fim_viagem(p) for p in pernas)
     for outra in viagens:
-        if outra.id == viagem.id or outra.veiculo_id != veiculo_id:
+        if outra.id in ids_do_grupo or outra.veiculo_id != veiculo_id:
             continue
-        if janelas_sobrepoem(inicio, fim, outra.horario_saida, fim_viagem(outra)):
+        if janelas_sobrepoem(inicio, fim, inicio_viagem(outra), fim_viagem(outra)):
             return None
     return veiculo
 
 
 def _condutor_livre(condutor_id: int, viagem: ViagemDia, viagens: list[ViagemDia]) -> bool:
-    inicio = viagem.horario_saida
+    """So usado no rodizio alfabetico de fim de semana (`_proximo_condutor_alfabetico`),
+    onde ha de fato uma escolha entre varios condutores candidatos. Janela
+    calculada pelo atendimento real (`inicio_viagem`/`fim_viagem`), nunca
+    `horario_saida`.
+    """
+    inicio = inicio_viagem(viagem)
     fim = fim_viagem(viagem)
     for outra in viagens:
         if outra.id == viagem.id or outra.condutor_id != condutor_id:
             continue
-        if janelas_sobrepoem(inicio, fim, outra.horario_saida, fim_viagem(outra)):
+        if janelas_sobrepoem(inicio, fim, inicio_viagem(outra), fim_viagem(outra)):
             return False
     return True
 
@@ -573,20 +585,31 @@ def _atribuir_condutores(
     grupo_por_viagem_id: dict[int, int],
     empresas_por_regiao: dict[int, list[int]],
 ) -> None:
-    """Atribui condutor (e, a partir dele, veiculo) a cada viagem gerada, por
+    """Atribui condutor (e, a partir dele, veiculo) as viagens geradas, por
     uma de duas estrategias conforme o dia da semana (nunca mistura condutor
     de Manha com viagem de Tarde e vice-versa, corte as 14h00):
 
-    - Dia util: se o `GrupoBase` da viagem for uma vaga de algum
-      `GrupoRevezamento`, o condutor e o da posicao calculada por
-      `_condutor_do_slot` (ordem da vaga + deslocamento atual do grupo).
-      Fora de qualquer grupo de revezamento, fica sem condutor (manual).
+    - Dia util: as pernas sao agrupadas por (`GrupoBase`, periodo) -- todas as
+      pernas de um mesmo carro num mesmo periodo sao **uma unica decisao**: se
+      o `GrupoBase` for uma vaga de algum `GrupoRevezamento`, o condutor e o
+      da posicao calculada por `_condutor_do_slot` (ordem da vaga +
+      deslocamento atual do grupo) e e gravado em todas as pernas do grupo de
+      uma vez. Fora de qualquer grupo de revezamento, fica sem condutor
+      (manual). Pernas do mesmo carro nunca sao checadas por sobreposicao de
+      horario entre si -- e o mesmo carro, nunca compete com ele mesmo pelo
+      proprio condutor/veiculo (essa auto-colisao, calculada em cima de
+      `horario_saida`, era o que deixava pernas como o retorno do meio-dia
+      sem condutor mesmo o carro tendo condutor definido o dia todo).
     - Sabado/domingo: rodizio alfabetico continuo por periodo, independente de
       grupo (`RodizioCondutorFimDeSemana`) -- ver `_proximo_condutor_alfabetico`.
+      Aqui sim ha escolha entre varios condutores candidatos, entao a
+      checagem de sobreposicao (`_condutor_livre`) se aplica, calculada pelo
+      atendimento real (`inicio_viagem`/`fim_viagem`), nunca por
+      `horario_saida`.
 
-    Em ambos os casos, uma vez definido o condutor, o veiculo da viagem e o
+    Em ambos os casos, uma vez definido o condutor, o veiculo e o
     `Condutor.veiculo_preferencial_id` dele, se disponivel (ver
-    `_veiculo_disponivel`) -- se nao, a viagem fica so com condutor, sem
+    `_veiculo_disponivel`) -- se nao, as pernas ficam so com condutor, sem
     veiculo; o rodizio de condutor nunca pula a vez por causa do veiculo.
 
     O deslocamento de cada `GrupoRevezamento` do dia so e gravado apos o laco
@@ -623,27 +646,46 @@ def _atribuir_condutores(
             for carro in revezamento.carros
         }
 
-    for viagem in viagens:
-        if eh_fim_de_semana:
+    if eh_fim_de_semana:
+        for viagem in viagens:
             empresa_ids = empresas_por_regiao.get(viagem.regiao_id, [])
             condutor = _proximo_condutor_alfabetico(db, viagem, viagens, em_ferias, empresa_ids, pendentes_periodo)
-        else:
+            if condutor is None:
+                continue
+            viagem.condutor_id = condutor.id
+            if condutor.veiculo_preferencial_id is not None:
+                veiculo = _veiculo_disponivel(db, condutor.veiculo_preferencial_id, [viagem], viagens)
+                if veiculo is not None:
+                    viagem.veiculo_id = veiculo.id
+                    viagem.empresa_id = veiculo.empresa_id
+                    viagem.capacidade = veiculo.capacidade
+    else:
+        pernas_por_grupo_periodo: dict[tuple[int, PeriodoCondutor], list[ViagemDia]] = defaultdict(list)
+        for viagem in viagens:
             grupo_id = grupo_por_viagem_id.get(viagem.id)
-            slot = slot_por_grupo_base.get(grupo_id) if grupo_id is not None else None
+            if grupo_id is None:
+                continue  # nao veio de nenhum GrupoBase (nao deveria acontecer aqui)
+            pernas_por_grupo_periodo[(grupo_id, _periodo_da_viagem(viagem))].append(viagem)
+
+        for (grupo_id, periodo), pernas in pernas_por_grupo_periodo.items():
+            slot = slot_por_grupo_base.get(grupo_id)
             if slot is None:
                 continue  # carro fora de qualquer grupo de revezamento -- so manual
             revezamento, ordem = slot
-            condutor = _condutor_do_slot(revezamento, ordem, viagem, viagens, em_ferias)
-
-        if condutor is None:
-            continue
-        viagem.condutor_id = condutor.id
-        if condutor.veiculo_preferencial_id is not None:
-            veiculo = _veiculo_disponivel(db, condutor.veiculo_preferencial_id, viagem, viagens)
-            if veiculo is not None:
-                viagem.veiculo_id = veiculo.id
-                viagem.empresa_id = veiculo.empresa_id
-                viagem.capacidade = veiculo.capacidade
+            condutor = _condutor_do_slot(revezamento, ordem, periodo, em_ferias)
+            if condutor is None:
+                continue
+            veiculo = (
+                _veiculo_disponivel(db, condutor.veiculo_preferencial_id, pernas, viagens)
+                if condutor.veiculo_preferencial_id is not None
+                else None
+            )
+            for perna in pernas:
+                perna.condutor_id = condutor.id
+                if veiculo is not None:
+                    perna.veiculo_id = veiculo.id
+                    perna.empresa_id = veiculo.empresa_id
+                    perna.capacidade = veiculo.capacidade
 
     for periodo, condutor_id in pendentes_periodo.items():
         registro = db.get(RodizioCondutorFimDeSemana, periodo)
@@ -684,16 +726,20 @@ def reverter_giro_revezamento(db: Session, dia_semana: DiaSemana) -> None:
 def _condutor_do_slot(
     revezamento: GrupoRevezamento,
     ordem: int,
-    viagem: ViagemDia,
-    viagens: list[ViagemDia],
+    periodo: PeriodoCondutor,
     em_ferias: set[int],
 ) -> Condutor | None:
     """Escolhe o condutor da vaga `ordem` desse `GrupoRevezamento`: a fila de
     condutores (`condutores`, na ordem cadastrada na tela Base) e deslocada
     por `deslocamento` posicoes -- indice = (ordem - deslocamento) % N. Nao
     substitui por outro condutor da fila se o da vez estiver indisponivel
-    (inativo/ferias/periodo errado/horario sobreposto): a vaga so fica sem
-    condutor nesse dia, sem pular a vez de ninguem.
+    (inativo/ferias/periodo errado): a vaga so fica sem condutor nesse
+    periodo, sem pular a vez de ninguem.
+
+    Uma unica chamada decide o condutor de **todas** as pernas do carro nesse
+    periodo (ver `_atribuir_condutores`) -- por isso nao ha aqui checagem de
+    sobreposicao de horario contra outras pernas: o carro nunca compete com
+    ele mesmo pelo proprio condutor.
     """
     condutores = revezamento.condutores
     carros = revezamento.carros
@@ -707,17 +753,10 @@ def _condutor_do_slot(
 
     indice = (ordem - revezamento.deslocamento) % n
     condutor = condutores[indice].condutor
-    periodo = _periodo_da_viagem(viagem)
     if condutor.status != StatusCondutor.ATIVO or condutor.periodo != periodo or condutor.id in em_ferias:
         print(
-            f"[geracao] viagem_id={viagem.id} grupo_revezamento_id={revezamento.id} vaga={ordem}: "
-            f"condutor {condutor.nome} indisponivel ({periodo.value}), vaga fica sem condutor"
-        )
-        return None
-    if not _condutor_livre(condutor.id, viagem, viagens):
-        print(
-            f"[geracao] viagem_id={viagem.id} grupo_revezamento_id={revezamento.id} vaga={ordem}: "
-            f"condutor {condutor.nome} ja escalado em horario sobreposto hoje, vaga fica sem condutor"
+            f"[geracao] grupo_revezamento_id={revezamento.id} vaga={ordem} periodo={periodo.value}: "
+            f"condutor {condutor.nome} indisponivel, vaga fica sem condutor nesse periodo"
         )
         return None
     return condutor
