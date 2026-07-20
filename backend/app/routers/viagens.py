@@ -24,7 +24,6 @@ from app.services.frequencia import INTERVALO_PADRAO_POR_PERIODO
 from app.services.geracao import (
     _periodo_da_viagem,
     gerar_agendamento_dia,
-    horario_garagem,
     listar_desconsiderados_dia,
     reverter_giro_revezamento,
 )
@@ -718,13 +717,17 @@ def mover_passageiro_para_bloco(
         viagem_destino_id = destino.viagem_dia_id
     else:
         modelo = viagens_bloco[0]
+        # bloco_id sempre referencia uma viagem ja existente (a ancora ou uma
+        # perna dela), entao essa nova perna nunca e a primeira do carro --
+        # ele ja esta em rota, sem o desconto de saida de garagem (ver
+        # _gerar_carro_do_grupo_base).
         nova_viagem = models.ViagemDia(
             data=modelo.data,
             regiao_id=modelo.regiao_id,
             empresa_id=modelo.empresa_id,
             condutor_id=modelo.condutor_id,
             veiculo_id=modelo.veiculo_id,
-            horario_saida=horario_garagem(passageiro.hora),
+            horario_saida=passageiro.hora,
             capacidade=modelo.capacidade,
             status=models.StatusViagemDia.PLANEJADA,
             grupo_viagem_id=bloco_id,

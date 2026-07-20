@@ -335,6 +335,9 @@ export default function AgendamentoDiaPage() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
+  // So chamado quando o destino e a MESMA leg em que o passageiro ja esta --
+  // move-troca-de-carro/horario vai por handleDragEnd -> moverPassageiroBloco.
+  // Aqui e so reordenacao (ordem) dentro da propria leg.
   function handleDragEndDia(activeData: { viagemId: number; passageiroId: number }, overData: { viagemId: number; passageiroId?: number } | undefined, destinoId: number) {
     const viagens = viagensQuery.data ?? [];
     const carroDestino = viagens.find((v) => v.id === destinoId);
@@ -438,6 +441,20 @@ export default function AgendamentoDiaPage() {
     const overData = over.data.current as { viagemId: number; passageiroId?: number } | undefined;
     const destinoId = overData?.viagemId ?? Number(String(over.id).replace("carro-", ""));
     if (!destinoId || Number.isNaN(destinoId)) return;
+
+    if (destinoId !== activeData.viagemId) {
+      // Solto numa viagem diferente da propria (outro carro, ou outro
+      // horario do mesmo carro) -- igual ao solto no bloco inteiro e ao modo
+      // Base: o horario/sentido de quem esta sendo arrastado e quem manda,
+      // decidindo a leg de destino e criando-a on-the-fly se o carro de
+      // destino ainda nao tiver uma pro horario dele.
+      moverPassageiroBloco.mutate(
+        { id: activeData.passageiroId, bloco_id: destinoId },
+        { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao mover passageiro")) },
+      );
+      return;
+    }
+
     handleDragEndDia(activeData, overData, destinoId);
   }
 

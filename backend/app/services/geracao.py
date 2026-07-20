@@ -453,10 +453,17 @@ def _gerar_carro_do_grupo_base(
             regiao_da_viagem = regiao_alocacao(
                 viagem_base.sentido, membros[0]["regiao_origem_id"], membros[0]["regiao_destino_id"]
             )
+        # So a primeira perna do carro sai da garagem (por isso o desconto de
+        # TEMPO_SAIDA_GARAGEM_MINUTOS); as pernas seguintes do mesmo carro
+        # (ex: segundo horario de retorno) partem de onde a anterior terminou,
+        # com o carro ja em rota -- aplicar o desconto nelas tambem fazia a
+        # janela da perna seguinte "comecar" antes do fim da anterior e
+        # acusar conflito de condutor/veiculo com o proprio carro.
+        eh_primeira_perna = ancora_id is None
         viagem = ViagemDia(
             data=data,
             regiao_id=regiao_da_viagem,
-            horario_saida=horario_garagem(viagem_base.hora),
+            horario_saida=horario_garagem(viagem_base.hora) if eh_primeira_perna else viagem_base.hora,
             capacidade=max(lugares_totais, 1),
             status=StatusViagemDia.PLANEJADA,
         )
