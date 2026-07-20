@@ -136,6 +136,10 @@ export default function AgendamentoDiaPage() {
     mutationFn: (id: number) => api.delete(`/viagens/passageiros/${id}`),
     onSuccess: invalidarDia,
   });
+  const tirarPassageiroDoCarro = useMutation({
+    mutationFn: (id: number) => api.patch(`/viagens/passageiros/${id}/tirar-do-carro`),
+    onSuccess: invalidarDia,
+  });
   const cancelarPassageiro = useMutation({
     mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
       api.patch(`/viagens/passageiros/${id}/status`, undefined, { status: "Cancelado", observacoes: motivo || undefined }),
@@ -720,7 +724,14 @@ export default function AgendamentoDiaPage() {
                   onMoverDireita={() => moverBloco(indice, indice + 1)}
                   onEditarPosicao={() => setModalOrdemIndice(indice)}
                   onAdicionarPassageiro={travado ? undefined : setModalAdicionar}
-                  onRemoverPassageiro={travado ? undefined : setModalRemoverPassageiro}
+                  onRemoverPassageiro={
+                    travado
+                      ? undefined
+                      : (id) =>
+                          tirarPassageiroDoCarro.mutate(id, {
+                            onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao remover atendimento do carro")),
+                          })
+                  }
                   onCancelarPassageiro={travado ? undefined : setModalCancelar}
                   onEditarPassageiro={setModalEditarPassageiro}
                   onAtribuir={travado ? undefined : setModalAtribuir}
@@ -1098,8 +1109,8 @@ export default function AgendamentoDiaPage() {
 
       {modalRemoverPassageiro !== null && (
         <ConfirmarModal
-          titulo="Remover passageiro"
-          mensagem="Remover esse atendimento do carro? Ao contrario de Cancelar, isso apaga o registro sem deixar historico."
+          titulo="Remover atendimento"
+          mensagem="Remover esse atendimento? Ao contrario de Cancelar, isso apaga o registro sem deixar historico."
           onFechar={() => setModalRemoverPassageiro(null)}
           onConfirmar={() =>
             removerPassageiro.mutate(modalRemoverPassageiro, {

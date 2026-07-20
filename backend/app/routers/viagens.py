@@ -758,6 +758,24 @@ def mover_passageiro_para_bloco(
     return _serializar_viagem(viagem, _construir_contexto_dia(db, viagem.data))
 
 
+@router.patch("/passageiros/{passageiro_id}/tirar-do-carro", response_model=schemas.ViagemDiaPassageiroRead)
+def tirar_passageiro_do_carro(passageiro_id: int, db: Session = Depends(get_db)):
+    """Tira o passageiro do carro sem apagar o atendimento -- vira orfao
+    (fica em "Sem vaga"/"Fora de escala") pra realocacao manual depois, igual
+    a quem ficou sem carro na geracao.
+    """
+    passageiro = _get_passageiro_ou_404(db, passageiro_id)
+    _verificar_passageiro_destravado(db, passageiro)
+    if passageiro.viagem_dia_id is None:
+        raise HTTPException(status_code=400, detail="Passageiro ja esta fora de escala")
+    viagem = _get_viagem_ou_404(db, passageiro.viagem_dia_id)
+    passageiro.data = viagem.data
+    passageiro.viagem_dia_id = None
+    passageiro.ordem = 0
+    db.commit()
+    return _serializar_passageiro_orfao(passageiro)
+
+
 @router.patch("/passageiros/{passageiro_id}/status", response_model=schemas.ViagemDiaRead | schemas.ViagemDiaPassageiroRead)
 def alterar_status_passageiro(
     passageiro_id: int, status: models.StatusAtendimentoDia, observacoes: str | None = None, db: Session = Depends(get_db)
