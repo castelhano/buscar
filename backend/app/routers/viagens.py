@@ -794,7 +794,10 @@ def alterar_status_passageiro(
     passageiro_id: int, status: models.StatusAtendimentoDia, observacoes: str | None = None, db: Session = Depends(get_db)
 ):
     passageiro = _get_passageiro_ou_404(db, passageiro_id)
-    _verificar_passageiro_destravado(db, passageiro)
+    if status != models.StatusAtendimentoDia.CANCELADO:
+        # Cancelar continua liberado com o dia travado (unico botao que
+        # permanece ativo na tela travada); demais mudancas de status seguem bloqueadas.
+        _verificar_passageiro_destravado(db, passageiro)
     passageiro.status = status
     if observacoes is not None:
         passageiro.observacoes = observacoes

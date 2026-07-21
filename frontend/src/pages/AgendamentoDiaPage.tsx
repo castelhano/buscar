@@ -732,7 +732,7 @@ export default function AgendamentoDiaPage() {
                             onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao remover atendimento do carro")),
                           })
                   }
-                  onCancelarPassageiro={travado ? undefined : setModalCancelar}
+                  onCancelarPassageiro={setModalCancelar}
                   onEditarPassageiro={setModalEditarPassageiro}
                   onAtribuir={travado ? undefined : setModalAtribuir}
                   onLimparCondutorVeiculo={
@@ -762,7 +762,7 @@ export default function AgendamentoDiaPage() {
                 locais={locais ?? []}
                 regioes={regioes ?? []}
                 onRemover={travado ? undefined : setModalRemoverPassageiro}
-                onCancelar={travado ? undefined : setModalCancelar}
+                onCancelar={setModalCancelar}
                 onEditar={setModalEditarPassageiro}
               />
             )}
