@@ -13,11 +13,20 @@ interface FormState {
   abbr: string;
   status: StatusAtivoInativo;
   contato: string;
+  data_nascimento: string;
   detalhe: string;
   observacao: string;
 }
 
-const vazio: FormState = { nome: "", abbr: "", status: "Ativo", contato: "", detalhe: "", observacao: "" };
+const vazio: FormState = {
+  nome: "",
+  abbr: "",
+  status: "Ativo",
+  contato: "",
+  data_nascimento: "",
+  detalhe: "",
+  observacao: "",
+};
 
 export default function UsuariosPage() {
   const { isAdmin } = useAuth();
@@ -76,6 +85,7 @@ export default function UsuariosPage() {
         abbr: detalhe.data.abbr,
         status: detalhe.data.status,
         contato: detalhe.data.contato ?? "",
+        data_nascimento: detalhe.data.data_nascimento ?? "",
         detalhe: detalhe.data.detalhe ?? "",
         observacao: detalhe.data.observacao ?? "",
       });
@@ -101,6 +111,7 @@ export default function UsuariosPage() {
         abbr: form.abbr,
         status: form.status,
         contato: form.contato || null,
+        data_nascimento: form.data_nascimento || null,
         detalhe: form.detalhe || null,
         observacao: form.observacao || null,
       },
@@ -123,6 +134,7 @@ export default function UsuariosPage() {
           abbr: basico.abbr,
           status: basico.status,
           contato: basico.contato || null,
+          data_nascimento: basico.data_nascimento || null,
           detalhe: basico.detalhe || null,
           observacao: basico.observacao || null,
         },
@@ -202,15 +214,23 @@ export default function UsuariosPage() {
                 <label>Contato</label>
                 <input value={form.contato} onChange={(e) => setForm({ ...form, contato: e.target.value })} />
               </div>
-              <div className="campo" style={{ flex: 1 }}>
-                <label>Detalhe</label>
-                <input value={form.detalhe} onChange={(e) => setForm({ ...form, detalhe: e.target.value })} />
+              <div className="campo">
+                <label>Data de nascimento</label>
+                <input
+                  type="date"
+                  value={form.data_nascimento}
+                  onChange={(e) => setForm({ ...form, data_nascimento: e.target.value })}
+                />
               </div>
               <button className="btn btn-primario" onClick={salvarNovo} disabled={criar.isPending}>
                 Salvar
               </button>
             </div>
             <div className="linha-toolbar">
+              <div className="campo" style={{ flex: 1 }}>
+                <label>Detalhe</label>
+                <input value={form.detalhe} onChange={(e) => setForm({ ...form, detalhe: e.target.value })} />
+              </div>
               <div className="campo" style={{ flex: 1 }}>
                 <label>Observacao</label>
                 <input value={form.observacao} onChange={(e) => setForm({ ...form, observacao: e.target.value })} />
@@ -259,11 +279,12 @@ export default function UsuariosPage() {
                     disabled={!isAdmin}
                   />
                 </div>
-                <div className="campo" style={{ flex: 1 }}>
-                  <label>Detalhe</label>
+                <div className="campo">
+                  <label>Data de nascimento</label>
                   <input
-                    value={basico.detalhe}
-                    onChange={(e) => setBasico({ ...basico, detalhe: e.target.value })}
+                    type="date"
+                    value={basico.data_nascimento}
+                    onChange={(e) => setBasico({ ...basico, data_nascimento: e.target.value })}
                     disabled={!isAdmin}
                   />
                 </div>
@@ -284,6 +305,14 @@ export default function UsuariosPage() {
                 )}
               </div>
               <div className="linha-toolbar">
+                <div className="campo" style={{ flex: 1 }}>
+                  <label>Detalhe</label>
+                  <input
+                    value={basico.detalhe}
+                    onChange={(e) => setBasico({ ...basico, detalhe: e.target.value })}
+                    disabled={!isAdmin}
+                  />
+                </div>
                 <div className="campo" style={{ flex: 1 }}>
                   <label>Observacao</label>
                   <input

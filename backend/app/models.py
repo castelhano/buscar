@@ -242,6 +242,7 @@ class Usuario(Base):
     data_cadastro: Mapped[dt.date] = mapped_column(Date, default=dt.date.today)
     status: Mapped[StatusAtivoInativo] = mapped_column(_enum(StatusAtivoInativo), default=StatusAtivoInativo.ATIVO)
     contato: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    data_nascimento: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     detalhe: Mapped[str | None] = mapped_column(Text, nullable=True)
     observacao: Mapped[str | None] = mapped_column(Text, nullable=True)
 
