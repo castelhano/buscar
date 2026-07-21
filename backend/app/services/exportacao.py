@@ -8,6 +8,7 @@ from xml.sax.saxutils import escape
 
 from PIL import Image, ImageDraw, ImageFont
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
@@ -44,6 +45,20 @@ _ESTILO_CELULA = ParagraphStyle("Celula", parent=_ESTILOS["Normal"], fontName="H
 # Endereco detalhado (Usuario.detalhe / Local.observacao) e um complemento do
 # texto principal da celula, exibido menor pra nao competir com ele.
 _TAMANHO_FONTE_DETALHE = 9
+
+# Linha origem/destino do card do resumo -- menor que o nome (8pt) pra caber
+# origem e destino lado a lado na largura estreita da coluna.
+_TAMANHO_FONTE_RESUMO_ORIGEM_DESTINO = 6
+_ESTILO_RESUMO_ORIGEM = ParagraphStyle(
+    "ResumoOrigem", parent=_ESTILOS["Normal"], fontName="Helvetica", fontSize=_TAMANHO_FONTE_RESUMO_ORIGEM_DESTINO, leading=7, alignment=TA_LEFT
+)
+_ESTILO_RESUMO_DESTINO = ParagraphStyle(
+    "ResumoDestino", parent=_ESTILOS["Normal"], fontName="Helvetica", fontSize=_TAMANHO_FONTE_RESUMO_ORIGEM_DESTINO, leading=7, alignment=TA_RIGHT
+)
+# Nome do usuario no card do resumo -- 8pt, mesmo tamanho que a tabela usava
+# antes de virar Paragraph (necessario pra por a linha origem/destino embaixo
+# na mesma celula).
+_ESTILO_RESUMO_NOME = ParagraphStyle("ResumoNome", parent=_ESTILOS["Normal"], fontName="Helvetica", fontSize=8, leading=9)
 
 _DIAS_SEMANA_PT = {
     0: "segunda-feira",
@@ -623,6 +638,35 @@ def _primeiro_atendimento_por_usuario(grupo: list[ViagemDia]) -> dict[int, Viage
     return primeiro
 
 
+def _linha_origem_destino(passageiro: ViagemDiaPassageiro, largura_pt: float) -> Table:
+    """Sub-tabela de uma linha com origem (esquerda) e destino (direita),
+    lado a lado dentro da mesma celula do nome. Sentido RETORNO ja vem
+    invertido (destino -> origem) por _dados_origem/_dados_destino.
+    """
+    largura_col_pt = largura_pt / 2
+    origem, _ = _dados_origem(passageiro)
+    destino, _ = _dados_destino(passageiro)
+    origem = _truncar_texto(origem, largura_col_pt, tamanho=_TAMANHO_FONTE_RESUMO_ORIGEM_DESTINO)
+    destino = _truncar_texto(destino, largura_col_pt, tamanho=_TAMANHO_FONTE_RESUMO_ORIGEM_DESTINO)
+
+    tabela = Table(
+        [[Paragraph(escape(origem), _ESTILO_RESUMO_ORIGEM), Paragraph(escape(destino), _ESTILO_RESUMO_DESTINO)]],
+        colWidths=[largura_col_pt, largura_col_pt],
+    )
+    tabela.setStyle(
+        TableStyle(
+            [
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    return tabela
+
+
 def _card_grupo_resumo(grupo: list[ViagemDia]) -> Table:
     # largura util de cada celula = largura da coluna menos padding dos dois lados
     largura_nome_pt = _RESUMO_COL_NOME_CM * cm - 2 * _RESUMO_CARD_PADDING_PT
@@ -642,7 +686,8 @@ def _card_grupo_resumo(grupo: list[ViagemDia]) -> Table:
         idade = _idade(passageiro.usuario.data_nascimento)
         nome_base = passageiro.usuario.abbr or passageiro.usuario.nome
         nome = _truncar_texto(f"{nome_base} ({idade if idade is not None else '--'})", largura_nome_pt)
-        linhas.append([nome, passageiro.hora.strftime("%H:%M")])
+        celula_nome = [Paragraph(escape(nome), _ESTILO_RESUMO_NOME), _linha_origem_destino(passageiro, largura_nome_pt)]
+        linhas.append([celula_nome, passageiro.hora.strftime("%H:%M")])
 
     tabela = Table(linhas, colWidths=[_RESUMO_COL_NOME_CM * cm, _RESUMO_COL_HORA_CM * cm])
     tabela.setStyle(
@@ -655,6 +700,7 @@ def _card_grupo_resumo(grupo: list[ViagemDia]) -> Table:
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
                 ("ALIGN", (1, 1), (1, -1), "RIGHT"),
+                ("VALIGN", (0, 1), (-1, -1), "TOP"),
                 ("LEFTPADDING", (0, 0), (-1, -1), _RESUMO_CARD_PADDING_PT),
                 ("RIGHTPADDING", (0, 0), (-1, -1), _RESUMO_CARD_PADDING_PT),
                 ("TOPPADDING", (0, 0), (-1, -1), 2),
