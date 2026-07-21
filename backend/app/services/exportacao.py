@@ -598,6 +598,16 @@ def _truncar_texto(texto: str, largura_max_pt: float, fonte: str = "Helvetica", 
     return f"{cortado}{reticencias}" if cortado else reticencias
 
 
+def _idade(data_nascimento: dt.date | None) -> int | None:
+    if data_nascimento is None:
+        return None
+    hoje = dt.date.today()
+    idade = hoje.year - data_nascimento.year
+    if (hoje.month, hoje.day) < (data_nascimento.month, data_nascimento.day):
+        idade -= 1
+    return idade
+
+
 def _primeiro_atendimento_por_usuario(grupo: list[ViagemDia]) -> dict[int, ViagemDiaPassageiro]:
     """Um usuario pode aparecer em mais de uma leg do mesmo periodo (ex: ida e
     volta ambas de manha) -- pro resumo (enxuto) so mostra o primeiro horario.
@@ -629,7 +639,9 @@ def _card_grupo_resumo(grupo: list[ViagemDia]) -> Table:
     atendimentos = sorted(_primeiro_atendimento_por_usuario(grupo).values(), key=lambda p: p.hora)
     linhas = [[cabecalho, ""]]
     for passageiro in atendimentos:
-        nome = _truncar_texto(passageiro.usuario.abbr or passageiro.usuario.nome, largura_nome_pt)
+        idade = _idade(passageiro.usuario.data_nascimento)
+        nome_base = passageiro.usuario.abbr or passageiro.usuario.nome
+        nome = _truncar_texto(f"{nome_base} ({idade if idade is not None else '--'})", largura_nome_pt)
         linhas.append([nome, passageiro.hora.strftime("%H:%M")])
 
     tabela = Table(linhas, colWidths=[_RESUMO_COL_NOME_CM * cm, _RESUMO_COL_HORA_CM * cm])

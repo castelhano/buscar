@@ -348,6 +348,7 @@ class MembroBaseRead(BaseModel):
     usuario_id: int
     usuario_nome: str
     usuario_abbr: str
+    usuario_data_nascimento: dt.date | None
     usuario_ativo: bool
     origem: str | None
     regiao_origem_id: int | None
@@ -398,6 +399,7 @@ class NaoClassificadoRead(BaseModel):
     usuario_id: int
     usuario_nome: str
     usuario_abbr: str
+    usuario_data_nascimento: dt.date | None
     sentido: Sentido
     hora: dt.time
     origem: str | None

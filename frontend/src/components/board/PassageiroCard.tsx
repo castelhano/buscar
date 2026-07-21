@@ -1,6 +1,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { ViagemDiaPassageiro } from "../../api/types";
+import { rotuloIdade } from "../../utils/data";
 
 interface Props {
   viagemId: number;
@@ -46,7 +47,10 @@ export default function PassageiroCard({ viagemId, passageiro, destinoNome, onRe
         </button>
       )}
       <div className="linha-1">
-        <span>{passageiro.usuario.abbr || passageiro.usuario.nome}</span>
+        <span>
+          {passageiro.usuario.abbr || passageiro.usuario.nome}{" "}
+          <span style={{ color: "var(--cor-texto-suave)" }}>{rotuloIdade(passageiro.usuario.data_nascimento)}</span>
+        </span>
         <span>
           {passageiro.sentido} {passageiro.hora.slice(0, 5)}
         </span>

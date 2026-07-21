@@ -81,8 +81,14 @@ export default function CarroCard({
   );
   const regiaoNomes = [...new Set(regiaoIdsPassageiros)].map((id) => regioes.find((r) => r.id === id)?.nome ?? "?");
 
+  const semCondutorOuVeiculo = primeira.condutor_id === null || primeira.veiculo_id === null;
+
   return (
-    <div ref={setBlocoRef} className="carro-card" style={{ outline: isOverBloco ? "2px dashed var(--cor-primaria)" : "none" }}>
+    <div
+      ref={setBlocoRef}
+      className={`carro-card${semCondutorOuVeiculo ? " carro-card--erro" : ""}`}
+      style={{ outline: isOverBloco ? "2px dashed var(--cor-primaria)" : "none" }}
+    >
       <div className="carro-card-ordem">
         <button
           type="button"

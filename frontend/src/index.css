@@ -434,6 +434,15 @@ th {
   gap: 0.5rem;
 }
 
+.carro-card--erro {
+  /* border-color: var(--cor-perigo);
+  box-shadow: 0 0 0 1px var(--cor-perigo); */
+  border-color: transparent; 
+  
+  /* Cria uma borda interna de 1px usando inset */
+  box-shadow: inset 0 0 0 4px var(--cor-perigo); 
+}
+
 .carro-card-topo {
   display: flex;
   align-items: flex-start;

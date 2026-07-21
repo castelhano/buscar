@@ -203,6 +203,7 @@ export interface MembroBase {
   usuario_id: number;
   usuario_nome: string;
   usuario_abbr: string;
+  usuario_data_nascimento: string | null;
   usuario_ativo: boolean;
   origem: string | null;
   regiao_origem_id: number | null;
@@ -253,6 +254,7 @@ export interface NaoClassificadoBase {
   usuario_id: number;
   usuario_nome: string;
   usuario_abbr: string;
+  usuario_data_nascimento: string | null;
   sentido: Sentido;
   hora: string;
   origem: string | null;

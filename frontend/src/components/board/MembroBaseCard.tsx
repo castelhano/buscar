@@ -1,6 +1,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { MembroBase, Sentido } from "../../api/types";
+import { rotuloIdade } from "../../utils/data";
 
 interface Props {
   viagemBaseId: number;
@@ -47,7 +48,10 @@ export default function MembroBaseCard({ viagemBaseId, grupoBaseId, sentido, hor
         ✕
       </button>
       <div className="linha-1">
-        <span>{membro.usuario_abbr || membro.usuario_nome}</span>
+        <span>
+          {membro.usuario_abbr || membro.usuario_nome}{" "}
+          <span style={{ color: "var(--cor-texto-suave)" }}>{rotuloIdade(membro.usuario_data_nascimento)}</span>
+        </span>
         {inativo && <span className="tag tag-inativo" style={{ marginLeft: "0.4rem" }}>Inativo</span>}
       </div>
       {membro.acompanhante && (

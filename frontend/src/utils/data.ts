@@ -11,3 +11,18 @@ export function amanhaIso(): string {
   const dia = String(data.getDate()).padStart(2, "0");
   return `${ano}-${mes}-${dia}`;
 }
+
+export function calcularIdade(dataNascimento: string | null | undefined): number | null {
+  if (!dataNascimento) return null;
+  const [ano, mes, dia] = dataNascimento.split("-").map(Number);
+  const hoje = new Date();
+  let idade = hoje.getFullYear() - ano;
+  if (hoje.getMonth() + 1 < mes || (hoje.getMonth() + 1 === mes && hoje.getDate() < dia)) idade--;
+  return idade;
+}
+
+/** "(34)" ou "(--)" quando nao ha data de nascimento cadastrada. */
+export function rotuloIdade(dataNascimento: string | null | undefined): string {
+  const idade = calcularIdade(dataNascimento);
+  return `(${idade ?? "--"})`;
+}

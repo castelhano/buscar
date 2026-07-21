@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { useCreate, useList, useUpdate } from "../api/hooks";
 import type { Local, Regiao, StatusAtivoInativo, Usuario, UsuarioComAgenda } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
+import { rotuloIdade } from "../utils/data";
 import AgendaSemanalEditor from "./usuarios/AgendaSemanalEditor";
 import ExcecoesEditor from "./usuarios/ExcecoesEditor";
 import ConfirmarModal from "../components/board/ConfirmarModal";
@@ -181,7 +182,9 @@ export default function UsuariosPage() {
                 marginBottom: "0.2rem",
               }}
             >
-              <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{u.nome}</div>
+              <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>
+                {u.nome} <span style={{ fontWeight: 400, color: "var(--cor-texto-suave)" }}>{rotuloIdade(u.data_nascimento)}</span>
+              </div>
               <div style={{ fontSize: "0.75rem", color: "var(--cor-texto-suave)" }}>
                 {u.abbr} · <span className={`tag ${u.status === "Ativo" ? "tag-ativo" : "tag-inativo"}`}>{u.status}</span>
               </div>

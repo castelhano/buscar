@@ -66,6 +66,7 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
             "usuario_id": perna["usuario_id"],
             "usuario_nome": perna["usuario"].nome,
             "usuario_abbr": perna["usuario"].abbr,
+            "usuario_data_nascimento": perna["usuario"].data_nascimento,
             "usuario_ativo": perna["usuario"].status == StatusAtivoInativo.ATIVO,
             "origem": perna["origem"],
             "regiao_origem_id": perna["regiao_origem_id"],

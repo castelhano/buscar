@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import type { Local, NaoClassificadoBase, Regiao } from "../../api/types";
+import { rotuloIdade } from "../../utils/data";
 
 function MembroNaoClassificadoCard({ membro, destinoNome }: { membro: NaoClassificadoBase; destinoNome?: string }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -15,7 +16,10 @@ function MembroNaoClassificadoCard({ membro, destinoNome }: { membro: NaoClassif
   return (
     <div ref={setNodeRef} style={style} className="passageiro-card" {...attributes} {...listeners}>
       <div className="linha-1">
-        <span>{membro.usuario_abbr || membro.usuario_nome}</span>
+        <span>
+          {membro.usuario_abbr || membro.usuario_nome}{" "}
+          <span style={{ color: "var(--cor-texto-suave)" }}>{rotuloIdade(membro.usuario_data_nascimento)}</span>
+        </span>
         <span>
           {membro.sentido} {membro.hora.slice(0, 5)}
         </span>
