@@ -57,7 +57,7 @@ def agendas_fixo_da_semana(db: Session, dia_semana: DiaSemana) -> list[UsuarioAg
     return (
         db.query(UsuarioAgendaSemanal)
         .join(Usuario, UsuarioAgendaSemanal.usuario_id == Usuario.id)
-        .options(joinedload(UsuarioAgendaSemanal.usuario))
+        .options(joinedload(UsuarioAgendaSemanal.usuario).joinedload(Usuario.grupo_familiar))
         .filter(
             UsuarioAgendaSemanal.dia_semana == dia_semana,
             UsuarioAgendaSemanal.tipo == TipoAtendimento.FIXO,

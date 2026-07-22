@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas
 from app.auth import obter_conta_atual
@@ -15,6 +15,7 @@ router_empresas = APIRouter(prefix="/empresas", tags=["empresas"], dependencies=
 router_veiculos = APIRouter(prefix="/veiculos", tags=["veiculos"], dependencies=_autenticado)
 router_condutores = APIRouter(prefix="/condutores", tags=["condutores"], dependencies=_autenticado)
 router_ferias = APIRouter(prefix="/ferias", tags=["ferias"], dependencies=_autenticado)
+router_grupos_familiares = APIRouter(prefix="/grupos-familiares", tags=["grupos-familiares"], dependencies=_autenticado)
 
 
 def _get_or_404(db: Session, model, id_: int):
@@ -291,6 +292,49 @@ def atualizar_condutor(condutor_id: int, payload: schemas.CondutorCreate, db: Se
 def remover_condutor(condutor_id: int, db: Session = Depends(get_db)):
     condutor = _get_or_404(db, models.Condutor, condutor_id)
     db.delete(condutor)
+    db.commit()
+
+
+# --------------------------------------------------------------------------
+# Grupo familiar (usuarios que devem viajar juntos dentro do possivel -- ver
+# GrupoFamiliar em models.py; a geracao real ignora isso, so o molde Base usa)
+# --------------------------------------------------------------------------
+
+@router_grupos_familiares.get("", response_model=list[schemas.GrupoFamiliarComUsuariosRead])
+def listar_grupos_familiares(db: Session = Depends(get_db)):
+    return (
+        db.query(models.GrupoFamiliar)
+        .options(joinedload(models.GrupoFamiliar.usuarios))
+        .order_by(models.GrupoFamiliar.nome)
+        .all()
+    )
+
+
+@router_grupos_familiares.post("", response_model=schemas.GrupoFamiliarRead, status_code=201)
+def criar_grupo_familiar(payload: schemas.GrupoFamiliarCreate, db: Session = Depends(get_db)):
+    grupo = models.GrupoFamiliar(**payload.model_dump())
+    db.add(grupo)
+    db.commit()
+    db.refresh(grupo)
+    return grupo
+
+
+@router_grupos_familiares.put("/{grupo_id}", response_model=schemas.GrupoFamiliarRead)
+def atualizar_grupo_familiar(grupo_id: int, payload: schemas.GrupoFamiliarCreate, db: Session = Depends(get_db)):
+    grupo = _get_or_404(db, models.GrupoFamiliar, grupo_id)
+    grupo.nome = payload.nome
+    db.commit()
+    db.refresh(grupo)
+    return grupo
+
+
+@router_grupos_familiares.delete("/{grupo_id}", status_code=204)
+def remover_grupo_familiar(grupo_id: int, db: Session = Depends(get_db)):
+    grupo = _get_or_404(db, models.GrupoFamiliar, grupo_id)
+    db.query(models.Usuario).filter(models.Usuario.grupo_familiar_id == grupo_id).update(
+        {models.Usuario.grupo_familiar_id: None}
+    )
+    db.delete(grupo)
     db.commit()
 
 

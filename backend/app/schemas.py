@@ -204,6 +204,15 @@ class UsuarioExcecaoRead(ORMModel):
     motivo: str | None
 
 
+class GrupoFamiliarCreate(BaseModel):
+    nome: str
+
+
+class GrupoFamiliarRead(ORMModel):
+    id: int
+    nome: str
+
+
 class UsuarioCreate(BaseModel):
     nome: str
     abbr: str
@@ -212,6 +221,7 @@ class UsuarioCreate(BaseModel):
     data_nascimento: dt.date | None = None
     detalhe: str | None = None
     observacao: str | None = None
+    grupo_familiar_id: int | None = None
 
 
 class UsuarioRead(ORMModel):
@@ -224,11 +234,16 @@ class UsuarioRead(ORMModel):
     data_nascimento: dt.date | None
     detalhe: str | None
     observacao: str | None
+    grupo_familiar_id: int | None
 
 
 class UsuarioComAgendaRead(UsuarioRead):
     agenda_semanal: list[UsuarioAgendaSemanalRead] = []
     excecoes: list[UsuarioExcecaoRead] = []
+
+
+class GrupoFamiliarComUsuariosRead(GrupoFamiliarRead):
+    usuarios: list[UsuarioRead] = []
 
 
 # --------------------------------------------------------------------------
@@ -354,6 +369,8 @@ class MembroBaseRead(BaseModel):
     usuario_data_nascimento: dt.date | None
     usuario_ativo: bool
     atendimento_ativo: bool
+    usuario_grupo_familiar_id: int | None
+    usuario_grupo_familiar_nome: str | None
     origem: str | None
     regiao_origem_id: int | None
     destino_id: int | None
@@ -406,6 +423,8 @@ class NaoClassificadoRead(BaseModel):
     usuario_data_nascimento: dt.date | None
     sentido: Sentido
     hora: dt.time
+    usuario_grupo_familiar_id: int | None
+    usuario_grupo_familiar_nome: str | None
     origem: str | None
     regiao_origem_id: int | None
     destino_id: int | None

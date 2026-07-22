@@ -235,6 +235,21 @@ class CondutorFerias(Base):
 # Usuario (passageiro) + padrão semanal + exceções pontuais
 # --------------------------------------------------------------------------
 
+class GrupoFamiliar(Base):
+    """Agrupa N usuarios (ex: irmaos) que devem viajar juntos dentro do
+    possivel -- so usado como sinal pro molde Base (visual + drag-n-drop
+    vinculado); a geracao real (`services.geracao`) ignora isso por completo
+    e so replica o que ja esta montado na Base.
+    """
+
+    __tablename__ = "grupo_familiar"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nome: Mapped[str] = mapped_column(String(150))
+
+    usuarios: Mapped[list["Usuario"]] = relationship(back_populates="grupo_familiar")
+
+
 class Usuario(Base):
     __tablename__ = "usuario"
 
@@ -247,9 +262,11 @@ class Usuario(Base):
     data_nascimento: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     detalhe: Mapped[str | None] = mapped_column(Text, nullable=True)
     observacao: Mapped[str | None] = mapped_column(Text, nullable=True)
+    grupo_familiar_id: Mapped[int | None] = mapped_column(ForeignKey("grupo_familiar.id"), nullable=True)
 
     agenda_semanal: Mapped[list["UsuarioAgendaSemanal"]] = relationship(back_populates="usuario")
     excecoes: Mapped[list["UsuarioExcecao"]] = relationship(back_populates="usuario")
+    grupo_familiar: Mapped["GrupoFamiliar | None"] = relationship(back_populates="usuarios")
 
 
 class UsuarioAgendaSemanal(Base):

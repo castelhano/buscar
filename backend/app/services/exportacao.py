@@ -909,6 +909,18 @@ def _ocupados_viagem_base(viagem: dict) -> tuple[int, int]:
     return len(membros), sum(1 for m in membros if m["acompanhante"])
 
 
+def _ocupados_nao_classificados(nao_classificados: list[dict], periodo: str | None = None) -> tuple[int, int]:
+    """Conta os efetivos do dia que ainda nao foram alocados em nenhum carro
+    (ver `nao_classificados` em `montar_estrutura_base`) -- ja vem filtrado
+    pelo backend so com usuario/atendimento ativos."""
+    do_periodo = (
+        nao_classificados
+        if periodo is None
+        else [n for n in nao_classificados if _periodo_da_hora_base(n["hora"]) == periodo]
+    )
+    return len(do_periodo), sum(1 for n in do_periodo if n["acompanhante"])
+
+
 def _formatar_hora(hora: dt.time) -> str:
     return hora.strftime("%H:%M")
 
@@ -927,7 +939,7 @@ def _periodo_da_hora_base(hora: dt.time) -> str:
     return "Tarde" if hora >= CORTE_PERIODO_TARDE else "Manha"
 
 
-def _montar_matriz_dia_simples(grupos: list[dict], periodo: str | None = None) -> dict:
+def _montar_matriz_dia_simples(grupos: list[dict], periodo: str | None = None, nao_classificados: list[dict] | None = None) -> dict:
     """Linhas = horario, colunas = carro (posicao no dia) -- visao de um dia so.
 
     Quando `periodo` e informado, restringe carros/horarios aquele periodo --
@@ -983,13 +995,20 @@ def _montar_matriz_dia_simples(grupos: list[dict], periodo: str | None = None) -
         sum(linha["por_carro"][i]["acompanhantes"] for linha in linhas if linha["por_carro"][i] is not None)
         for i in range(len(grupos_periodo))
     ]
+    total_geral_usuarios = sum(total_usuarios_por_carro)
+    total_geral_acompanhantes = sum(total_acompanhantes_por_carro)
+    nc_usuarios, nc_acompanhantes = _ocupados_nao_classificados(nao_classificados or [], periodo)
     return {
         "total_carros": len(grupos_periodo),
         "linhas": linhas,
         "total_usuarios_por_carro": total_usuarios_por_carro,
         "total_acompanhantes_por_carro": total_acompanhantes_por_carro,
-        "total_geral_usuarios": sum(total_usuarios_por_carro),
-        "total_geral_acompanhantes": sum(total_acompanhantes_por_carro),
+        "total_geral_usuarios": total_geral_usuarios,
+        "total_geral_acompanhantes": total_geral_acompanhantes,
+        "nao_classificados_usuarios": nc_usuarios,
+        "nao_classificados_acompanhantes": nc_acompanhantes,
+        "total_geral_usuarios_com_nao_classificados": total_geral_usuarios + nc_usuarios,
+        "total_geral_acompanhantes_com_nao_classificados": total_geral_acompanhantes + nc_acompanhantes,
     }
 
 
@@ -1075,7 +1094,26 @@ def _montar_matriz_semana(estruturas: list[tuple[DiaSemana, dict]]) -> dict:
         "acompanhantes": sum(t["acompanhantes"] for t in total_por_dia),
         "capacidade_acompanhantes": sum(t["capacidade_acompanhantes"] for t in total_por_dia),
     }
-    return {"linhas": linhas, "total_por_dia": total_por_dia, "total_geral": total_geral}
+    nao_classificados_por_dia = [
+        dict(zip(("usuarios", "acompanhantes"), _ocupados_nao_classificados(estrutura["nao_classificados"])))
+        for _, estrutura in estruturas
+    ]
+    nao_classificados_geral = {
+        "usuarios": sum(n["usuarios"] for n in nao_classificados_por_dia),
+        "acompanhantes": sum(n["acompanhantes"] for n in nao_classificados_por_dia),
+    }
+    total_geral_com_nao_classificados = {
+        "usuarios": total_geral["usuarios"] + nao_classificados_geral["usuarios"],
+        "acompanhantes": total_geral["acompanhantes"] + nao_classificados_geral["acompanhantes"],
+    }
+    return {
+        "linhas": linhas,
+        "total_por_dia": total_por_dia,
+        "total_geral": total_geral,
+        "nao_classificados_por_dia": nao_classificados_por_dia,
+        "nao_classificados_geral": nao_classificados_geral,
+        "total_geral_com_nao_classificados": total_geral_com_nao_classificados,
+    }
 
 
 def gerar_pdf_ocupacao_base(db: Session, dias: list[DiaSemana], modo_semana: bool) -> bytes | None:
@@ -1086,11 +1124,14 @@ def gerar_pdf_ocupacao_base(db: Session, dias: list[DiaSemana], modo_semana: boo
     (linha 2) -- cada uma colorida pelo seu proprio status (verde = com vaga,
     cinza = lotado, vermelho = acima da capacidade assumida de
     `CAPACIDADE_USUARIOS_BASE`/`CAPACIDADE_ACOMPANHANTES_BASE`); horarios sem
-    viagem cadastrada ficam neutros. Dias sem nenhum carro sao descartados
-    (evita colunas em branco no relatorio).
+    viagem cadastrada ficam neutros. Dias sem nenhum carro E sem nenhum
+    efetivo nao classificado sao descartados (evita colunas em branco no
+    relatorio); os totais no rodape somam tambem quem ainda nao foi alocado
+    em nenhum carro ("Nao classificados"/"Total (todos)"), pra sempre refletir
+    todo mundo elegivel no dia.
     """
     estruturas = [(dia, montar_estrutura_base(db, dia)) for dia in dias]
-    estruturas = [(dia, estrutura) for dia, estrutura in estruturas if estrutura["grupos"]]
+    estruturas = [(dia, estrutura) for dia, estrutura in estruturas if estrutura["grupos"] or estrutura["nao_classificados"]]
     if not estruturas:
         return None
 
@@ -1116,9 +1157,13 @@ def gerar_pdf_ocupacao_base(db: Session, dias: list[DiaSemana], modo_semana: boo
     largura_total = 1.7 * cm
     largura_percentual = 1.3 * cm
 
-    def _tabela_ocupacao(linhas: list, cores_celulas: list, n_colunas_dado: int) -> Table:
-        linha_idx_total = len(linhas) - 1
-        largura_dado = min(1.7 * cm, (largura_util - largura_horario - largura_total - largura_percentual) / n_colunas_dado)
+    def _tabela_ocupacao(linhas: list, cores_celulas: list, n_colunas_dado: int, n_linhas_total: int = 1) -> Table:
+        primeira_linha_total = len(linhas) - n_linhas_total
+        largura_dado = (
+            min(1.7 * cm, (largura_util - largura_horario - largura_total - largura_percentual) / n_colunas_dado)
+            if n_colunas_dado > 0
+            else 0
+        )
         col_widths = [largura_horario] + [largura_dado] * n_colunas_dado + [largura_total, largura_percentual]
 
         tabela = Table(linhas, colWidths=col_widths, repeatRows=1)
@@ -1130,8 +1175,8 @@ def gerar_pdf_ocupacao_base(db: Session, dias: list[DiaSemana], modo_semana: boo
             ("ALIGN", (1, 0), (-1, -1), "CENTER"),
             ("TOPPADDING", (0, 0), (-1, -1), 5),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ("LINEABOVE", (0, linha_idx_total), (-1, linha_idx_total), 1.2, colors.HexColor("#2d3748")),
-            ("BACKGROUND", (0, linha_idx_total), (-1, linha_idx_total), colors.HexColor("#eef1f4")),
+            ("LINEABOVE", (0, primeira_linha_total), (-1, primeira_linha_total), 1.2, colors.HexColor("#2d3748")),
+            ("BACKGROUND", (0, primeira_linha_total), (-1, -1), colors.HexColor("#eef1f4")),
         ]
         for linha_idx, col_idx, cor in cores_celulas:
             estilo.append(("BACKGROUND", (col_idx, linha_idx), (col_idx, linha_idx), cor))
@@ -1181,7 +1226,7 @@ def gerar_pdf_ocupacao_base(db: Session, dias: list[DiaSemana], modo_semana: boo
             )
             linhas.append(linha)
 
-        linha_total: list = [Paragraph("Total", _ESTILO_OCUPACAO_TOTAL)]
+        linha_total: list = [Paragraph("Alocados", _ESTILO_OCUPACAO_TOTAL)]
         for total_dia in matriz["total_por_dia"]:
             linha_total.append(
                 Paragraph(
@@ -1208,12 +1253,43 @@ def gerar_pdf_ocupacao_base(db: Session, dias: list[DiaSemana], modo_semana: boo
             )
         )
         linhas.append(linha_total)
-        elementos.append(_tabela_ocupacao(linhas, cores_celulas, n_colunas_dado))
+
+        linha_nao_classificados: list = [Paragraph("Nao classificados", _ESTILO_OCUPACAO_TOTAL)]
+        for nc_dia in matriz["nao_classificados_por_dia"]:
+            linha_nao_classificados.append(
+                Paragraph(f"{nc_dia['usuarios']}<br/>+{nc_dia['acompanhantes']}", _ESTILO_OCUPACAO_TOTAL)
+            )
+        nc_geral = matriz["nao_classificados_geral"]
+        linha_nao_classificados.append(
+            Paragraph(f"{nc_geral['usuarios']}<br/>+{nc_geral['acompanhantes']}", _ESTILO_OCUPACAO_TOTAL)
+        )
+        linha_nao_classificados.append("")
+        linhas.append(linha_nao_classificados)
+
+        linha_total_geral: list = [Paragraph("Total (todos)", _ESTILO_OCUPACAO_TOTAL)]
+        for total_dia, nc_dia in zip(matriz["total_por_dia"], matriz["nao_classificados_por_dia"]):
+            linha_total_geral.append(
+                Paragraph(
+                    f"{total_dia['usuarios'] + nc_dia['usuarios']}<br/>+{total_dia['acompanhantes'] + nc_dia['acompanhantes']}",
+                    _ESTILO_OCUPACAO_TOTAL,
+                )
+            )
+        total_geral_todos = matriz["total_geral_com_nao_classificados"]
+        linha_total_geral.append(
+            Paragraph(
+                f"{total_geral_todos['usuarios']}<br/>+{total_geral_todos['acompanhantes']}",
+                _ESTILO_OCUPACAO_TOTAL,
+            )
+        )
+        linha_total_geral.append("")
+        linhas.append(linha_total_geral)
+
+        elementos.append(_tabela_ocupacao(linhas, cores_celulas, n_colunas_dado, n_linhas_total=3))
     else:
         _, estrutura = estruturas[0]
         for titulo_periodo, periodo in (("Manha", "Manha"), ("Tarde", "Tarde")):
-            matriz = _montar_matriz_dia_simples(estrutura["grupos"], periodo)
-            if matriz["total_carros"] == 0:
+            matriz = _montar_matriz_dia_simples(estrutura["grupos"], periodo, estrutura["nao_classificados"])
+            if matriz["total_carros"] == 0 and matriz["nao_classificados_usuarios"] == 0 and matriz["nao_classificados_acompanhantes"] == 0:
                 continue
             n_colunas_dado = matriz["total_carros"]
 
@@ -1256,7 +1332,7 @@ def gerar_pdf_ocupacao_base(db: Session, dias: list[DiaSemana], modo_semana: boo
                 )
                 linhas_periodo.append(linha)
 
-            linha_total = [Paragraph("Total", _ESTILO_OCUPACAO_TOTAL)]
+            linha_total = [Paragraph("Alocados", _ESTILO_OCUPACAO_TOTAL)]
             for i in range(matriz["total_carros"]):
                 linha_total.append(
                     Paragraph(
@@ -1268,9 +1344,25 @@ def gerar_pdf_ocupacao_base(db: Session, dias: list[DiaSemana], modo_semana: boo
             linha_total.append("")
             linhas_periodo.append(linha_total)
 
+            nc_usuarios = matriz["nao_classificados_usuarios"]
+            nc_acompanhantes = matriz["nao_classificados_acompanhantes"]
+            linha_nao_classificados = [Paragraph("Nao classificados", _ESTILO_OCUPACAO_TOTAL)]
+            linha_nao_classificados += [""] * matriz["total_carros"]
+            linha_nao_classificados.append(Paragraph(f"{nc_usuarios}<br/>+{nc_acompanhantes}", _ESTILO_OCUPACAO_TOTAL))
+            linha_nao_classificados.append("")
+            linhas_periodo.append(linha_nao_classificados)
+
+            linha_total_geral = [Paragraph("Total (todos)", _ESTILO_OCUPACAO_TOTAL)]
+            linha_total_geral += [""] * matriz["total_carros"]
+            linha_total_geral.append(
+                Paragraph(f"{total_geral_periodo + nc_usuarios + nc_acompanhantes}", _ESTILO_OCUPACAO_TOTAL)
+            )
+            linha_total_geral.append("")
+            linhas_periodo.append(linha_total_geral)
+
             elementos.append(Paragraph(titulo_periodo, _ESTILO_OCUPACAO_CABECALHO_SECAO))
             elementos.append(Spacer(1, 0.15 * cm))
-            elementos.append(_tabela_ocupacao(linhas_periodo, cores_celulas_periodo, n_colunas_dado))
+            elementos.append(_tabela_ocupacao(linhas_periodo, cores_celulas_periodo, n_colunas_dado, n_linhas_total=3))
             elementos.append(Spacer(1, 0.4 * cm))
 
     elementos.append(Spacer(1, 0.2 * cm))

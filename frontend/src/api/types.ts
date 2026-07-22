@@ -114,6 +114,16 @@ export interface Usuario {
   data_nascimento: string | null;
   detalhe: string | null;
   observacao: string | null;
+  grupo_familiar_id: number | null;
+}
+
+export interface GrupoFamiliar {
+  id: number;
+  nome: string;
+}
+
+export interface GrupoFamiliarComUsuarios extends GrupoFamiliar {
+  usuarios: Usuario[];
 }
 
 export interface UsuarioAgendaSemanal {
@@ -208,6 +218,8 @@ export interface MembroBase {
   usuario_data_nascimento: string | null;
   usuario_ativo: boolean;
   atendimento_ativo: boolean;
+  usuario_grupo_familiar_id: number | null;
+  usuario_grupo_familiar_nome: string | null;
   origem: string | null;
   regiao_origem_id: number | null;
   destino_id: number | null;
@@ -260,6 +272,8 @@ export interface NaoClassificadoBase {
   usuario_data_nascimento: string | null;
   sentido: Sentido;
   hora: string;
+  usuario_grupo_familiar_id: number | null;
+  usuario_grupo_familiar_nome: string | null;
   origem: string | null;
   regiao_origem_id: number | null;
   destino_id: number | null;

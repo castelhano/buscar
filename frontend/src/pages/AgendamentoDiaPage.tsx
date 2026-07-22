@@ -14,6 +14,7 @@ import { api } from "../api/client";
 import { agruparPorBloco, ancoraIdDoBloco } from "../api/blocos";
 import { useList } from "../api/hooks";
 import { CORTE_TARDE_MINUTOS, minutosDaHora, periodoDaViagem } from "../api/periodo";
+import { encontrarIrmaosParaMover } from "../utils/grupoFamiliar";
 import { DIAS_SEMANA, DIAS_SEMANA_LABEL, diaSemanaFromData } from "../api/types";
 import type {
   Condutor,
@@ -329,6 +330,10 @@ export default function AgendamentoDiaPage() {
   const [modalOrdemIndice, setModalOrdemIndice] = useState<number | null>(null);
   const [modalCondutoresRevezamentoId, setModalCondutoresRevezamentoId] = useState<number | null>(null);
   const [carrosSelecionadosRevezamento, setCarrosSelecionadosRevezamento] = useState<Set<number>>(new Set());
+  // Grupos familiares que o usuario pediu explicitamente pra NAO mover
+  // juntos no proximo drag (ver ViagemBaseBlock "Desmembrar") -- estado de
+  // sessao, some ao recarregar a pagina (volta a mover junto por padrao).
+  const [gruposFamiliaresDesvinculados, setGruposFamiliaresDesvinculados] = useState<Set<number>>(new Set());
   const [erro, setErro] = useState<string | null>(null);
   const erroBoxRef = useRef<HTMLDivElement>(null);
 
@@ -415,6 +420,22 @@ export default function AgendamentoDiaPage() {
       { agendaId: activeData.agendaId, sentido: sentidoAlvo, grupoBaseId, hora: horaAlvo, ordem },
       { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao mover no molde")) },
     );
+
+    // Por padrao, move junto quem e do mesmo grupo familiar E tem exatamente
+    // o mesmo sentido/horario/destino nesse dia da semana -- a nao ser que o
+    // usuario tenha "desmembrado" esse grupo explicitamente (ver
+    // ViagemBaseBlock). So mexe em quem ainda nao esta nesse mesmo carro.
+    const irmaos = encontrarIrmaosParaMover(estrutura, activeData.agendaId, sentidoAlvo);
+    if (irmaos && !gruposFamiliaresDesvinculados.has(irmaos.grupoFamiliarId)) {
+      const agendaIdsJaNoCarro = new Set(membrosAlvo.map((m) => m.agenda_id));
+      for (const agendaIdIrmao of irmaos.agendaIds) {
+        if (agendaIdsJaNoCarro.has(agendaIdIrmao)) continue;
+        moverMembroBase.mutate(
+          { agendaId: agendaIdIrmao, sentido: sentidoAlvo, grupoBaseId, hora: horaAlvo },
+          { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao mover integrante do grupo familiar junto")) },
+        );
+      }
+    }
   }
 
   function handleDragEnd(evento: DragEndEvent) {
@@ -866,6 +887,15 @@ export default function AgendamentoDiaPage() {
                       { viagemId, hora: `${hora}:00` },
                       { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao alterar horario da viagem")) },
                     )
+                  }
+                  gruposFamiliaresDesvinculados={gruposFamiliaresDesvinculados}
+                  onToggleDesvincularGrupoFamiliar={(grupoFamiliarId) =>
+                    setGruposFamiliaresDesvinculados((atual) => {
+                      const nova = new Set(atual);
+                      if (nova.has(grupoFamiliarId)) nova.delete(grupoFamiliarId);
+                      else nova.add(grupoFamiliarId);
+                      return nova;
+                    })
                   }
                 />
               ))}

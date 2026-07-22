@@ -19,6 +19,7 @@ from app.models import (
     MembroViagemBase,
     Sentido,
     StatusAtivoInativo,
+    Usuario,
     UsuarioAgendaSemanal,
     ViagemBase,
 )
@@ -43,7 +44,8 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
             joinedload(GrupoBase.viagens)
             .joinedload(ViagemBase.membros)
             .joinedload(MembroViagemBase.agenda)
-            .joinedload(UsuarioAgendaSemanal.usuario),
+            .joinedload(UsuarioAgendaSemanal.usuario)
+            .joinedload(Usuario.grupo_familiar),
         )
         .filter(GrupoBase.dia_semana == dia_semana)
         .order_by(GrupoBase.ordem_exibicao, GrupoBase.id)
@@ -69,6 +71,8 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
             "usuario_data_nascimento": perna["usuario"].data_nascimento,
             "usuario_ativo": perna["usuario"].status == StatusAtivoInativo.ATIVO,
             "atendimento_ativo": atendimento_ativo,
+            "usuario_grupo_familiar_id": perna["usuario"].grupo_familiar_id,
+            "usuario_grupo_familiar_nome": perna["usuario"].grupo_familiar.nome if perna["usuario"].grupo_familiar else None,
             "origem": perna["origem"],
             "regiao_origem_id": perna["regiao_origem_id"],
             "destino_id": perna["destino_id"],

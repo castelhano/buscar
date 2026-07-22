@@ -120,23 +120,27 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
       .finally(() => setExportando(false));
   }
 
-  const diasComDados = (estruturasQuery.data ?? []).filter(({ estrutura }) => estrutura.grupos.length > 0);
+  const diasComDados = (estruturasQuery.data ?? []).filter(
+    ({ estrutura }) => estrutura.grupos.length > 0 || estrutura.nao_classificados.length > 0,
+  );
 
   const matrizManha = useMemo(() => {
     if (escopo !== "dia") return null;
     const dados = diasComDados.find((d) => d.dia === diaSelecionado);
-    return dados ? montarMatrizDiaSimples(dados.estrutura.grupos, "Manha") : null;
+    return dados ? montarMatrizDiaSimples(dados.estrutura.grupos, "Manha", dados.estrutura.nao_classificados) : null;
   }, [escopo, diasComDados, diaSelecionado]);
 
   const matrizTarde = useMemo(() => {
     if (escopo !== "dia") return null;
     const dados = diasComDados.find((d) => d.dia === diaSelecionado);
-    return dados ? montarMatrizDiaSimples(dados.estrutura.grupos, "Tarde") : null;
+    return dados ? montarMatrizDiaSimples(dados.estrutura.grupos, "Tarde", dados.estrutura.nao_classificados) : null;
   }, [escopo, diasComDados, diaSelecionado]);
 
   const matrizSemana = useMemo(() => {
     if (escopo !== "semana") return null;
-    return montarMatrizSemana(diasComDados.map(({ dia, estrutura }) => ({ dia, grupos: estrutura.grupos })));
+    return montarMatrizSemana(
+      diasComDados.map(({ dia, estrutura }) => ({ dia, grupos: estrutura.grupos, naoClassificados: estrutura.nao_classificados })),
+    );
   }, [escopo, diasComDados]);
 
   function labelCarroNoDia(dia: DiaSemana, grupoId: number): string {
@@ -153,10 +157,12 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
     return celula.porCarro.map((c: CarroNaCelula) => ({ titulo: labelCarroNoDia(dia, c.grupoId), viagens: c.viagens }));
   }
 
-  const semVazio =
-    escopo === "dia"
-      ? (matrizManha?.totalCarros ?? 0) === 0 && (matrizTarde?.totalCarros ?? 0) === 0
-      : diasComDados.length === 0;
+  function matrizDiaVazia(matriz: ReturnType<typeof montarMatrizDiaSimples> | null): boolean {
+    if (!matriz) return true;
+    return matriz.totalCarros === 0 && matriz.naoClassificados.usuarios === 0 && matriz.naoClassificados.acompanhantes === 0;
+  }
+
+  const semVazio = escopo === "dia" ? matrizDiaVazia(matrizManha) && matrizDiaVazia(matrizTarde) : diasComDados.length === 0;
 
   return (
     <div className="modal-fundo" onClick={onFechar}>
@@ -164,7 +170,9 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
         <h3>Ocupacao por carro / horario</h3>
         <p style={{ fontSize: "0.8rem", color: "var(--cor-texto-suave)", marginTop: 0 }}>
           Perfil de ocupacao do molde semanal, assumindo {CAPACIDADE_USUARIOS_BASE} usuarios + {CAPACIDADE_ACOMPANHANTES_BASE}{" "}
-          acompanhantes por viagem (dois pools independentes). Clique numa celula para ver os passageiros daquela viagem.
+          acompanhantes por viagem (dois pools independentes). Clique numa celula para ver os passageiros daquela viagem. As linhas
+          "Nao classificados" e "Total (todos)" no rodape somam tambem quem ja e elegivel no dia mas ainda nao foi alocado em
+          nenhum carro.
         </p>
 
         {erroExportar && (
@@ -235,7 +243,7 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
           ].map(
             ({ titulo, matriz }) =>
               matriz &&
-              matriz.totalCarros > 0 && (
+              !matrizDiaVazia(matriz) && (
                 <div key={titulo} className="ocupacao-matriz-wrap" style={{ marginTop: "0.6rem" }}>
                   <div style={{ fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.2rem" }}>{titulo}</div>
                   <table className="ocupacao-tabela">
@@ -290,7 +298,7 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                     </tbody>
                     <tfoot>
                       <tr className="ocupacao-linha-total">
-                        <td className="ocupacao-td-hora">Total</td>
+                        <td className="ocupacao-td-hora">Alocados</td>
                         {matriz.totalPorCarro.map((total, indice) => (
                           <td key={indice} className="ocupacao-col-total">
                             {total.usuarios}/{total.acompanhantes}
@@ -298,6 +306,26 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                         ))}
                         <td className="ocupacao-col-total">
                           {matriz.totalGeral.usuarios}/{matriz.totalGeral.acompanhantes}
+                        </td>
+                        <td className="ocupacao-col-percentual"></td>
+                      </tr>
+                      <tr className="ocupacao-linha-total">
+                        <td className="ocupacao-td-hora">Nao classificados</td>
+                        <td colSpan={matriz.totalCarros} className="aviso-discreto" style={{ textAlign: "center" }}>
+                          ainda sem carro
+                        </td>
+                        <td className="ocupacao-col-total">
+                          {matriz.naoClassificados.usuarios}/{matriz.naoClassificados.acompanhantes}
+                        </td>
+                        <td className="ocupacao-col-percentual"></td>
+                      </tr>
+                      <tr className="ocupacao-linha-total">
+                        <td className="ocupacao-td-hora">Total do periodo</td>
+                        <td colSpan={matriz.totalCarros} className="aviso-discreto" style={{ textAlign: "center" }}>
+                          todos os efetivos, alocados ou nao
+                        </td>
+                        <td className="ocupacao-col-total">
+                          {matriz.totalComNaoClassificados.usuarios}/{matriz.totalComNaoClassificados.acompanhantes}
                         </td>
                         <td className="ocupacao-col-percentual"></td>
                       </tr>
@@ -364,7 +392,7 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
               </tbody>
               <tfoot>
                 <tr className="ocupacao-linha-total">
-                  <td className="ocupacao-td-hora">Total</td>
+                  <td className="ocupacao-td-hora">Alocados</td>
                   {matrizSemana.totalPorDia.map((total, indice) => (
                     <td key={indice} className="ocupacao-col-total">
                       {total.ocupados.usuarios}/{total.capacidade.usuarios} | {total.ocupados.acompanhantes}/
@@ -381,6 +409,33 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                       matrizSemana.totalGeral.capacidade.usuarios + matrizSemana.totalGeral.capacidade.acompanhantes,
                     )}
                   </td>
+                </tr>
+                <tr className="ocupacao-linha-total">
+                  <td className="ocupacao-td-hora">Nao classificados</td>
+                  {matrizSemana.naoClassificadosPorDia.map((total, indice) => (
+                    <td key={indice} className="ocupacao-col-total">
+                      {total.usuarios}/{total.acompanhantes}
+                    </td>
+                  ))}
+                  <td className="ocupacao-col-total">
+                    {matrizSemana.naoClassificadosGeral.usuarios}/{matrizSemana.naoClassificadosGeral.acompanhantes}
+                  </td>
+                  <td className="ocupacao-col-percentual"></td>
+                </tr>
+                <tr className="ocupacao-linha-total">
+                  <td className="ocupacao-td-hora">Total (todos)</td>
+                  {matrizSemana.totalPorDia.map((total, indice) => {
+                    const naoClass = matrizSemana.naoClassificadosPorDia[indice];
+                    return (
+                      <td key={indice} className="ocupacao-col-total">
+                        {total.ocupados.usuarios + naoClass.usuarios}/{total.ocupados.acompanhantes + naoClass.acompanhantes}
+                      </td>
+                    );
+                  })}
+                  <td className="ocupacao-col-total">
+                    {matrizSemana.totalGeralComNaoClassificados.usuarios}/{matrizSemana.totalGeralComNaoClassificados.acompanhantes}
+                  </td>
+                  <td className="ocupacao-col-percentual"></td>
                 </tr>
               </tfoot>
             </table>

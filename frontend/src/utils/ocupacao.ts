@@ -1,4 +1,4 @@
-import type { DiaSemana, GrupoBase, MembroBase, Sentido, ViagemBase } from "../api/types";
+import type { DiaSemana, GrupoBase, MembroBase, NaoClassificadoBase, Sentido, ViagemBase } from "../api/types";
 import { CORTE_TARDE_MINUTOS, minutosDaHora } from "../api/periodo";
 
 /** Assuncao fixa (sem campo de capacidade no modo Base -- ver GrupoBase): todo
@@ -44,6 +44,15 @@ export function ocupadosDaViagem(viagem: ViagemBase): OcupacaoPar {
   return { usuarios: ativos.length, acompanhantes: ativos.filter((m) => m.acompanhante).length };
 }
 
+/** Conta os efetivos do dia que ainda nao foram classificados em nenhum
+ * carro (ver `NaoClassificadoBase`/`montar_estrutura_base`) -- ja vem
+ * filtrado pelo backend so com usuario/atendimento ativos, entao nao precisa
+ * repetir o filtro de `ocupadosDaViagem`. */
+export function ocupadosNaoClassificados(naoClassificados: NaoClassificadoBase[], periodo?: PeriodoOcupacao): OcupacaoPar {
+  const doPeriodo = periodo === undefined ? naoClassificados : naoClassificados.filter((n) => periodoDaHora(n.hora) === periodo);
+  return { usuarios: doPeriodo.length, acompanhantes: doPeriodo.filter((n) => n.acompanhante).length };
+}
+
 function horasDosGrupos(grupos: GrupoBase[]): string[] {
   const horas = new Set<string>();
   for (const grupo of grupos) for (const viagem of grupo.viagens) horas.add(viagem.hora);
@@ -71,14 +80,25 @@ export interface MatrizDiaSimples {
   totalCarros: number;
   linhas: LinhaHoraDia[];
   totalPorCarro: OcupacaoPar[];
+  /** Soma apenas dos efetivos ja alocados em algum carro. */
   totalGeral: OcupacaoPar;
+  /** Efetivos elegiveis no periodo que ainda nao foram alocados em nenhum carro. */
+  naoClassificados: OcupacaoPar;
+  /** `totalGeral` + `naoClassificados` -- todos os efetivos do dia/periodo,
+   * alocados ou nao (ver pedido de nunca deixar os nao alocados de fora do
+   * resumo). */
+  totalComNaoClassificados: OcupacaoPar;
 }
 
 /** Filtra grupos/viagens para um periodo especifico antes de montar a matriz --
  * carros sem nenhuma viagem no periodo nao entram como coluna, e as horas
  * consideradas ficam restritas ao periodo, evitando colunas/linhas em branco
  * quando um mesmo dia tem carros de manha e de tarde. */
-export function montarMatrizDiaSimples(grupos: GrupoBase[], periodo?: PeriodoOcupacao): MatrizDiaSimples {
+export function montarMatrizDiaSimples(
+  grupos: GrupoBase[],
+  periodo?: PeriodoOcupacao,
+  naoClassificados: NaoClassificadoBase[] = [],
+): MatrizDiaSimples {
   const gruposDoPeriodo = periodo === undefined ? grupos : grupos.filter((g) => g.viagens.some((v) => periodoDaHora(v.hora) === periodo));
   const totalCarros = gruposDoPeriodo.length;
   const horas = horasDosGrupos(gruposDoPeriodo).filter((hora) => periodo === undefined || periodoDaHora(hora) === periodo);
@@ -109,8 +129,10 @@ export function montarMatrizDiaSimples(grupos: GrupoBase[], periodo?: PeriodoOcu
     acompanhantes: linhas.reduce((soma, l) => soma + (l.porCarro[indice]?.ocupados.acompanhantes ?? 0), 0),
   }));
   const totalGeral = totalPorCarro.reduce(somaPar, { usuarios: 0, acompanhantes: 0 });
+  const naoClassificadosOcupados = ocupadosNaoClassificados(naoClassificados, periodo);
+  const totalComNaoClassificados = somaPar(totalGeral, naoClassificadosOcupados);
 
-  return { totalCarros, linhas, totalPorCarro, totalGeral };
+  return { totalCarros, linhas, totalPorCarro, totalGeral, naoClassificados: naoClassificadosOcupados, totalComNaoClassificados };
 }
 
 // --------------------------------------------------------------------------
@@ -140,6 +162,7 @@ export interface LinhaHoraSemana {
 export interface DiaComGrupos {
   dia: DiaSemana;
   grupos: GrupoBase[];
+  naoClassificados?: NaoClassificadoBase[];
 }
 
 export interface MatrizSemana {
@@ -147,6 +170,13 @@ export interface MatrizSemana {
   linhas: LinhaHoraSemana[];
   totalPorDia: { ocupados: OcupacaoPar; capacidade: OcupacaoPar }[];
   totalGeral: { ocupados: OcupacaoPar; capacidade: OcupacaoPar };
+  /** Nao classificados por dia (nao entram em nenhuma linha/hora, ja que nao
+   * estao alocados a nenhum carro -- ver `MatrizDiaSimples.naoClassificados`). */
+  naoClassificadosPorDia: OcupacaoPar[];
+  naoClassificadosGeral: OcupacaoPar;
+  /** `totalGeral.ocupados` + `naoClassificadosGeral` -- todos os efetivos da
+   * semana, alocados ou nao. */
+  totalGeralComNaoClassificados: OcupacaoPar;
 }
 
 export function montarMatrizSemana(diasComGrupos: DiaComGrupos[]): MatrizSemana {
@@ -198,5 +228,17 @@ export function montarMatrizSemana(diasComGrupos: DiaComGrupos[]): MatrizSemana 
     { ocupados: { usuarios: 0, acompanhantes: 0 }, capacidade: { usuarios: 0, acompanhantes: 0 } },
   );
 
-  return { dias: diasComGrupos.map((d) => d.dia), linhas, totalPorDia, totalGeral };
+  const naoClassificadosPorDia = diasComGrupos.map((d) => ocupadosNaoClassificados(d.naoClassificados ?? []));
+  const naoClassificadosGeral = naoClassificadosPorDia.reduce(somaPar, { usuarios: 0, acompanhantes: 0 });
+  const totalGeralComNaoClassificados = somaPar(totalGeral.ocupados, naoClassificadosGeral);
+
+  return {
+    dias: diasComGrupos.map((d) => d.dia),
+    linhas,
+    totalPorDia,
+    totalGeral,
+    naoClassificadosPorDia,
+    naoClassificadosGeral,
+    totalGeralComNaoClassificados,
+  };
 }

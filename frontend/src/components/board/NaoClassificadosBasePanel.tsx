@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import type { Local, NaoClassificadoBase, Regiao } from "../../api/types";
 import { rotuloIdade } from "../../utils/data";
+import { corGrupoFamiliar } from "./coresGrupoFamiliar";
 
 function MembroNaoClassificadoCard({ membro, destinoNome }: { membro: NaoClassificadoBase; destinoNome?: string }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -17,6 +18,13 @@ function MembroNaoClassificadoCard({ membro, destinoNome }: { membro: NaoClassif
     <div ref={setNodeRef} style={style} className="passageiro-card" {...attributes} {...listeners}>
       <div className="linha-1">
         <span>
+          {membro.usuario_grupo_familiar_id !== null && (
+            <span
+              className="dot-grupo-familiar"
+              title={`Grupo familiar: ${membro.usuario_grupo_familiar_nome ?? ""}`}
+              style={{ background: corGrupoFamiliar(membro.usuario_grupo_familiar_id) }}
+            />
+          )}
           {membro.usuario_abbr || membro.usuario_nome}{" "}
           <span style={{ color: "var(--cor-texto-suave)" }}>{rotuloIdade(membro.usuario_data_nascimento)}</span>
         </span>

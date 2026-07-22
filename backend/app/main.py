@@ -12,6 +12,7 @@ from app.routers.cadastros import (
     router_condutores,
     router_empresas,
     router_ferias,
+    router_grupos_familiares,
     router_locais,
     router_locais_recesso,
     router_regioes,
@@ -63,6 +64,7 @@ app.include_router(router_empresas)
 app.include_router(router_veiculos)
 app.include_router(router_condutores)
 app.include_router(router_ferias)
+app.include_router(router_grupos_familiares)
 app.include_router(usuarios.router)
 app.include_router(viagens.router)
 app.include_router(base.router)

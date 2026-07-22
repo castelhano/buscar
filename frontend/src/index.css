@@ -575,6 +575,28 @@ th {
   border-color: #adc6f5;
 }
 
+.grupo-familiar-container {
+  border: 1.5px dashed var(--cor-borda);
+  border-radius: 8px;
+  padding: 0.4rem 0.4rem 0.05rem;
+  margin-bottom: 0.35rem;
+}
+
+.grupo-familiar-container .passageiro-card {
+  margin-bottom: 0.35rem;
+}
+
+.grupo-familiar-cabecalho {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--cor-texto-suave);
+  margin-bottom: 0.35rem;
+}
+
 .tag-eventual {
   display: inline-block;
   margin: 0.2rem 0;
@@ -584,6 +606,15 @@ th {
   font-weight: 600;
   color: #3159a8;
   background: #d7e3fb;
+}
+
+.dot-grupo-familiar {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 0.35rem;
+  flex-shrink: 0;
 }
 
 .tag-acompanhante {

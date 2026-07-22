@@ -20,6 +20,8 @@ interface Props {
   onRemoverViagem: (viagemId: number) => void;
   onRemoverMembro: (membroId: number) => void;
   onAlterarHoraViagem: (viagemId: number, hora: string) => void;
+  gruposFamiliaresDesvinculados: Set<number>;
+  onToggleDesvincularGrupoFamiliar: (grupoFamiliarId: number) => void;
 }
 
 export default function CarroBaseCard({
@@ -38,6 +40,8 @@ export default function CarroBaseCard({
   onRemoverViagem,
   onRemoverMembro,
   onAlterarHoraViagem,
+  gruposFamiliaresDesvinculados,
+  onToggleDesvincularGrupoFamiliar,
 }: Props) {
   const [novaViagem, setNovaViagem] = useState(false);
   const [sentido, setSentido] = useState<Sentido>("Ida");
@@ -120,6 +124,8 @@ export default function CarroBaseCard({
           onRemoverViagem={onRemoverViagem}
           onRemoverMembro={onRemoverMembro}
           onAlterarHora={onAlterarHoraViagem}
+          gruposFamiliaresDesvinculados={gruposFamiliaresDesvinculados}
+          onToggleDesvincularGrupoFamiliar={onToggleDesvincularGrupoFamiliar}
         />
       ))}
 

@@ -40,8 +40,14 @@ def listar_usuarios(
     return query.order_by(models.Usuario.nome).all()
 
 
+def _verificar_grupo_familiar(db: Session, grupo_familiar_id: int | None) -> None:
+    if grupo_familiar_id is not None and db.get(models.GrupoFamiliar, grupo_familiar_id) is None:
+        raise HTTPException(status_code=404, detail=f"Grupo familiar {grupo_familiar_id} nao encontrado")
+
+
 @router.post("", response_model=schemas.UsuarioRead, status_code=201, dependencies=[Depends(exigir_admin)])
 def criar_usuario(payload: schemas.UsuarioCreate, db: Session = Depends(get_db)):
+    _verificar_grupo_familiar(db, payload.grupo_familiar_id)
     usuario = models.Usuario(**payload.model_dump())
     db.add(usuario)
     db.commit()
@@ -65,6 +71,7 @@ def obter_usuario(usuario_id: int, db: Session = Depends(get_db)):
 @router.put("/{usuario_id}", response_model=schemas.UsuarioRead, dependencies=[Depends(exigir_admin)])
 def atualizar_usuario(usuario_id: int, payload: schemas.UsuarioCreate, db: Session = Depends(get_db)):
     usuario = _get_usuario_ou_404(db, usuario_id)
+    _verificar_grupo_familiar(db, payload.grupo_familiar_id)
     for campo, valor in payload.model_dump().items():
         setattr(usuario, campo, valor)
     db.commit()

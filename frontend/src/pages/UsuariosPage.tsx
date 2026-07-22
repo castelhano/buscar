@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useCreate, useList, useUpdate } from "../api/hooks";
-import type { Local, Regiao, StatusAtivoInativo, Usuario, UsuarioComAgenda } from "../api/types";
+import type { GrupoFamiliar, Local, Regiao, StatusAtivoInativo, Usuario, UsuarioComAgenda } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { rotuloIdade } from "../utils/data";
+import { corGrupoFamiliar } from "../components/board/coresGrupoFamiliar";
 import AgendaSemanalEditor from "./usuarios/AgendaSemanalEditor";
 import ExcecoesEditor from "./usuarios/ExcecoesEditor";
 import ConfirmarModal from "../components/board/ConfirmarModal";
@@ -17,6 +18,7 @@ interface FormState {
   data_nascimento: string;
   detalhe: string;
   observacao: string;
+  grupo_familiar_id: number | "";
 }
 
 const vazio: FormState = {
@@ -27,6 +29,7 @@ const vazio: FormState = {
   data_nascimento: "",
   detalhe: "",
   observacao: "",
+  grupo_familiar_id: "",
 };
 
 export default function UsuariosPage() {
@@ -42,6 +45,7 @@ export default function UsuariosPage() {
   });
   const { data: regioes } = useList<Regiao>("regioes", "/regioes");
   const { data: locais } = useList<Local>("locais", "/locais");
+  const { data: gruposFamiliares } = useList<GrupoFamiliar>("grupos-familiares", "/grupos-familiares");
   const criar = useCreate<Usuario, unknown>("usuarios", "/usuarios");
   const atualizar = useUpdate<Usuario, unknown>("usuarios", "/usuarios");
 
@@ -89,6 +93,7 @@ export default function UsuariosPage() {
         data_nascimento: detalhe.data.data_nascimento ?? "",
         detalhe: detalhe.data.detalhe ?? "",
         observacao: detalhe.data.observacao ?? "",
+        grupo_familiar_id: detalhe.data.grupo_familiar_id ?? "",
       });
     }
   }, [detalhe.data]);
@@ -115,6 +120,7 @@ export default function UsuariosPage() {
         data_nascimento: form.data_nascimento || null,
         detalhe: form.detalhe || null,
         observacao: form.observacao || null,
+        grupo_familiar_id: form.grupo_familiar_id || null,
       },
       {
         onSuccess: (usuario) => {
@@ -138,9 +144,15 @@ export default function UsuariosPage() {
           data_nascimento: basico.data_nascimento || null,
           detalhe: basico.detalhe || null,
           observacao: basico.observacao || null,
+          grupo_familiar_id: basico.grupo_familiar_id || null,
         },
       },
-      { onSuccess: () => queryClient.invalidateQueries({ queryKey: ["usuario", detalhe.data!.id] }) },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ["usuario", detalhe.data!.id] });
+          queryClient.invalidateQueries({ queryKey: ["grupos-familiares"] });
+        },
+      },
     );
   }
 
@@ -183,6 +195,19 @@ export default function UsuariosPage() {
               }}
             >
               <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>
+                {u.grupo_familiar_id !== null && (
+                  <span
+                    title="Faz parte de um grupo familiar"
+                    style={{
+                      display: "inline-block",
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: corGrupoFamiliar(u.grupo_familiar_id),
+                      marginRight: "0.35rem",
+                    }}
+                  />
+                )}
                 {u.nome} <span style={{ fontWeight: 400, color: "var(--cor-texto-suave)" }}>{rotuloIdade(u.data_nascimento)}</span>
               </div>
               <div style={{ fontSize: "0.75rem", color: "var(--cor-texto-suave)" }}>
@@ -224,6 +249,20 @@ export default function UsuariosPage() {
                   value={form.data_nascimento}
                   onChange={(e) => setForm({ ...form, data_nascimento: e.target.value })}
                 />
+              </div>
+              <div className="campo">
+                <label>Grupo familiar</label>
+                <select
+                  value={form.grupo_familiar_id}
+                  onChange={(e) => setForm({ ...form, grupo_familiar_id: e.target.value ? Number(e.target.value) : "" })}
+                >
+                  <option value="">Nenhum</option>
+                  {(gruposFamiliares ?? []).map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.nome}
+                    </option>
+                  ))}
+                </select>
               </div>
               <button className="btn btn-primario" onClick={salvarNovo} disabled={criar.isPending}>
                 Salvar
@@ -290,6 +329,23 @@ export default function UsuariosPage() {
                     onChange={(e) => setBasico({ ...basico, data_nascimento: e.target.value })}
                     disabled={!isAdmin}
                   />
+                </div>
+                <div className="campo">
+                  <label>Grupo familiar</label>
+                  <select
+                    value={basico.grupo_familiar_id}
+                    onChange={(e) =>
+                      setBasico({ ...basico, grupo_familiar_id: e.target.value ? Number(e.target.value) : "" })
+                    }
+                    disabled={!isAdmin}
+                  >
+                    <option value="">Nenhum</option>
+                    {(gruposFamiliares ?? []).map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.nome}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 {isAdmin && (
                   <>

@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import type { Local, ViagemBase } from "../../api/types";
+import type { Local, MembroBase, ViagemBase } from "../../api/types";
 import { CAPACIDADE_ACOMPANHANTES_BASE, CAPACIDADE_USUARIOS_BASE } from "../../utils/ocupacao";
+import { corGrupoFamiliar } from "./coresGrupoFamiliar";
 import MembroBaseCard from "./MembroBaseCard";
 
 interface Props {
@@ -11,9 +12,39 @@ interface Props {
   onRemoverViagem: (viagemId: number) => void;
   onRemoverMembro: (membroId: number) => void;
   onAlterarHora: (viagemId: number, hora: string) => void;
+  gruposFamiliaresDesvinculados: Set<number>;
+  onToggleDesvincularGrupoFamiliar: (grupoFamiliarId: number) => void;
 }
 
-export default function ViagemBaseBlock({ viagem, locais, onRemoverViagem, onRemoverMembro, onAlterarHora }: Props) {
+/** Agrupa membros co-locados nessa viagem que sao do mesmo grupo familiar
+ * (2+ presentes aqui) -- usados pra desenhar o container visual compartilhado;
+ * membros sem grupo, ou cujo grupo so tem 1 representante nessa viagem, ficam
+ * soltos (array de 1). */
+function agruparPorFamilia(membros: MembroBase[]): MembroBase[][] {
+  const vistos = new Set<number>();
+  const resultado: MembroBase[][] = [];
+  for (const m of membros) {
+    if (vistos.has(m.id)) continue;
+    if (m.usuario_grupo_familiar_id === null) {
+      resultado.push([m]);
+      continue;
+    }
+    const doGrupo = membros.filter((x) => x.usuario_grupo_familiar_id === m.usuario_grupo_familiar_id);
+    doGrupo.forEach((x) => vistos.add(x.id));
+    resultado.push(doGrupo);
+  }
+  return resultado;
+}
+
+export default function ViagemBaseBlock({
+  viagem,
+  locais,
+  onRemoverViagem,
+  onRemoverMembro,
+  onAlterarHora,
+  gruposFamiliaresDesvinculados,
+  onToggleDesvincularGrupoFamiliar,
+}: Props) {
   const { setNodeRef, isOver } = useDroppable({
     id: `viagem-base-${viagem.id}`,
     data: {
@@ -99,18 +130,51 @@ export default function ViagemBaseBlock({ viagem, locais, onRemoverViagem, onRem
       </div>
 
       <SortableContext items={viagem.membros.map((m) => `membro-${m.id}`)} strategy={verticalListSortingStrategy}>
-        {viagem.membros.map((m) => (
-          <MembroBaseCard
-            key={m.id}
-            viagemBaseId={viagem.id}
-            grupoBaseId={viagem.grupo_base_id}
-            sentido={viagem.sentido}
-            hora={viagem.hora}
-            membro={m}
-            destinoNome={locais.find((l) => l.id === m.destino_id)?.nome}
-            onRemover={onRemoverMembro}
-          />
-        ))}
+        {agruparPorFamilia(viagem.membros).map((membrosDoGrupo) => {
+          const [primeiro] = membrosDoGrupo;
+          const cartoes = membrosDoGrupo.map((m) => (
+            <MembroBaseCard
+              key={m.id}
+              viagemBaseId={viagem.id}
+              grupoBaseId={viagem.grupo_base_id}
+              sentido={viagem.sentido}
+              hora={viagem.hora}
+              membro={m}
+              destinoNome={locais.find((l) => l.id === m.destino_id)?.nome}
+              onRemover={onRemoverMembro}
+            />
+          ));
+
+          if (membrosDoGrupo.length < 2 || primeiro.usuario_grupo_familiar_id === null) {
+            return cartoes;
+          }
+
+          const grupoFamiliarId = primeiro.usuario_grupo_familiar_id;
+          const desvinculado = gruposFamiliaresDesvinculados.has(grupoFamiliarId);
+          return (
+            <div
+              key={`familia-${grupoFamiliarId}`}
+              className="grupo-familiar-container"
+              style={{ borderColor: corGrupoFamiliar(grupoFamiliarId) }}
+            >
+              <div className="grupo-familiar-cabecalho">
+                <span>{desvinculado ? "Grupo familiar (desmembrado)" : "Grupo familiar · move junto"}</span>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleDesvincularGrupoFamiliar(grupoFamiliarId);
+                  }}
+                >
+                  {desvinculado ? "Vincular" : "Desmembrar"}
+                </button>
+              </div>
+              {cartoes}
+            </div>
+          );
+        })}
       </SortableContext>
     </div>
   );
