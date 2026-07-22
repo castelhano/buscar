@@ -61,13 +61,14 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
         .all()
     )
 
-    def _serializar_perna(perna: dict) -> dict:
+    def _serializar_perna(perna: dict, atendimento_ativo: bool = True) -> dict:
         return {
             "usuario_id": perna["usuario_id"],
             "usuario_nome": perna["usuario"].nome,
             "usuario_abbr": perna["usuario"].abbr,
             "usuario_data_nascimento": perna["usuario"].data_nascimento,
             "usuario_ativo": perna["usuario"].status == StatusAtivoInativo.ATIVO,
+            "atendimento_ativo": atendimento_ativo,
             "origem": perna["origem"],
             "regiao_origem_id": perna["regiao_origem_id"],
             "destino_id": perna["destino_id"],
@@ -75,12 +76,12 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
             "acompanhante": perna["acompanhante"],
         }
 
-    def _perna_do_usuario_inativo(agenda: UsuarioAgendaSemanal) -> dict:
+    def _perna_reconstruida_da_agenda(agenda: UsuarioAgendaSemanal) -> dict:
         """Reconstroi os dados de exibicao direto da agenda (sem excecao/
-        recesso, que nao existem no modo Base) pra usuario que ficou Inativo
-        -- mantem o card visivel (com destaque) em vez de sumir, ja que o
-        vinculo (MembroViagemBase) continua no banco ate o usuario decidir
-        remover.
+        recesso, que nao existem no modo Base) pra usuario Inativo ou
+        atendimento (`UsuarioAgendaSemanal.ativo`) desligado -- mantem o card
+        visivel (com destaque) em vez de sumir, ja que o vinculo
+        (MembroViagemBase) continua no banco ate alguem decidir remover.
         """
         destino_id = agenda.destino_id
         return {
@@ -103,12 +104,15 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
                 perna = pernas_por_agenda_sentido.get((membro.agenda_id, viagem.sentido))
                 if perna is not None:
                     classificados.add((membro.agenda_id, viagem.sentido))
-                elif membro.agenda.usuario.status == StatusAtivoInativo.ATIVO:
+                    perna_serializada = _serializar_perna(perna, atendimento_ativo=True)
+                elif membro.agenda.usuario.status == StatusAtivoInativo.ATIVO and membro.agenda.ativo:
                     continue  # agenda nao elegivel por outro motivo (removida/suspensa/sem regiao) -- nao aparece
                 else:
-                    perna = _perna_do_usuario_inativo(membro.agenda)
+                    perna_serializada = _serializar_perna(
+                        _perna_reconstruida_da_agenda(membro.agenda), atendimento_ativo=membro.agenda.ativo
+                    )
                 membros_saida.append(
-                    {"id": membro.id, "agenda_id": membro.agenda_id, "ordem": membro.ordem, **_serializar_perna(perna)}
+                    {"id": membro.id, "agenda_id": membro.agenda_id, "ordem": membro.ordem, **perna_serializada}
                 )
             viagens_saida.append(
                 {

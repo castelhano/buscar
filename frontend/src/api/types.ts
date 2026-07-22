@@ -205,6 +205,7 @@ export interface MembroBase {
   usuario_abbr: string;
   usuario_data_nascimento: string | null;
   usuario_ativo: boolean;
+  atendimento_ativo: boolean;
   origem: string | null;
   regiao_origem_id: number | null;
   destino_id: number | null;

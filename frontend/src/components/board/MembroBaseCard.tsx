@@ -25,14 +25,24 @@ export default function MembroBaseCard({ viagemBaseId, grupoBaseId, sentido, hor
     opacity: isDragging ? 0.4 : 1,
   };
 
-  const inativo = !membro.usuario_ativo;
+  const usuarioInativo = !membro.usuario_ativo;
+  const atendimentoInativo = !membro.atendimento_ativo;
+  const inativo = usuarioInativo || atendimentoInativo;
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`passageiro-card ${membro.acompanhante ? "com-acompanhante" : ""} ${inativo ? "usuario-inativo" : ""}`}
-      title={inativo ? "Usuario inativo -- nao conta na ocupacao do veiculo" : undefined}
+      className={`passageiro-card ${membro.acompanhante ? "com-acompanhante" : ""} ${usuarioInativo ? "usuario-inativo" : ""} ${
+        atendimentoInativo ? "atendimento-inativo" : ""
+      }`}
+      title={
+        usuarioInativo
+          ? "Usuario inativo -- nao conta na ocupacao do veiculo"
+          : atendimentoInativo
+            ? "Atendimento inativo -- nao conta na ocupacao do veiculo"
+            : undefined
+      }
       {...attributes}
       {...listeners}
     >
@@ -52,7 +62,12 @@ export default function MembroBaseCard({ viagemBaseId, grupoBaseId, sentido, hor
           {membro.usuario_abbr || membro.usuario_nome}{" "}
           <span style={{ color: "var(--cor-texto-suave)" }}>{rotuloIdade(membro.usuario_data_nascimento)}</span>
         </span>
-        {inativo && <span className="tag tag-inativo" style={{ marginLeft: "0.4rem" }}>Inativo</span>}
+        {usuarioInativo && <span className="tag tag-inativo" style={{ marginLeft: "0.4rem" }}>Inativo</span>}
+        {!usuarioInativo && atendimentoInativo && (
+          <span className="tag tag-inativo" style={{ marginLeft: "0.4rem" }}>
+            Atendimento inativo
+          </span>
+        )}
       </div>
       {membro.acompanhante && (
         <div className="tag-acompanhante" title="Usuario leva acompanhante: ocupa 2 lugares no veiculo">

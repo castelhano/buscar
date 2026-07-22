@@ -880,7 +880,9 @@ def _cor_status_ocupacao(status: str):
 
 
 def _ocupados_viagem_base(viagem: dict) -> int:
-    return sum((2 if m["acompanhante"] else 1) for m in viagem["membros"] if m["usuario_ativo"])
+    return sum(
+        (2 if m["acompanhante"] else 1) for m in viagem["membros"] if m["usuario_ativo"] and m["atendimento_ativo"]
+    )
 
 
 def _formatar_hora(hora: dt.time) -> str:

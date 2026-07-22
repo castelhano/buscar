@@ -354,7 +354,10 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                       v.membros.map((m) => (
                         <li
                           key={m.id}
-                          style={{ opacity: m.usuario_ativo ? 1 : 0.55, textDecoration: m.usuario_ativo ? "none" : "line-through" }}
+                          style={{
+                            opacity: m.usuario_ativo && m.atendimento_ativo ? 1 : 0.55,
+                            textDecoration: m.usuario_ativo && m.atendimento_ativo ? "none" : "line-through",
+                          }}
                         >
                           {m.usuario_abbr || m.usuario_nome} · {nomeLocal(m.destino_id)}
                           {m.acompanhante ? " (+1 acomp.)" : ""}

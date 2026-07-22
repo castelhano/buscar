@@ -546,12 +546,14 @@ th {
   text-decoration: line-through;
 }
 
-.passageiro-card.usuario-inativo {
+.passageiro-card.usuario-inativo,
+.passageiro-card.atendimento-inativo {
   background: var(--cor-perigo-fundo);
   border-color: var(--cor-perigo);
 }
 
-.passageiro-card.usuario-inativo::after {
+.passageiro-card.usuario-inativo::after,
+.passageiro-card.atendimento-inativo::after {
   content: "";
   position: absolute;
   left: 0.3rem;

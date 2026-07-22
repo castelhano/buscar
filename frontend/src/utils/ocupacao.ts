@@ -26,7 +26,9 @@ export function statusOcupacao(ocupados: number, capacidade: number): StatusOcup
 }
 
 export function ocupadosDaViagem(viagem: ViagemBase): number {
-  return viagem.membros.filter((m) => m.usuario_ativo).reduce((soma, m) => soma + (m.acompanhante ? 2 : 1), 0);
+  return viagem.membros
+    .filter((m) => m.usuario_ativo && m.atendimento_ativo)
+    .reduce((soma, m) => soma + (m.acompanhante ? 2 : 1), 0);
 }
 
 function horasDosGrupos(grupos: GrupoBase[]): string[] {

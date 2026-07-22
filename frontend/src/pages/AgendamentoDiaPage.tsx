@@ -886,18 +886,19 @@ export default function AgendamentoDiaPage() {
           />
         )}
 
-        {modo === "dia" && ((desconsideradosQuery.data?.length ?? 0) > 0 || (viagensQuery.data?.length ?? 0) > 0) && (
+        {modo === "dia" &&
+          ((desconsideradosQuery.data?.length ?? 0) > 0 ||
+            (viagensQuery.data?.length ?? 0) > 0 ||
+            (semVagaQuery.data?.length ?? 0) > 0) && (
           <div style={{ display: "flex", gap: "1rem", alignItems: "flex-start" }}>
             {desconsideradosQuery.data && desconsideradosQuery.data.length > 0 && (
               <div style={{ flex: 1, minWidth: 0 }}>
                 <DesconsideradosPanel desconsiderados={desconsideradosQuery.data} />
               </div>
             )}
-            {viagensQuery.data && (
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <CancelamentosPanel viagens={viagensQuery.data} />
-              </div>
-            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <CancelamentosPanel viagens={viagensQuery.data ?? []} passageirosSemVaga={semVagaQuery.data} />
+            </div>
           </div>
         )}
       </DndContext>

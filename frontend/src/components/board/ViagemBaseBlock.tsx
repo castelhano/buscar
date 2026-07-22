@@ -30,7 +30,7 @@ export default function ViagemBaseBlock({ viagem, locais, onRemoverViagem, onRem
   const [novaHora, setNovaHora] = useState(viagem.hora.slice(0, 5));
 
   const lugaresOcupados = viagem.membros
-    .filter((m) => m.usuario_ativo)
+    .filter((m) => m.usuario_ativo && m.atendimento_ativo)
     .reduce((soma, m) => soma + (m.acompanhante ? 2 : 1), 0);
 
   return (

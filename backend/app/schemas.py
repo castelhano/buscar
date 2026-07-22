@@ -350,6 +350,7 @@ class MembroBaseRead(BaseModel):
     usuario_abbr: str
     usuario_data_nascimento: dt.date | None
     usuario_ativo: bool
+    atendimento_ativo: bool
     origem: str | None
     regiao_origem_id: int | None
     destino_id: int | None
