@@ -249,8 +249,12 @@ export default function AgendamentoDiaPage() {
     onSuccess: invalidarDia,
   });
   const abrirCarro = useMutation({
-    mutationFn: (body: { regiao_id: number; horario_saida: string; capacidade: number }) =>
-      api.post("/viagens/abrir", { ...body, data }),
+    mutationFn: (body: {
+      regiao_id: number;
+      horario_saida: string;
+      capacidade_usuarios: number;
+      capacidade_acompanhantes: number;
+    }) => api.post("/viagens/abrir", { ...body, data }),
     onSuccess: invalidarDia,
   });
   const marcarFolga = useMutation({

@@ -299,7 +299,8 @@ def abrir_viagem(payload: schemas.ViagemDiaAbrir, db: Session = Depends(get_db))
         data=payload.data,
         regiao_id=payload.regiao_id,
         horario_saida=payload.horario_saida,
-        capacidade=payload.capacidade,
+        capacidade_usuarios=payload.capacidade_usuarios,
+        capacidade_acompanhantes=payload.capacidade_acompanhantes,
         status=models.StatusViagemDia.PLANEJADA,
     )
     db.add(viagem)
@@ -401,7 +402,8 @@ def copiar_dia(payload: schemas.ViagemDiaCopiar, db: Session = Depends(get_db)):
             condutor_id=ancora.condutor_id,
             veiculo_id=ancora.veiculo_id,
             horario_saida=ancora.horario_saida,
-            capacidade=ancora.capacidade,
+            capacidade_usuarios=ancora.capacidade_usuarios,
+            capacidade_acompanhantes=ancora.capacidade_acompanhantes,
             status=models.StatusViagemDia.PLANEJADA,
             ordem_exibicao=ancora.ordem_exibicao,
         )
@@ -419,7 +421,8 @@ def copiar_dia(payload: schemas.ViagemDiaCopiar, db: Session = Depends(get_db)):
                     condutor_id=perna.condutor_id,
                     veiculo_id=perna.veiculo_id,
                     horario_saida=perna.horario_saida,
-                    capacidade=perna.capacidade,
+                    capacidade_usuarios=perna.capacidade_usuarios,
+                    capacidade_acompanhantes=perna.capacidade_acompanhantes,
                     status=models.StatusViagemDia.PLANEJADA,
                     grupo_viagem_id=nova_ancora.id,
                 )
@@ -472,6 +475,8 @@ def atribuir_condutor_veiculo(viagem_id: int, payload: schemas.ViagemDiaAtribuir
             raise HTTPException(status_code=404, detail=f"Veiculo {dados['veiculo_id']} nao encontrado")
         viagem.veiculo_id = veiculo.id
         viagem.empresa_id = veiculo.empresa_id
+        viagem.capacidade_usuarios = veiculo.capacidade_usuarios
+        viagem.capacidade_acompanhantes = veiculo.capacidade_acompanhantes
     if dados.get("condutor_id") is not None:
         if db.get(models.Condutor, dados["condutor_id"]) is None:
             raise HTTPException(status_code=404, detail=f"Condutor {dados['condutor_id']} nao encontrado")
@@ -502,6 +507,8 @@ def atribuir_condutor_veiculo_bloco(payload: schemas.ViagemDiaAtribuirBloco, db:
     _verificar_dia_destravado(db, data)
     atual_veiculo_id = viagens_bloco[0].veiculo_id
     atual_empresa_id = viagens_bloco[0].empresa_id
+    atual_capacidade_usuarios = viagens_bloco[0].capacidade_usuarios
+    atual_capacidade_acompanhantes = viagens_bloco[0].capacidade_acompanhantes
     atual_condutor_id = viagens_bloco[0].condutor_id
     # Carro e identificado por periodo (Manha/Tarde): um veiculo usado so de
     # manha esta livre pra ser escalado a tarde, entao a troca so deve
@@ -532,9 +539,13 @@ def atribuir_condutor_veiculo_bloco(payload: schemas.ViagemDiaAtribuirBloco, db:
         for v in _outro_bloco(models.ViagemDia.veiculo_id, payload.veiculo_id, mesmo_periodo=True):
             v.veiculo_id = atual_veiculo_id
             v.empresa_id = atual_empresa_id
+            v.capacidade_usuarios = atual_capacidade_usuarios
+            v.capacidade_acompanhantes = atual_capacidade_acompanhantes
         for v in viagens_bloco:
             v.veiculo_id = veiculo.id
             v.empresa_id = veiculo.empresa_id
+            v.capacidade_usuarios = veiculo.capacidade_usuarios
+            v.capacidade_acompanhantes = veiculo.capacidade_acompanhantes
 
     if payload.condutor_id is not None and payload.condutor_id != atual_condutor_id:
         condutor = db.get(models.Condutor, payload.condutor_id)
@@ -741,7 +752,8 @@ def mover_passageiro_para_bloco(
             condutor_id=modelo.condutor_id,
             veiculo_id=modelo.veiculo_id,
             horario_saida=passageiro.hora,
-            capacidade=modelo.capacidade,
+            capacidade_usuarios=modelo.capacidade_usuarios,
+            capacidade_acompanhantes=modelo.capacidade_acompanhantes,
             status=models.StatusViagemDia.PLANEJADA,
             grupo_viagem_id=bloco_id,
         )

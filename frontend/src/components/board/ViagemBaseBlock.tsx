@@ -2,9 +2,8 @@ import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import type { Local, ViagemBase } from "../../api/types";
+import { CAPACIDADE_ACOMPANHANTES_BASE, CAPACIDADE_USUARIOS_BASE } from "../../utils/ocupacao";
 import MembroBaseCard from "./MembroBaseCard";
-
-const LIMITE_ALERTA = 4;
 
 interface Props {
   viagem: ViagemBase;
@@ -29,9 +28,9 @@ export default function ViagemBaseBlock({ viagem, locais, onRemoverViagem, onRem
   const [editandoHora, setEditandoHora] = useState(false);
   const [novaHora, setNovaHora] = useState(viagem.hora.slice(0, 5));
 
-  const lugaresOcupados = viagem.membros
-    .filter((m) => m.usuario_ativo && m.atendimento_ativo)
-    .reduce((soma, m) => soma + (m.acompanhante ? 2 : 1), 0);
+  const membrosAtivos = viagem.membros.filter((m) => m.usuario_ativo && m.atendimento_ativo);
+  const usuariosOcupados = membrosAtivos.length;
+  const acompanhantesOcupados = membrosAtivos.filter((m) => m.acompanhante).length;
 
   return (
     <div
@@ -77,10 +76,17 @@ export default function ViagemBaseBlock({ viagem, locais, onRemoverViagem, onRem
             </button>
           </div>
         )}
-        <div className="meta">{lugaresOcupados} pessoa(s)</div>
-        {lugaresOcupados > LIMITE_ALERTA && (
+        <div className="meta">
+          {usuariosOcupados} usuario(s) · {acompanhantesOcupados} acompanhante(s)
+        </div>
+        {usuariosOcupados > CAPACIDADE_USUARIOS_BASE && (
           <div style={{ color: "var(--cor-alerta-borda)", fontWeight: 600, fontSize: "0.78rem", marginTop: "0.2rem" }}>
-            ⚠ Mais de {LIMITE_ALERTA} pessoas nesse horario
+            ⚠ Mais de {CAPACIDADE_USUARIOS_BASE} usuarios nesse horario
+          </div>
+        )}
+        {acompanhantesOcupados > CAPACIDADE_ACOMPANHANTES_BASE && (
+          <div style={{ color: "var(--cor-alerta-borda)", fontWeight: 600, fontSize: "0.78rem", marginTop: "0.2rem" }}>
+            ⚠ Mais de {CAPACIDADE_ACOMPANHANTES_BASE} acompanhantes nesse horario
           </div>
         )}
         {viagem.membros.length === 0 && (

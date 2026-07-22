@@ -92,7 +92,8 @@ class VeiculoCreate(BaseModel):
     prefixo: str
     placa: str
     status: StatusVeiculo = StatusVeiculo.ATIVO
-    capacidade: int = 4
+    capacidade_usuarios: int = 4
+    capacidade_acompanhantes: int = 2
 
 
 class VeiculoRead(ORMModel):
@@ -101,7 +102,8 @@ class VeiculoRead(ORMModel):
     prefixo: str
     placa: str
     status: StatusVeiculo
-    capacidade: int
+    capacidade_usuarios: int
+    capacidade_acompanhantes: int
 
 
 class CondutorCreate(BaseModel):
@@ -261,7 +263,8 @@ class ViagemDiaRead(ORMModel):
     condutor_id: int | None
     veiculo_id: int | None
     horario_saida: dt.time
-    capacidade: int
+    capacidade_usuarios: int
+    capacidade_acompanhantes: int
     status: StatusViagemDia
     observacoes: str | None
     grupo_viagem_id: int | None
@@ -448,7 +451,8 @@ class ViagemDiaAbrir(BaseModel):
     data: dt.date
     regiao_id: int
     horario_saida: dt.time
-    capacidade: int
+    capacidade_usuarios: int
+    capacidade_acompanhantes: int
 
 
 # --------------------------------------------------------------------------

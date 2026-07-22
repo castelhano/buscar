@@ -186,12 +186,14 @@ class Veiculo(Base):
     prefixo: Mapped[str] = mapped_column(String(20))
     placa: Mapped[str] = mapped_column(String(10), unique=True)
     status: Mapped[StatusVeiculo] = mapped_column(_enum(StatusVeiculo), default=StatusVeiculo.ATIVO)
-    capacidade: Mapped[int] = mapped_column(Integer, default=4)
+    capacidade_usuarios: Mapped[int] = mapped_column(Integer, default=4)
+    capacidade_acompanhantes: Mapped[int] = mapped_column(Integer, default=2)
 
     empresa: Mapped["Empresa"] = relationship(back_populates="veiculos")
 
     __table_args__ = (
-        CheckConstraint("capacidade > 0", name="ck_veiculo_capacidade"),
+        CheckConstraint("capacidade_usuarios > 0", name="ck_veiculo_capacidade_usuarios"),
+        CheckConstraint("capacidade_acompanhantes >= 0", name="ck_veiculo_capacidade_acompanhantes"),
     )
 
 
@@ -506,7 +508,8 @@ class ViagemDia(Base):
     condutor_id: Mapped[int | None] = mapped_column(ForeignKey("condutor.id"), nullable=True)
     veiculo_id: Mapped[int | None] = mapped_column(ForeignKey("veiculo.id"), nullable=True)
     horario_saida: Mapped[dt.time] = mapped_column(Time)
-    capacidade: Mapped[int] = mapped_column(Integer)
+    capacidade_usuarios: Mapped[int] = mapped_column(Integer)
+    capacidade_acompanhantes: Mapped[int] = mapped_column(Integer)
     status: Mapped[StatusViagemDia] = mapped_column(_enum(StatusViagemDia), default=StatusViagemDia.PLANEJADA)
     observacoes: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Amarra pernas (ida/volta/varios horarios) que formam um unico carro real ao
@@ -530,7 +533,8 @@ class ViagemDia(Base):
     )
 
     __table_args__ = (
-        CheckConstraint("capacidade > 0", name="ck_viagem_dia_capacidade"),
+        CheckConstraint("capacidade_usuarios > 0", name="ck_viagem_dia_capacidade_usuarios"),
+        CheckConstraint("capacidade_acompanhantes >= 0", name="ck_viagem_dia_capacidade_acompanhantes"),
     )
 
 

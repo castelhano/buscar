@@ -840,6 +840,29 @@ th {
   white-space: nowrap;
 }
 
+.ocupacao-celula-dupla {
+  display: inline-flex;
+  gap: 2px;
+  border: none;
+  border-radius: 5px;
+  padding: 0;
+  font-family: inherit;
+  overflow: hidden;
+  cursor: pointer;
+  background: transparent;
+}
+
+.ocupacao-celula-parte {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  padding: 0.2rem 0.35rem;
+  font-weight: 700;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
 .ocupacao-livre {
   background: #e6f4ea;
   color: var(--cor-sucesso);

@@ -6,12 +6,14 @@ import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
 import { DIAS_SEMANA, DIAS_SEMANA_LABEL } from "../../api/types";
 import type { DiaSemana, EstruturaBase, Local } from "../../api/types";
 import {
-  CAPACIDADE_VIAGEM_BASE,
+  CAPACIDADE_ACOMPANHANTES_BASE,
+  CAPACIDADE_USUARIOS_BASE,
   montarMatrizDiaSimples,
   montarMatrizSemana,
   type CarroNaCelula,
   type CelulaHoraCarro,
   type CelulaHoraDiaSemana,
+  type StatusOcupacao,
   type ViagemResumo,
 } from "../../utils/ocupacao";
 
@@ -40,6 +42,37 @@ function formatarHoraCurta(hora: string): string {
 function percentual(parte: number, total: number): string {
   if (total <= 0) return "–";
   return `${Math.round((parte / total) * 100)}%`;
+}
+
+function CelulaDupla({
+  usuarios,
+  capacidadeUsuarios,
+  statusUsuarios,
+  acompanhantes,
+  capacidadeAcompanhantes,
+  statusAcompanhantes,
+  onClick,
+}: {
+  usuarios: number;
+  capacidadeUsuarios?: number;
+  statusUsuarios: StatusOcupacao;
+  acompanhantes: number;
+  capacidadeAcompanhantes?: number;
+  statusAcompanhantes: StatusOcupacao;
+  onClick: (e: MouseEvent<HTMLButtonElement>) => void;
+}) {
+  return (
+    <button type="button" className="ocupacao-celula-dupla" onClick={onClick}>
+      <span className={`ocupacao-celula-parte ocupacao-${statusUsuarios}`}>
+        {usuarios}
+        {capacidadeUsuarios !== undefined ? `/${capacidadeUsuarios}` : ""}
+      </span>
+      <span className={`ocupacao-celula-parte ocupacao-${statusAcompanhantes}`}>
+        {acompanhantes}
+        {capacidadeAcompanhantes !== undefined ? `/${capacidadeAcompanhantes}` : ""}
+      </span>
+    </button>
+  );
 }
 
 export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }: Props) {
@@ -130,8 +163,8 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
       <div className="modal" style={{ width: "min(96vw, 1150px)" }} onClick={(e) => e.stopPropagation()}>
         <h3>Ocupacao por carro / horario</h3>
         <p style={{ fontSize: "0.8rem", color: "var(--cor-texto-suave)", marginTop: 0 }}>
-          Perfil de ocupacao do molde semanal, assumindo {CAPACIDADE_VIAGEM_BASE} lugares por viagem. Clique numa celula
-          para ver os passageiros daquela viagem.
+          Perfil de ocupacao do molde semanal, assumindo {CAPACIDADE_USUARIOS_BASE} usuarios + {CAPACIDADE_ACOMPANHANTES_BASE}{" "}
+          acompanhantes por viagem (dois pools independentes). Clique numa celula para ver os passageiros daquela viagem.
         </p>
 
         {erroExportar && (
@@ -185,6 +218,7 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
             <span className="ocupacao-legenda-swatch ocupacao-swatch-vazia" />
             Sem viagem
           </span>
+          <span className="ocupacao-legenda-item">Cada celula: usuarios · +acompanhantes (status independente)</span>
         </div>
 
         {estruturasQuery.isLoading && <p>Carregando...</p>}
@@ -222,9 +256,11 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                           {linha.porCarro.map((celula, indiceCarro) =>
                             celula ? (
                               <td key={indiceCarro}>
-                                <button
-                                  type="button"
-                                  className={`ocupacao-celula ocupacao-${celula.status}`}
+                                <CelulaDupla
+                                  usuarios={celula.ocupados.usuarios}
+                                  statusUsuarios={celula.statusUsuarios}
+                                  acompanhantes={celula.ocupados.acompanhantes}
+                                  statusAcompanhantes={celula.statusAcompanhantes}
                                   onClick={(e) =>
                                     abrirPopover(
                                       e,
@@ -232,9 +268,7 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                                       gruposPopoverCarro(celula),
                                     )
                                   }
-                                >
-                                  {celula.ocupados}
-                                </button>
+                                />
                               </td>
                             ) : (
                               <td key={indiceCarro}>
@@ -242,8 +276,15 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                               </td>
                             ),
                           )}
-                          <td className="ocupacao-col-total">{linha.totalOcupados}</td>
-                          <td className="ocupacao-col-percentual">{percentual(linha.totalOcupados, matriz.totalGeral)}</td>
+                          <td className="ocupacao-col-total">
+                            {linha.totalOcupados.usuarios}/{linha.totalOcupados.acompanhantes}
+                          </td>
+                          <td className="ocupacao-col-percentual">
+                            {percentual(
+                              linha.totalOcupados.usuarios + linha.totalOcupados.acompanhantes,
+                              matriz.totalGeral.usuarios + matriz.totalGeral.acompanhantes,
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -252,10 +293,12 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                         <td className="ocupacao-td-hora">Total</td>
                         {matriz.totalPorCarro.map((total, indice) => (
                           <td key={indice} className="ocupacao-col-total">
-                            {total}
+                            {total.usuarios}/{total.acompanhantes}
                           </td>
                         ))}
-                        <td className="ocupacao-col-total">{matriz.totalGeral}</td>
+                        <td className="ocupacao-col-total">
+                          {matriz.totalGeral.usuarios}/{matriz.totalGeral.acompanhantes}
+                        </td>
                         <td className="ocupacao-col-percentual"></td>
                       </tr>
                     </tfoot>
@@ -284,9 +327,13 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                     {linha.porDia.map((celula, indiceDia) =>
                       celula ? (
                         <td key={indiceDia}>
-                          <button
-                            type="button"
-                            className={`ocupacao-celula ocupacao-${celula.status}`}
+                          <CelulaDupla
+                            usuarios={celula.ocupados.usuarios}
+                            capacidadeUsuarios={celula.capacidade.usuarios}
+                            statusUsuarios={celula.statusUsuarios}
+                            acompanhantes={celula.ocupados.acompanhantes}
+                            capacidadeAcompanhantes={celula.capacidade.acompanhantes}
+                            statusAcompanhantes={celula.statusAcompanhantes}
                             onClick={(e) =>
                               abrirPopover(
                                 e,
@@ -294,9 +341,7 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                                 gruposPopoverSemana(matrizSemana.dias[indiceDia], celula),
                               )
                             }
-                          >
-                            {celula.ocupados}/{celula.capacidade}
-                          </button>
+                          />
                         </td>
                       ) : (
                         <td key={indiceDia}>
@@ -305,9 +350,15 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                       ),
                     )}
                     <td className="ocupacao-col-total">
-                      {linha.totalOcupados}/{linha.totalCapacidade}
+                      {linha.totalOcupados.usuarios}/{linha.totalCapacidade.usuarios} | {linha.totalOcupados.acompanhantes}/
+                      {linha.totalCapacidade.acompanhantes}
                     </td>
-                    <td className="ocupacao-col-percentual">{percentual(linha.totalOcupados, linha.totalCapacidade)}</td>
+                    <td className="ocupacao-col-percentual">
+                      {percentual(
+                        linha.totalOcupados.usuarios + linha.totalOcupados.acompanhantes,
+                        linha.totalCapacidade.usuarios + linha.totalCapacidade.acompanhantes,
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -316,14 +367,19 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                   <td className="ocupacao-td-hora">Total</td>
                   {matrizSemana.totalPorDia.map((total, indice) => (
                     <td key={indice} className="ocupacao-col-total">
-                      {total.ocupados}/{total.capacidade}
+                      {total.ocupados.usuarios}/{total.capacidade.usuarios} | {total.ocupados.acompanhantes}/
+                      {total.capacidade.acompanhantes}
                     </td>
                   ))}
                   <td className="ocupacao-col-total">
-                    {matrizSemana.totalGeral.ocupados}/{matrizSemana.totalGeral.capacidade}
+                    {matrizSemana.totalGeral.ocupados.usuarios}/{matrizSemana.totalGeral.capacidade.usuarios} |{" "}
+                    {matrizSemana.totalGeral.ocupados.acompanhantes}/{matrizSemana.totalGeral.capacidade.acompanhantes}
                   </td>
                   <td className="ocupacao-col-percentual">
-                    {percentual(matrizSemana.totalGeral.ocupados, matrizSemana.totalGeral.capacidade)}
+                    {percentual(
+                      matrizSemana.totalGeral.ocupados.usuarios + matrizSemana.totalGeral.ocupados.acompanhantes,
+                      matrizSemana.totalGeral.capacidade.usuarios + matrizSemana.totalGeral.capacidade.acompanhantes,
+                    )}
                   </td>
                 </tr>
               </tfoot>

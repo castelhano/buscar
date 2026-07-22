@@ -27,7 +27,6 @@ export default function MembroBaseCard({ viagemBaseId, grupoBaseId, sentido, hor
 
   const usuarioInativo = !membro.usuario_ativo;
   const atendimentoInativo = !membro.atendimento_ativo;
-  const inativo = usuarioInativo || atendimentoInativo;
 
   return (
     <div

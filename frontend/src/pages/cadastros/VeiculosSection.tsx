@@ -10,10 +10,18 @@ interface FormState {
   prefixo: string;
   placa: string;
   status: StatusVeiculo;
-  capacidade: number;
+  capacidade_usuarios: number;
+  capacidade_acompanhantes: number;
 }
 
-const vazio: FormState = { empresa_id: "", prefixo: "", placa: "", status: "Ativo", capacidade: 4 };
+const vazio: FormState = {
+  empresa_id: "",
+  prefixo: "",
+  placa: "",
+  status: "Ativo",
+  capacidade_usuarios: 4,
+  capacidade_acompanhantes: 2,
+};
 
 export default function VeiculosSection() {
   const { data: veiculos, error } = useList<Veiculo>("veiculos", "/veiculos");
@@ -38,7 +46,14 @@ export default function VeiculosSection() {
 
   function editar(v: Veiculo) {
     setEditandoId(v.id);
-    setForm({ empresa_id: v.empresa_id, prefixo: v.prefixo, placa: v.placa, status: v.status, capacidade: v.capacidade });
+    setForm({
+      empresa_id: v.empresa_id,
+      prefixo: v.prefixo,
+      placa: v.placa,
+      status: v.status,
+      capacidade_usuarios: v.capacidade_usuarios,
+      capacidade_acompanhantes: v.capacidade_acompanhantes,
+    });
   }
 
   function cancelarEdicao() {
@@ -89,12 +104,21 @@ export default function VeiculosSection() {
           </select>
         </div>
         <div className="campo">
-          <label>Capacidade</label>
+          <label>Lugares</label>
           <input
             type="number"
             min={1}
-            value={form.capacidade}
-            onChange={(e) => setForm({ ...form, capacidade: Number(e.target.value) })}
+            value={form.capacidade_usuarios}
+            onChange={(e) => setForm({ ...form, capacidade_usuarios: Number(e.target.value) })}
+          />
+        </div>
+        <div className="campo">
+          <label>Acompanhantes</label>
+          <input
+            type="number"
+            min={0}
+            value={form.capacidade_acompanhantes}
+            onChange={(e) => setForm({ ...form, capacidade_acompanhantes: Number(e.target.value) })}
           />
         </div>
         <button className="btn btn-primario" onClick={salvar} disabled={criar.isPending || atualizar.isPending}>
@@ -113,7 +137,8 @@ export default function VeiculosSection() {
             <th>Placa</th>
             <th>Empresa</th>
             <th>Status</th>
-            <th>Capacidade</th>
+            <th>Usuarios</th>
+            <th>Acompanhantes</th>
             <th></th>
           </tr>
         </thead>
@@ -126,7 +151,8 @@ export default function VeiculosSection() {
               <td>
                 <span className={`tag ${v.status === "Ativo" ? "tag-ativo" : v.status === "Inativo" ? "tag-inativo" : ""}`}>{v.status}</span>
               </td>
-              <td>{v.capacidade}</td>
+              <td>{v.capacidade_usuarios}</td>
+              <td>{v.capacidade_acompanhantes}</td>
               <td>
                 <button className="btn btn-sm" onClick={() => editar(v)}>
                   Editar

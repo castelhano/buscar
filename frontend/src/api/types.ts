@@ -81,7 +81,8 @@ export interface Veiculo {
   prefixo: string;
   placa: string;
   status: StatusVeiculo;
-  capacidade: number;
+  capacidade_usuarios: number;
+  capacidade_acompanhantes: number;
 }
 
 export interface Condutor {
@@ -179,7 +180,8 @@ export interface ViagemDia {
   condutor_id: number | null;
   veiculo_id: number | null;
   horario_saida: string;
-  capacidade: number;
+  capacidade_usuarios: number;
+  capacidade_acompanhantes: number;
   status: StatusViagemDia;
   observacoes: string | null;
   grupo_viagem_id: number | null;

@@ -447,7 +447,8 @@ def _gerar_carro_do_grupo_base(
     ancora_id: int | None = None
 
     for viagem_base, membros in viagens_membros:
-        lugares_totais = sum(2 if m["acompanhante"] else 1 for m in membros)
+        qtd_usuarios = len(membros)
+        qtd_acompanhantes = sum(1 for m in membros if m["acompanhante"])
         regiao_da_viagem = rotulo_regiao
         if regiao_da_viagem is None:
             regiao_da_viagem = regiao_alocacao(
@@ -464,7 +465,8 @@ def _gerar_carro_do_grupo_base(
             data=data,
             regiao_id=regiao_da_viagem,
             horario_saida=horario_garagem(viagem_base.hora) if eh_primeira_perna else viagem_base.hora,
-            capacidade=max(lugares_totais, 1),
+            capacidade_usuarios=max(qtd_usuarios, 1),
+            capacidade_acompanhantes=qtd_acompanhantes,
             status=StatusViagemDia.PLANEJADA,
         )
         db.add(viagem)
@@ -658,7 +660,8 @@ def _atribuir_condutores(
                 if veiculo is not None:
                     viagem.veiculo_id = veiculo.id
                     viagem.empresa_id = veiculo.empresa_id
-                    viagem.capacidade = veiculo.capacidade
+                    viagem.capacidade_usuarios = veiculo.capacidade_usuarios
+                    viagem.capacidade_acompanhantes = veiculo.capacidade_acompanhantes
     else:
         pernas_por_grupo_periodo: dict[tuple[int, PeriodoCondutor], list[ViagemDia]] = defaultdict(list)
         for viagem in viagens:
@@ -685,7 +688,8 @@ def _atribuir_condutores(
                 if veiculo is not None:
                     perna.veiculo_id = veiculo.id
                     perna.empresa_id = veiculo.empresa_id
-                    perna.capacidade = veiculo.capacidade
+                    perna.capacidade_usuarios = veiculo.capacidade_usuarios
+                    perna.capacidade_acompanhantes = veiculo.capacidade_acompanhantes
 
     for periodo, condutor_id in pendentes_periodo.items():
         registro = db.get(RodizioCondutorFimDeSemana, periodo)
