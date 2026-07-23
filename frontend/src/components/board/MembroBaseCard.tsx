@@ -28,6 +28,19 @@ export default function MembroBaseCard({ viagemBaseId, grupoBaseId, sentido, hor
 
   const usuarioInativo = !membro.usuario_ativo;
   const atendimentoInativo = !membro.atendimento_ativo;
+  const horarioDivergente = membro.hora_agenda !== hora;
+
+  const titulo = [
+    usuarioInativo && "Usuario inativo -- nao conta na ocupacao do veiculo",
+    !usuarioInativo && atendimentoInativo && "Atendimento inativo -- nao conta na ocupacao do veiculo",
+    horarioDivergente &&
+      `Horario do cadastro (${membro.hora_agenda.slice(0, 5)}) diferente do horario dessa viagem (${hora.slice(
+        0,
+        5,
+      )}) -- na geracao real essa pessoa fica de fora desse carro ate ser corrigido`,
+  ]
+    .filter(Boolean)
+    .join(" · ") || undefined;
 
   return (
     <div
@@ -35,14 +48,8 @@ export default function MembroBaseCard({ viagemBaseId, grupoBaseId, sentido, hor
       style={style}
       className={`passageiro-card ${membro.acompanhante ? "com-acompanhante" : ""} ${usuarioInativo ? "usuario-inativo" : ""} ${
         atendimentoInativo ? "atendimento-inativo" : ""
-      }`}
-      title={
-        usuarioInativo
-          ? "Usuario inativo -- nao conta na ocupacao do veiculo"
-          : atendimentoInativo
-            ? "Atendimento inativo -- nao conta na ocupacao do veiculo"
-            : undefined
-      }
+      } ${horarioDivergente ? "horario-divergente" : ""}`}
+      title={titulo}
       {...attributes}
       {...listeners}
     >
@@ -73,6 +80,11 @@ export default function MembroBaseCard({ viagemBaseId, grupoBaseId, sentido, hor
         {!usuarioInativo && atendimentoInativo && (
           <span className="tag tag-inativo" style={{ marginLeft: "0.4rem" }}>
             Atendimento inativo
+          </span>
+        )}
+        {horarioDivergente && (
+          <span className="tag tag-alerta" style={{ marginLeft: "0.4rem" }}>
+            ⚠ Cadastro {membro.hora_agenda.slice(0, 5)}
           </span>
         )}
       </div>

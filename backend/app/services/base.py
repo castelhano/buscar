@@ -78,9 +78,10 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
             "destino_id": perna["destino_id"],
             "regiao_destino_id": perna["regiao_destino_id"],
             "acompanhante": perna["acompanhante"],
+            "hora_agenda": perna["hora"],
         }
 
-    def _perna_reconstruida_da_agenda(agenda: UsuarioAgendaSemanal) -> dict:
+    def _perna_reconstruida_da_agenda(agenda: UsuarioAgendaSemanal, sentido: Sentido) -> dict:
         """Reconstroi os dados de exibicao direto da agenda (sem excecao/
         recesso, que nao existem no modo Base) pra usuario Inativo ou
         atendimento (`UsuarioAgendaSemanal.ativo`) desligado -- mantem o card
@@ -96,6 +97,7 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
             "destino_id": destino_id,
             "regiao_destino_id": locais_regiao.get(destino_id) if destino_id else None,
             "acompanhante": agenda.acompanhante,
+            "hora": agenda.saida if sentido == Sentido.IDA else agenda.retorno,
         }
 
     classificados: set[tuple[int, Sentido]] = set()
@@ -113,7 +115,7 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
                     continue  # agenda nao elegivel por outro motivo (removida/suspensa/sem regiao) -- nao aparece
                 else:
                     perna_serializada = _serializar_perna(
-                        _perna_reconstruida_da_agenda(membro.agenda), atendimento_ativo=membro.agenda.ativo
+                        _perna_reconstruida_da_agenda(membro.agenda, viagem.sentido), atendimento_ativo=membro.agenda.ativo
                     )
                 membros_saida.append(
                     {"id": membro.id, "agenda_id": membro.agenda_id, "ordem": membro.ordem, **perna_serializada}

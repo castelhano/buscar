@@ -376,6 +376,7 @@ class MembroBaseRead(BaseModel):
     destino_id: int | None
     regiao_destino_id: int | None
     acompanhante: bool
+    hora_agenda: dt.time
 
 
 class ViagemBaseRead(BaseModel):

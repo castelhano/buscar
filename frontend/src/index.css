@@ -380,6 +380,12 @@ th {
   color: var(--cor-perigo);
 }
 
+.tag-alerta {
+  background: var(--cor-alerta-fundo);
+  color: var(--cor-alerta-borda);
+  font-weight: 600;
+}
+
 .tag-regiao {
   background: var(--cor-primaria);
   color: #fff;
@@ -563,6 +569,11 @@ th {
   background: var(--cor-perigo);
   transform: translateY(-50%) rotate(-4deg);
   pointer-events: none;
+}
+
+.passageiro-card.horario-divergente {
+  background: var(--cor-alerta-fundo);
+  border: 2px dashed var(--cor-alerta-borda);
 }
 
 .passageiro-card.com-acompanhante {

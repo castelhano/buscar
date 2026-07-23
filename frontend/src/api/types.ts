@@ -225,6 +225,7 @@ export interface MembroBase {
   destino_id: number | null;
   regiao_destino_id: number | null;
   acompanhante: boolean;
+  hora_agenda: string;
 }
 
 export interface ViagemBase {
