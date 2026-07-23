@@ -171,7 +171,7 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
         <p style={{ fontSize: "0.8rem", color: "var(--cor-texto-suave)", marginTop: 0 }}>
           Perfil de ocupacao do molde semanal, assumindo {CAPACIDADE_USUARIOS_BASE} usuarios + {CAPACIDADE_ACOMPANHANTES_BASE}{" "}
           acompanhantes por viagem (dois pools independentes). Clique numa celula para ver os passageiros daquela viagem. As linhas
-          "Nao classificados" e "Total (todos)" no rodape somam tambem quem ja e elegivel no dia mas ainda nao foi alocado em
+          "N/Aloc" e "Total (todos)" no rodape somam tambem quem ja e elegivel no dia mas ainda nao foi alocado em
           nenhum carro.
         </p>
 
@@ -310,7 +310,7 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                         <td className="ocupacao-col-percentual"></td>
                       </tr>
                       <tr className="ocupacao-linha-total">
-                        <td className="ocupacao-td-hora">Nao classificados</td>
+                        <td className="ocupacao-td-hora">N/Aloc</td>
                         <td colSpan={matriz.totalCarros} className="aviso-discreto" style={{ textAlign: "center" }}>
                           ainda sem carro
                         </td>
@@ -411,7 +411,7 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                   </td>
                 </tr>
                 <tr className="ocupacao-linha-total">
-                  <td className="ocupacao-td-hora">Nao classificados</td>
+                  <td className="ocupacao-td-hora">N/Aloc</td>
                   {matrizSemana.naoClassificadosPorDia.map((total, indice) => (
                     <td key={indice} className="ocupacao-col-total">
                       {total.usuarios}/{total.acompanhantes}
