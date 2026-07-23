@@ -81,8 +81,8 @@ export default function AgendamentoDiaPage() {
 
   const { data: regioes } = useList<Regiao>("regioes", "/regioes");
   const { data: empresas } = useList<Empresa>("empresas", "/empresas");
-  const { data: veiculos } = useList<Veiculo>("veiculos", "/veiculos");
-  const { data: condutores } = useList<Condutor>("condutores", "/condutores");
+  const { data: veiculos, refetch: refetchVeiculos } = useList<Veiculo>("veiculos", "/veiculos");
+  const { data: condutores, refetch: refetchCondutores } = useList<Condutor>("condutores", "/condutores");
   const { data: locais } = useList<Local>("locais", "/locais");
   const { data: ferias } = useList<CondutorFerias>("ferias", "/ferias");
 
@@ -316,6 +316,14 @@ export default function AgendamentoDiaPage() {
     condutorAtualId: number | null;
     veiculoAtualId: number | null;
   } | null>(null);
+  // Veiculos/condutores podem ter status alterado em outra aba/sessao (ex:
+  // liberado da manutencao) sem que essa pagina seja recarregada -- busca de
+  // novo ao abrir o modal pra decidir a atribuicao com dado atualizado.
+  function abrirModalAtribuir(dados: { viagemIds: number[]; condutorAtualId: number | null; veiculoAtualId: number | null }) {
+    refetchVeiculos();
+    refetchCondutores();
+    setModalAtribuir(dados);
+  }
   const [modalAbrirCarro, setModalAbrirCarro] = useState(false);
   const [modalEscalas, setModalEscalas] = useState(false);
   const [modalAgendamentos, setModalAgendamentos] = useState(false);
@@ -759,7 +767,7 @@ export default function AgendamentoDiaPage() {
                   }
                   onCancelarPassageiro={setModalCancelar}
                   onEditarPassageiro={setModalEditarPassageiro}
-                  onAtribuir={travado ? undefined : setModalAtribuir}
+                  onAtribuir={travado ? undefined : abrirModalAtribuir}
                   onLimparCondutorVeiculo={
                     travado
                       ? undefined
