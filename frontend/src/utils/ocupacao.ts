@@ -13,7 +13,7 @@ export function periodoDaHora(hora: string): PeriodoOcupacao {
   return minutosDaHora(hora) >= CORTE_TARDE_MINUTOS ? "Tarde" : "Manha";
 }
 
-export type StatusOcupacao = "livre" | "lotado" | "acima";
+export type StatusOcupacao = "livre" | "atencao" | "lotado" | "acima";
 
 export interface ViagemResumo {
   viagemId: number;
@@ -33,24 +33,18 @@ function somaPar(a: OcupacaoPar, b: OcupacaoPar): OcupacaoPar {
   return { usuarios: a.usuarios + b.usuarios, acompanhantes: a.acompanhantes + b.acompanhantes };
 }
 
+const LIMIAR_ATENCAO = 0.7;
+
 export function statusOcupacao(ocupados: number, capacidade: number): StatusOcupacao {
   if (ocupados > capacidade) return "acima";
   if (ocupados === capacidade) return "lotado";
+  if (capacidade > 0 && ocupados / capacidade > LIMIAR_ATENCAO) return "atencao";
   return "livre";
 }
 
 export function ocupadosDaViagem(viagem: ViagemBase): OcupacaoPar {
   const ativos = viagem.membros.filter((m) => m.usuario_ativo && m.atendimento_ativo);
   return { usuarios: ativos.length, acompanhantes: ativos.filter((m) => m.acompanhante).length };
-}
-
-/** Conta os efetivos do dia que ainda nao foram classificados em nenhum
- * carro (ver `NaoClassificadoBase`/`montar_estrutura_base`) -- ja vem
- * filtrado pelo backend so com usuario/atendimento ativos, entao nao precisa
- * repetir o filtro de `ocupadosDaViagem`. */
-export function ocupadosNaoClassificados(naoClassificados: NaoClassificadoBase[], periodo?: PeriodoOcupacao): OcupacaoPar {
-  const doPeriodo = periodo === undefined ? naoClassificados : naoClassificados.filter((n) => periodoDaHora(n.hora) === periodo);
-  return { usuarios: doPeriodo.length, acompanhantes: doPeriodo.filter((n) => n.acompanhante).length };
 }
 
 function horasDosGrupos(grupos: GrupoBase[]): string[] {
@@ -70,30 +64,50 @@ export interface CelulaHoraCarro {
   viagens: ViagemResumo[];
 }
 
+export interface CelulaNaoAlocados {
+  usuarios: number;
+  acompanhantes: number;
+}
+
 export interface LinhaHoraDia {
   hora: string;
   porCarro: (CelulaHoraCarro | null)[];
+  /** Efetivos elegiveis nesse horario que ainda nao foram alocados em nenhum
+   * carro -- `null` quando a coluna "N/Aloc" existe no periodo mas ninguem
+   * cai nesse horario especifico (ver `MatrizDiaSimples.temNaoAlocados`). */
+  celulaNaoAlocados: CelulaNaoAlocados | null;
+  /** Capacidade de usuarios so dos carros reais presentes nesse horario --
+   * "N/Aloc" nao tem carro, entao nao soma capacidade, so entra no total
+   * ocupado (ver `totalOcupados`). */
+  capacidadeUsuarios: number;
+  /** Usuarios+acompanhantes dos carros reais + "N/Aloc" nesse horario. */
   totalOcupados: OcupacaoPar;
 }
 
 export interface MatrizDiaSimples {
   totalCarros: number;
+  /** true quando ha alguem ainda nao alocado em nenhum carro no periodo --
+   * so nesse caso a coluna "N/Aloc" aparece. */
+  temNaoAlocados: boolean;
   linhas: LinhaHoraDia[];
   totalPorCarro: OcupacaoPar[];
-  /** Soma apenas dos efetivos ja alocados em algum carro. */
-  totalGeral: OcupacaoPar;
-  /** Efetivos elegiveis no periodo que ainda nao foram alocados em nenhum carro. */
-  naoClassificados: OcupacaoPar;
-  /** `totalGeral` + `naoClassificados` -- todos os efetivos do dia/periodo,
-   * alocados ou nao (ver pedido de nunca deixar os nao alocados de fora do
-   * resumo). */
-  totalComNaoClassificados: OcupacaoPar;
+  /** Soma de "N/Aloc" no periodo todo (coluna de totais). */
+  naoAlocadosTotal: OcupacaoPar;
+  /** Usuarios+acompanhantes de todo mundo (carros reais + "N/Aloc") somados
+   * num unico numero, pra celula "Total" da linha totalizadora. */
+  totalGeralTodos: number;
 }
 
 /** Filtra grupos/viagens para um periodo especifico antes de montar a matriz --
  * carros sem nenhuma viagem no periodo nao entram como coluna, e as horas
  * consideradas ficam restritas ao periodo, evitando colunas/linhas em branco
- * quando um mesmo dia tem carros de manha e de tarde. */
+ * quando um mesmo dia tem carros de manha e de tarde.
+ *
+ * Quem ainda nao foi alocado em nenhum carro vira uma coluna "N/Aloc" a mais
+ * (sem capacidade fixa, ja que nao e um carro real) -- assim o percentual de
+ * cada linha reflete toda a demanda (carros + nao alocados) sobre a
+ * capacidade real disponivel. Mantem paridade com `gerar_pdf_ocupacao_base`
+ * no backend (`app/services/exportacao.py`). */
 export function montarMatrizDiaSimples(
   grupos: GrupoBase[],
   periodo?: PeriodoOcupacao,
@@ -101,19 +115,27 @@ export function montarMatrizDiaSimples(
 ): MatrizDiaSimples {
   const gruposDoPeriodo = periodo === undefined ? grupos : grupos.filter((g) => g.viagens.some((v) => periodoDaHora(v.hora) === periodo));
   const totalCarros = gruposDoPeriodo.length;
-  const horas = horasDosGrupos(gruposDoPeriodo).filter((hora) => periodo === undefined || periodoDaHora(hora) === periodo);
+  const ncDoPeriodo = periodo === undefined ? naoClassificados : naoClassificados.filter((n) => periodoDaHora(n.hora) === periodo);
+  const temNaoAlocados = ncDoPeriodo.length > 0;
+
+  const horasReais = horasDosGrupos(gruposDoPeriodo).filter((hora) => periodo === undefined || periodoDaHora(hora) === periodo);
+  const horas = [...new Set([...horasReais, ...ncDoPeriodo.map((n) => n.hora)])].sort();
 
   const linhas: LinhaHoraDia[] = horas.map((hora) => {
     const porCarro: (CelulaHoraCarro | null)[] = [];
-    let totalOcupados: OcupacaoPar = { usuarios: 0, acompanhantes: 0 };
+    let totalUsuariosReais = 0;
+    let totalAcompanhantesReais = 0;
+    let carrosNaHora = 0;
     for (const grupo of gruposDoPeriodo) {
       const viagensNaHora = grupo.viagens.filter((v) => v.hora === hora);
       if (viagensNaHora.length === 0) {
         porCarro.push(null);
         continue;
       }
+      carrosNaHora += 1;
       const ocupados = viagensNaHora.reduce((soma, v) => somaPar(soma, ocupadosDaViagem(v)), { usuarios: 0, acompanhantes: 0 });
-      totalOcupados = somaPar(totalOcupados, ocupados);
+      totalUsuariosReais += ocupados.usuarios;
+      totalAcompanhantesReais += ocupados.acompanhantes;
       porCarro.push({
         ocupados,
         statusUsuarios: statusOcupacao(ocupados.usuarios, CAPACIDADE_USUARIOS_BASE),
@@ -121,18 +143,37 @@ export function montarMatrizDiaSimples(
         viagens: viagensNaHora.map((v) => ({ viagemId: v.id, sentido: v.sentido, membros: v.membros })),
       });
     }
-    return { hora, porCarro, totalOcupados };
+
+    let celulaNaoAlocados: CelulaNaoAlocados | null = null;
+    if (temNaoAlocados) {
+      const ncNaHora = ncDoPeriodo.filter((n) => n.hora === hora);
+      if (ncNaHora.length > 0) {
+        celulaNaoAlocados = { usuarios: ncNaHora.length, acompanhantes: ncNaHora.filter((n) => n.acompanhante).length };
+      }
+    }
+
+    const capacidadeUsuarios = carrosNaHora * CAPACIDADE_USUARIOS_BASE;
+    const totalOcupados: OcupacaoPar = {
+      usuarios: totalUsuariosReais + (celulaNaoAlocados?.usuarios ?? 0),
+      acompanhantes: totalAcompanhantesReais + (celulaNaoAlocados?.acompanhantes ?? 0),
+    };
+    return { hora, porCarro, celulaNaoAlocados, capacidadeUsuarios, totalOcupados };
   });
 
   const totalPorCarro: OcupacaoPar[] = gruposDoPeriodo.map((_, indice) => ({
     usuarios: linhas.reduce((soma, l) => soma + (l.porCarro[indice]?.ocupados.usuarios ?? 0), 0),
     acompanhantes: linhas.reduce((soma, l) => soma + (l.porCarro[indice]?.ocupados.acompanhantes ?? 0), 0),
   }));
-  const totalGeral = totalPorCarro.reduce(somaPar, { usuarios: 0, acompanhantes: 0 });
-  const naoClassificadosOcupados = ocupadosNaoClassificados(naoClassificados, periodo);
-  const totalComNaoClassificados = somaPar(totalGeral, naoClassificadosOcupados);
+  const naoAlocadosTotal: OcupacaoPar = {
+    usuarios: linhas.reduce((soma, l) => soma + (l.celulaNaoAlocados?.usuarios ?? 0), 0),
+    acompanhantes: linhas.reduce((soma, l) => soma + (l.celulaNaoAlocados?.acompanhantes ?? 0), 0),
+  };
+  const totalGeralTodos =
+    totalPorCarro.reduce((soma, t) => soma + t.usuarios + t.acompanhantes, 0) +
+    naoAlocadosTotal.usuarios +
+    naoAlocadosTotal.acompanhantes;
 
-  return { totalCarros, linhas, totalPorCarro, totalGeral, naoClassificados: naoClassificadosOcupados, totalComNaoClassificados };
+  return { totalCarros, temNaoAlocados, linhas, totalPorCarro, naoAlocadosTotal, totalGeralTodos };
 }
 
 // --------------------------------------------------------------------------
@@ -162,7 +203,6 @@ export interface LinhaHoraSemana {
 export interface DiaComGrupos {
   dia: DiaSemana;
   grupos: GrupoBase[];
-  naoClassificados?: NaoClassificadoBase[];
 }
 
 export interface MatrizSemana {
@@ -170,13 +210,6 @@ export interface MatrizSemana {
   linhas: LinhaHoraSemana[];
   totalPorDia: { ocupados: OcupacaoPar; capacidade: OcupacaoPar }[];
   totalGeral: { ocupados: OcupacaoPar; capacidade: OcupacaoPar };
-  /** Nao classificados por dia (nao entram em nenhuma linha/hora, ja que nao
-   * estao alocados a nenhum carro -- ver `MatrizDiaSimples.naoClassificados`). */
-  naoClassificadosPorDia: OcupacaoPar[];
-  naoClassificadosGeral: OcupacaoPar;
-  /** `totalGeral.ocupados` + `naoClassificadosGeral` -- todos os efetivos da
-   * semana, alocados ou nao. */
-  totalGeralComNaoClassificados: OcupacaoPar;
 }
 
 export function montarMatrizSemana(diasComGrupos: DiaComGrupos[]): MatrizSemana {
@@ -228,17 +261,10 @@ export function montarMatrizSemana(diasComGrupos: DiaComGrupos[]): MatrizSemana 
     { ocupados: { usuarios: 0, acompanhantes: 0 }, capacidade: { usuarios: 0, acompanhantes: 0 } },
   );
 
-  const naoClassificadosPorDia = diasComGrupos.map((d) => ocupadosNaoClassificados(d.naoClassificados ?? []));
-  const naoClassificadosGeral = naoClassificadosPorDia.reduce(somaPar, { usuarios: 0, acompanhantes: 0 });
-  const totalGeralComNaoClassificados = somaPar(totalGeral.ocupados, naoClassificadosGeral);
-
   return {
     dias: diasComGrupos.map((d) => d.dia),
     linhas,
     totalPorDia,
     totalGeral,
-    naoClassificadosPorDia,
-    naoClassificadosGeral,
-    totalGeralComNaoClassificados,
   };
 }

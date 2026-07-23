@@ -10,6 +10,7 @@ import {
   CAPACIDADE_USUARIOS_BASE,
   montarMatrizDiaSimples,
   montarMatrizSemana,
+  statusOcupacao,
   type CarroNaCelula,
   type CelulaHoraCarro,
   type CelulaHoraDiaSemana,
@@ -138,9 +139,7 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
 
   const matrizSemana = useMemo(() => {
     if (escopo !== "semana") return null;
-    return montarMatrizSemana(
-      diasComDados.map(({ dia, estrutura }) => ({ dia, grupos: estrutura.grupos, naoClassificados: estrutura.nao_classificados })),
-    );
+    return montarMatrizSemana(diasComDados.map(({ dia, estrutura }) => ({ dia, grupos: estrutura.grupos })));
   }, [escopo, diasComDados]);
 
   function labelCarroNoDia(dia: DiaSemana, grupoId: number): string {
@@ -159,7 +158,7 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
 
   function matrizDiaVazia(matriz: ReturnType<typeof montarMatrizDiaSimples> | null): boolean {
     if (!matriz) return true;
-    return matriz.totalCarros === 0 && matriz.naoClassificados.usuarios === 0 && matriz.naoClassificados.acompanhantes === 0;
+    return matriz.totalCarros === 0 && !matriz.temNaoAlocados;
   }
 
   const semVazio = escopo === "dia" ? matrizDiaVazia(matrizManha) && matrizDiaVazia(matrizTarde) : diasComDados.length === 0;
@@ -170,9 +169,9 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
         <h3>Ocupacao por carro / horario</h3>
         <p style={{ fontSize: "0.8rem", color: "var(--cor-texto-suave)", marginTop: 0 }}>
           Perfil de ocupacao do molde semanal, assumindo {CAPACIDADE_USUARIOS_BASE} usuarios + {CAPACIDADE_ACOMPANHANTES_BASE}{" "}
-          acompanhantes por viagem (dois pools independentes). Clique numa celula para ver os passageiros daquela viagem. As linhas
-          "N/Aloc" e "Total (todos)" no rodape somam tambem quem ja e elegivel no dia mas ainda nao foi alocado em
-          nenhum carro.
+          acompanhantes por viagem (dois pools independentes). Clique numa celula para ver os passageiros daquela viagem. Na visao de
+          um dia so, quem ainda nao foi alocado em nenhum carro aparece numa coluna "N/Aloc" (sem capacidade fixa) e entra no
+          percentual da linha; na visao da semana toda essa distincao nao existe, ja que os passageiros ja somam no total do dia.
         </p>
 
         {erroExportar && (
@@ -215,6 +214,10 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
             Com vaga
           </span>
           <span className="ocupacao-legenda-item">
+            <span className="ocupacao-legenda-swatch ocupacao-swatch-atencao" />
+            Acima de 70%
+          </span>
+          <span className="ocupacao-legenda-item">
             <span className="ocupacao-legenda-swatch ocupacao-swatch-lotado" />
             Lotado
           </span>
@@ -226,7 +229,7 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
             <span className="ocupacao-legenda-swatch ocupacao-swatch-vazia" />
             Sem viagem
           </span>
-          <span className="ocupacao-legenda-item">Cada celula: usuarios · +acompanhantes (status independente)</span>
+          <span className="ocupacao-legenda-item">Cada celula: usuarios · acompanhantes (status independente)</span>
         </div>
 
         {estruturasQuery.isLoading && <p>Carregando...</p>}
@@ -253,80 +256,78 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                         {Array.from({ length: matriz.totalCarros }, (_, i) => (
                           <th key={i}>{String(i + 1).padStart(2, "0")}</th>
                         ))}
+                        {matriz.temNaoAlocados && <th>N/Aloc</th>}
                         <th className="ocupacao-col-total">Total</th>
                         <th className="ocupacao-col-percentual">%</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {matriz.linhas.map((linha) => (
-                        <tr key={linha.hora}>
-                          <td className="ocupacao-td-hora">{formatarHoraCurta(linha.hora)}</td>
-                          {linha.porCarro.map((celula, indiceCarro) =>
-                            celula ? (
-                              <td key={indiceCarro}>
-                                <CelulaDupla
-                                  usuarios={celula.ocupados.usuarios}
-                                  statusUsuarios={celula.statusUsuarios}
-                                  acompanhantes={celula.ocupados.acompanhantes}
-                                  statusAcompanhantes={celula.statusAcompanhantes}
-                                  onClick={(e) =>
-                                    abrirPopover(
-                                      e,
-                                      `Carro ${indiceCarro + 1} · ${formatarHoraCurta(linha.hora)}`,
-                                      gruposPopoverCarro(celula),
-                                    )
-                                  }
-                                />
-                              </td>
-                            ) : (
-                              <td key={indiceCarro}>
-                                <div className="ocupacao-celula ocupacao-vazia">–</div>
-                              </td>
-                            ),
-                          )}
-                          <td className="ocupacao-col-total">
-                            {linha.totalOcupados.usuarios}/{linha.totalOcupados.acompanhantes}
-                          </td>
-                          <td className="ocupacao-col-percentual">
-                            {percentual(
-                              linha.totalOcupados.usuarios + linha.totalOcupados.acompanhantes,
-                              matriz.totalGeral.usuarios + matriz.totalGeral.acompanhantes,
+                      {matriz.linhas.map((linha) => {
+                        const statusLinha = statusOcupacao(linha.totalOcupados.usuarios, linha.capacidadeUsuarios);
+                        const destaque =
+                          statusLinha === "atencao" || statusLinha === "acima" ? ` ocupacao-destaque-${statusLinha}` : "";
+                        return (
+                          <tr key={linha.hora}>
+                            <td className="ocupacao-td-hora">{formatarHoraCurta(linha.hora)}</td>
+                            {linha.porCarro.map((celula, indiceCarro) =>
+                              celula ? (
+                                <td key={indiceCarro}>
+                                  <CelulaDupla
+                                    usuarios={celula.ocupados.usuarios}
+                                    statusUsuarios={celula.statusUsuarios}
+                                    acompanhantes={celula.ocupados.acompanhantes}
+                                    statusAcompanhantes={celula.statusAcompanhantes}
+                                    onClick={(e) =>
+                                      abrirPopover(
+                                        e,
+                                        `Carro ${indiceCarro + 1} · ${formatarHoraCurta(linha.hora)}`,
+                                        gruposPopoverCarro(celula),
+                                      )
+                                    }
+                                  />
+                                </td>
+                              ) : (
+                                <td key={indiceCarro}>
+                                  <div className="ocupacao-celula ocupacao-vazia">–</div>
+                                </td>
+                              ),
                             )}
-                          </td>
-                        </tr>
-                      ))}
+                            {matriz.temNaoAlocados && (
+                              <td>
+                                {linha.celulaNaoAlocados ? (
+                                  <div className="ocupacao-celula-dupla ocupacao-celula-dupla-neutra">
+                                    <span className="ocupacao-celula-parte">{linha.celulaNaoAlocados.usuarios}</span>
+                                    <span className="ocupacao-celula-parte">{linha.celulaNaoAlocados.acompanhantes}</span>
+                                  </div>
+                                ) : (
+                                  <div className="ocupacao-celula ocupacao-vazia">–</div>
+                                )}
+                              </td>
+                            )}
+                            <td className={`ocupacao-col-total${destaque}`}>
+                              {linha.totalOcupados.usuarios}/{linha.totalOcupados.acompanhantes}
+                            </td>
+                            <td className={`ocupacao-col-percentual${destaque}`}>
+                              {percentual(linha.totalOcupados.usuarios, linha.capacidadeUsuarios)}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                     <tfoot>
                       <tr className="ocupacao-linha-total">
-                        <td className="ocupacao-td-hora">Alocados</td>
+                        <td className="ocupacao-td-hora">Total</td>
                         {matriz.totalPorCarro.map((total, indice) => (
                           <td key={indice} className="ocupacao-col-total">
                             {total.usuarios}/{total.acompanhantes}
                           </td>
                         ))}
-                        <td className="ocupacao-col-total">
-                          {matriz.totalGeral.usuarios}/{matriz.totalGeral.acompanhantes}
-                        </td>
-                        <td className="ocupacao-col-percentual"></td>
-                      </tr>
-                      <tr className="ocupacao-linha-total">
-                        <td className="ocupacao-td-hora">N/Aloc</td>
-                        <td colSpan={matriz.totalCarros} className="aviso-discreto" style={{ textAlign: "center" }}>
-                          ainda sem carro
-                        </td>
-                        <td className="ocupacao-col-total">
-                          {matriz.naoClassificados.usuarios}/{matriz.naoClassificados.acompanhantes}
-                        </td>
-                        <td className="ocupacao-col-percentual"></td>
-                      </tr>
-                      <tr className="ocupacao-linha-total">
-                        <td className="ocupacao-td-hora">Total do periodo</td>
-                        <td colSpan={matriz.totalCarros} className="aviso-discreto" style={{ textAlign: "center" }}>
-                          todos os efetivos, alocados ou nao
-                        </td>
-                        <td className="ocupacao-col-total">
-                          {matriz.totalComNaoClassificados.usuarios}/{matriz.totalComNaoClassificados.acompanhantes}
-                        </td>
+                        {matriz.temNaoAlocados && (
+                          <td className="ocupacao-col-total">
+                            {matriz.naoAlocadosTotal.usuarios}/{matriz.naoAlocadosTotal.acompanhantes}
+                          </td>
+                        )}
+                        <td className="ocupacao-col-total">{matriz.totalGeralTodos}</td>
                         <td className="ocupacao-col-percentual"></td>
                       </tr>
                     </tfoot>
@@ -381,12 +382,7 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                       {linha.totalOcupados.usuarios}/{linha.totalCapacidade.usuarios} | {linha.totalOcupados.acompanhantes}/
                       {linha.totalCapacidade.acompanhantes}
                     </td>
-                    <td className="ocupacao-col-percentual">
-                      {percentual(
-                        linha.totalOcupados.usuarios + linha.totalOcupados.acompanhantes,
-                        linha.totalCapacidade.usuarios + linha.totalCapacidade.acompanhantes,
-                      )}
-                    </td>
+                    <td className="ocupacao-col-percentual">{percentual(linha.totalOcupados.usuarios, linha.totalCapacidade.usuarios)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -404,38 +400,8 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                     {matrizSemana.totalGeral.ocupados.acompanhantes}/{matrizSemana.totalGeral.capacidade.acompanhantes}
                   </td>
                   <td className="ocupacao-col-percentual">
-                    {percentual(
-                      matrizSemana.totalGeral.ocupados.usuarios + matrizSemana.totalGeral.ocupados.acompanhantes,
-                      matrizSemana.totalGeral.capacidade.usuarios + matrizSemana.totalGeral.capacidade.acompanhantes,
-                    )}
+                    {percentual(matrizSemana.totalGeral.ocupados.usuarios, matrizSemana.totalGeral.capacidade.usuarios)}
                   </td>
-                </tr>
-                <tr className="ocupacao-linha-total">
-                  <td className="ocupacao-td-hora">N/Aloc</td>
-                  {matrizSemana.naoClassificadosPorDia.map((total, indice) => (
-                    <td key={indice} className="ocupacao-col-total">
-                      {total.usuarios}/{total.acompanhantes}
-                    </td>
-                  ))}
-                  <td className="ocupacao-col-total">
-                    {matrizSemana.naoClassificadosGeral.usuarios}/{matrizSemana.naoClassificadosGeral.acompanhantes}
-                  </td>
-                  <td className="ocupacao-col-percentual"></td>
-                </tr>
-                <tr className="ocupacao-linha-total">
-                  <td className="ocupacao-td-hora">Total (todos)</td>
-                  {matrizSemana.totalPorDia.map((total, indice) => {
-                    const naoClass = matrizSemana.naoClassificadosPorDia[indice];
-                    return (
-                      <td key={indice} className="ocupacao-col-total">
-                        {total.ocupados.usuarios + naoClass.usuarios}/{total.ocupados.acompanhantes + naoClass.acompanhantes}
-                      </td>
-                    );
-                  })}
-                  <td className="ocupacao-col-total">
-                    {matrizSemana.totalGeralComNaoClassificados.usuarios}/{matrizSemana.totalGeralComNaoClassificados.acompanhantes}
-                  </td>
-                  <td className="ocupacao-col-percentual"></td>
                 </tr>
               </tfoot>
             </table>
