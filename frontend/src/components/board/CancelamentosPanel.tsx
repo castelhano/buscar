@@ -43,12 +43,14 @@ export default function CancelamentosPanel({ viagens, passageirosSemVaga = [] }:
       <ol>
         {cancelamentos.map((c) => (
           <li key={c.usuarioId}>
-            {c.usuarioNome} (
+            {c.usuarioNome}{" "}
             {[...c.trechosCancelados]
               .sort((a, b) => a - b)
-              .map((ordem) => rotuloTrecho(ordem))
-              .join(", ")}
-            )
+              .map((ordem) => (
+                <span key={ordem} className="badge-rotulo" style={{ marginLeft: "0.25rem" }}>
+                  {rotuloTrecho(ordem)}
+                </span>
+              ))}
           </li>
         ))}
       </ol>

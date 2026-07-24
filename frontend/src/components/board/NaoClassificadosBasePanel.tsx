@@ -38,7 +38,7 @@ function MembroNaoClassificadoCard({
           <span style={{ color: "var(--cor-texto-suave)" }}>{rotuloIdade(membro.usuario_data_nascimento)}</span>
         </span>
         <span>
-          {rotuloTrecho(membro.ordem_trecho)} {membro.hora.slice(0, 5)}
+          <span className="badge-rotulo">{rotuloTrecho(membro.ordem_trecho)}</span> {membro.hora.slice(0, 5)}
         </span>
       </div>
       {membro.acompanhante && (

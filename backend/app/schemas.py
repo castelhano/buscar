@@ -249,6 +249,7 @@ class UsuarioCreate(BaseModel):
     contato: str | None = None
     data_nascimento: dt.date | None = None
     detalhe: str | None = None
+    bairro: str | None = None
     observacao: str | None = None
     grupo_familiar_id: int | None = None
     regiao_id: int | None = None
@@ -263,6 +264,7 @@ class UsuarioRead(ORMModel):
     contato: str | None
     data_nascimento: dt.date | None
     detalhe: str | None
+    bairro: str | None
     observacao: str | None
     grupo_familiar_id: int | None
     regiao_id: int | None

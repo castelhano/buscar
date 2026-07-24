@@ -9,6 +9,7 @@ import { formatarData } from "../../utils/data";
 
 interface Props {
   usuarioId: number;
+  usuarioBairro?: string | null;
   excecoes: UsuarioExcecao[];
   agendaSemanal: UsuarioAgendaSemanal[];
   regioes: Regiao[];
@@ -33,12 +34,20 @@ const rotulosOperacao: Record<OperacaoExcecao, string> = {
 const vazio = (): FormState => ({
   data_inicio: "",
   data_fim: "",
-  operacao: "Modificacao",
+  operacao: "Adicao",
   trechos: [trechoVazio(true)],
   motivo: "",
 });
 
-export default function ExcecoesEditor({ usuarioId, excecoes, agendaSemanal, regioes, locais, somenteLeitura = false }: Props) {
+export default function ExcecoesEditor({
+  usuarioId,
+  usuarioBairro,
+  excecoes,
+  agendaSemanal,
+  regioes,
+  locais,
+  somenteLeitura = false,
+}: Props) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<FormState>(vazio());
   const [erro, setErro] = useState<string | null>(null);
@@ -141,6 +150,7 @@ export default function ExcecoesEditor({ usuarioId, excecoes, agendaSemanal, reg
                 type="date"
                 value={form.data_inicio}
                 onChange={(e) => setForm({ ...form, data_inicio: e.target.value })}
+                onBlur={(e) => e.target.value && setForm((f) => ({ ...f, data_fim: e.target.value }))}
               />
             </div>
             <div className="campo">
@@ -233,8 +243,9 @@ export default function ExcecoesEditor({ usuarioId, excecoes, agendaSemanal, reg
                       <span className="badge-rotulo" style={{ marginRight: "0.4rem" }}>
                         {rotuloTrecho(t.ordem)}
                       </span>
-                      {t.hora} · {rotuloPonto(t.origem_tipo, nomeLocal(t.origem_id), t.origem_texto, undefined, "endereco do usuario")} →{" "}
-                      {rotuloPonto(t.destino_tipo, nomeLocal(t.destino_id), t.destino_texto, undefined, "endereco do usuario")}
+                      {t.hora} ·{" "}
+                      {rotuloPonto(t.origem_tipo, nomeLocal(t.origem_id), t.origem_texto, undefined, "endereco do usuario", usuarioBairro)} →{" "}
+                      {rotuloPonto(t.destino_tipo, nomeLocal(t.destino_id), t.destino_texto, undefined, "endereco do usuario", usuarioBairro)}
                     </div>
                   ))
                 )}

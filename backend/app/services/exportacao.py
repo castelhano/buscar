@@ -97,13 +97,14 @@ def _rotulo_detalhe_ponto(
     completo, exibido como subtexto -- ver `_com_detalhe`) de um ponto
     (origem OU destino) ja resolvido, a partir do tipo escolhido (ver
     `TipoPonto`): Local cadastrado usa nome/observacao do Local; endereco do
-    usuario usa abbr/detalhe do proprio usuario do atendimento; avulso usa o
-    rotulo/endereco digitados na hora.
+    usuario usa bairro/detalhe do proprio usuario do atendimento (o nome dele
+    ja aparece em outra parte do card/linha, mostrar de novo aqui seria
+    redundante); avulso usa o rotulo/endereco digitados na hora.
     """
     if tipo == TipoPonto.LOCAL:
         return (local.nome if local else "-", local.observacao if local else None)
     if tipo == TipoPonto.USUARIO:
-        return (usuario.abbr or usuario.nome, usuario.detalhe)
+        return (usuario.bairro or usuario.abbr or usuario.nome, usuario.detalhe)
     if tipo == TipoPonto.AVULSO:
         return (texto or "-", detalhe)
     return ("-", None)
@@ -210,9 +211,9 @@ def _montar_dados_condutor_dia(
 
     mapa_destinos = mapa_destinos or {}
     linhas: list[list[_Celula]] = [
-        [("Hora", None), ("Usuario", None), ("Trecho", None), ("Origem", None), ("Destino", None), ("Observacoes", None)]
+        [("Hora", None), ("Usuario", None), ("Origem", None), ("Destino", None), ("Observacoes", None)]
     ]
-    linhas.append([(hora_inicio, None), ("--", None), ("Acesso", None), (empresa_garagem, None), ("-", None), ("", None)])
+    linhas.append([(hora_inicio, None), ("--", None), (empresa_garagem, None), ("-", None), ("", None)])
 
     limites_leg: list[int] = []
     linha_intervalo: int | None = None
@@ -237,7 +238,6 @@ def _montar_dados_condutor_dia(
                 [
                     (passageiro.hora.strftime("%H:%M"), None),
                     (nome, None),
-                    (f"Trecho {passageiro.ordem_trecho + 1}", None),
                     _dados_origem(passageiro, mapa_destinos),
                     _dados_destino(passageiro),
                     (observacoes, None),
@@ -250,13 +250,13 @@ def _montar_dados_condutor_dia(
             if intervalo[0] >= fim_viagem(viagem) and cabe_antes_da_proxima:
                 linha_intervalo = len(linhas)
                 texto_intervalo = f"INTERVALO {intervalo[0].strftime('%H:%M')} as {intervalo[1].strftime('%H:%M')}"
-                linhas.append([(texto_intervalo, None), ("", None), ("", None), ("", None), ("", None), ("", None)])
+                linhas.append([(texto_intervalo, None), ("", None), ("", None), ("", None), ("", None)])
                 intervalo_inserido = True
 
     if not intervalo_inserido:
         linha_intervalo = len(linhas)
         texto_intervalo = f"INTERVALO {intervalo[0].strftime('%H:%M')} as {intervalo[1].strftime('%H:%M')}"
-        linhas.append([(texto_intervalo, None), ("", None), ("", None), ("", None), ("", None), ("", None)])
+        linhas.append([(texto_intervalo, None), ("", None), ("", None), ("", None), ("", None)])
 
     # Caixa alta em tudo -- facilita a leitura rapida do condutor durante a viagem.
     return _DadosCondutorDia(
@@ -300,7 +300,7 @@ def _pdf_condutor_dia(
         else:
             linhas.append([_com_detalhe(texto, detalhe) if texto or detalhe else "" for texto, detalhe in linha])
 
-    tabela = Table(linhas, colWidths=[2 * cm, 6.5 * cm, 2.3 * cm, 5.4 * cm, 5.4 * cm, 5.1 * cm], repeatRows=1)
+    tabela = Table(linhas, colWidths=[2.2 * cm, 7.1 * cm, 5.9 * cm, 5.9 * cm, 5.6 * cm], repeatRows=1)
     estilos = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2d3748")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -329,7 +329,7 @@ def _pdf_condutor_dia(
 # util pra colar num chat/WhatsApp sem o "papel" A4 em volta).
 # --------------------------------------------------------------------------
 
-_PNG_COL_LARGURAS = [90, 300, 105, 245, 245, 235]  # px, mesma proporcao das colWidths do PDF
+_PNG_COL_LARGURAS = [98, 328, 268, 268, 258]  # px, mesma proporcao das colWidths do PDF
 _PNG_MARGEM = 14
 _PNG_PADDING_CELULA = 6
 _PNG_COR_CABECALHO_BG = (45, 55, 72)  # #2d3748

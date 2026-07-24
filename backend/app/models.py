@@ -273,6 +273,12 @@ class Usuario(Base):
     contato: Mapped[str | None] = mapped_column(String(100), nullable=True)
     data_nascimento: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     detalhe: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Bairro "de casa" do usuario -- rotulo curto (ex: "Jd Imperial II"),
+    # complementar ao endereco completo em `detalhe`. Usado automaticamente
+    # (sem precisar redigitar por trecho), junto com `detalhe` e `regiao_id`,
+    # quando um trecho referencia o endereco principal dele (TipoPonto.USUARIO)
+    # como origem ou destino.
+    bairro: Mapped[str | None] = mapped_column(String(100), nullable=True)
     observacao: Mapped[str | None] = mapped_column(Text, nullable=True)
     grupo_familiar_id: Mapped[int | None] = mapped_column(ForeignKey("grupo_familiar.id"), nullable=True)
     # Regiao "de casa" do usuario -- usada automaticamente (sem precisar

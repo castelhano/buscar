@@ -65,7 +65,7 @@ export default function PassageiroCard({
             <span style={{ color: "var(--cor-texto-suave)" }}>{rotuloIdade(passageiro.usuario.data_nascimento)}</span>
           </span>
           <span>
-            {rotuloTrecho(passageiro.ordem_trecho)} {passageiro.hora.slice(0, 5)}
+            <span className="badge-rotulo">{rotuloTrecho(passageiro.ordem_trecho)}</span> {passageiro.hora.slice(0, 5)}
           </span>
         </div>
         {passageiro.acompanhante && (
@@ -86,6 +86,7 @@ export default function PassageiroCard({
               passageiro.origem_texto,
               passageiro.usuario.abbr,
               passageiro.usuario.nome,
+              passageiro.usuario.bairro,
             )}
           </span>
           <span>
@@ -95,6 +96,7 @@ export default function PassageiroCard({
               passageiro.destino_texto,
               passageiro.usuario.abbr,
               passageiro.usuario.nome,
+              passageiro.usuario.bairro,
             )}
           </span>
         </div>

@@ -36,7 +36,6 @@ export default function LegBlock({
 
   const passageirosOrdenados = [...viagem.passageiros].sort((a, b) => a.hora.localeCompare(b.hora) || a.ordem - b.ordem);
   const primeiro = passageirosOrdenados[0];
-  const labelHorario = primeiro ? `${rotuloTrecho(primeiro.ordem_trecho)} · ${primeiro.hora.slice(0, 5)}` : viagem.horario_saida.slice(0, 5);
 
   const passageirosAtivos = viagem.passageiros.filter((p) => p.status !== "Cancelado");
   const usuariosOcupados = passageirosAtivos.length;
@@ -56,7 +55,15 @@ export default function LegBlock({
       style={{ outline: isOver ? "2px solid var(--cor-primaria)" : "none" }}
     >
       <div className="leg-block-header">
-        <div className="horario-grupo-label">{labelHorario}</div>
+        <div className="horario-grupo-label">
+          {primeiro ? (
+            <>
+              <span className="badge-rotulo">{rotuloTrecho(primeiro.ordem_trecho)}</span> · {primeiro.hora.slice(0, 5)}
+            </>
+          ) : (
+            viagem.horario_saida.slice(0, 5)
+          )}
+        </div>
         <div className="meta">
           Saida {viagem.horario_saida.slice(0, 5)} · {usuariosOcupados}/{viagem.capacidade_usuarios} | {acompanhantesOcupados}/
           {viagem.capacidade_acompanhantes}

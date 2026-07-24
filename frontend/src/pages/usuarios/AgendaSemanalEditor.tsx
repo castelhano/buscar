@@ -9,6 +9,7 @@ import ReplicarModal from "./ReplicarModal";
 
 interface Props {
   usuarioId: number;
+  usuarioBairro?: string | null;
   agenda: UsuarioAgendaSemanal[];
   regioes: Regiao[];
   locais: Local[];
@@ -31,7 +32,7 @@ interface Edicao {
   entradaId: number | null;
 }
 
-export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais, somenteLeitura = false }: Props) {
+export default function AgendaSemanalEditor({ usuarioId, usuarioBairro, agenda, regioes, locais, somenteLeitura = false }: Props) {
   const queryClient = useQueryClient();
   const [edicao, setEdicao] = useState<Edicao | null>(null);
   const [form, setForm] = useState<FormState>(formVazio());
@@ -201,8 +202,9 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
                         <span className="badge-rotulo" style={{ marginRight: "0.4rem" }}>
                           {rotuloTrecho(t.ordem)}
                         </span>
-                        {t.hora} · {rotuloPonto(t.origem_tipo, nomeLocal(t.origem_id), t.origem_texto, undefined, "endereco do usuario")} →{" "}
-                        {rotuloPonto(t.destino_tipo, nomeLocal(t.destino_id), t.destino_texto, undefined, "endereco do usuario")}
+                        {t.hora} ·{" "}
+                        {rotuloPonto(t.origem_tipo, nomeLocal(t.origem_id), t.origem_texto, undefined, "endereco do usuario", usuarioBairro)} →{" "}
+                        {rotuloPonto(t.destino_tipo, nomeLocal(t.destino_id), t.destino_texto, undefined, "endereco do usuario", usuarioBairro)}
                         {t.acompanhante && <span className="tag-acompanhante" style={{ marginLeft: "0.3rem" }}>+ acomp</span>}
                       </div>
                     ))}

@@ -47,17 +47,21 @@ export function diaSemanaFromData(data: string): DiaSemana {
   return DIA_SEMANA_POR_WEEKDAY_JS[new Date(ano, mes - 1, dia).getDay()];
 }
 
-/** Rotulo puramente posicional -- sem tentar adivinhar Ida/Retorno (isso
- * gera confusao em itinerarios com mais de 2 trechos ou retorno pra um
- * local diferente da origem, ver Trecho). */
+/** Numero (1-based) de exibicao de um trecho -- puramente posicional, sem
+ * tentar adivinhar Ida/Retorno (isso gera confusao em itinerarios com mais
+ * de 2 trechos ou retorno pra um local diferente da origem, ver Trecho).
+ * Exibido como badge numerado (ver classe `badge-rotulo`), nao mais como
+ * texto "Trecho N". */
 export function rotuloTrecho(ordemTrecho: number): string {
-  return `Trecho ${ordemTrecho + 1}`;
+  return String(ordemTrecho + 1);
 }
 
 /** Rotulo de exibicao (card/celula) de um ponto (origem OU destino) ja
  * resolvido, a partir do tipo escolhido (ver TipoPonto): Local usa o nome
  * cadastrado (resolvido pelo chamador, que ja tem a lista de locais em mao);
- * Usuario usa o abbr/nome do proprio usuario do atendimento; Avulso usa o
+ * Usuario usa o bairro do proprio usuario do atendimento (o nome dele ja
+ * aparece em outra parte do card -- repetir aqui seria redundante, cai pro
+ * abbr/nome so se o bairro ainda nao estiver cadastrado); Avulso usa o
  * rotulo digitado. `null` (so valido pra origem) significa "herda do trecho
  * anterior". */
 export function rotuloPonto(
@@ -66,9 +70,10 @@ export function rotuloPonto(
   texto: string | null | undefined,
   usuarioAbbr: string | undefined,
   usuarioNome: string | undefined,
+  usuarioBairro?: string | null,
 ): string {
   if (tipo === "Local") return localNome ?? "local cadastrado";
-  if (tipo === "Usuario") return usuarioAbbr || usuarioNome || "-";
+  if (tipo === "Usuario") return usuarioBairro || usuarioAbbr || usuarioNome || "-";
   if (tipo === "Avulso") return texto || "-";
   return "(herda)";
 }
@@ -144,6 +149,7 @@ export interface Usuario {
   contato: string | null;
   data_nascimento: string | null;
   detalhe: string | null;
+  bairro: string | null;
   observacao: string | null;
   grupo_familiar_id: number | null;
   regiao_id: number | null;

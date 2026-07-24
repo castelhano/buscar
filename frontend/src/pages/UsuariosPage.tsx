@@ -17,6 +17,7 @@ interface FormState {
   contato: string;
   data_nascimento: string;
   detalhe: string;
+  bairro: string;
   observacao: string;
   grupo_familiar_id: number | "";
   regiao_id: number | "";
@@ -29,6 +30,7 @@ const vazio: FormState = {
   contato: "",
   data_nascimento: "",
   detalhe: "",
+  bairro: "",
   observacao: "",
   grupo_familiar_id: "",
   regiao_id: "",
@@ -94,6 +96,7 @@ export default function UsuariosPage() {
         contato: detalhe.data.contato ?? "",
         data_nascimento: detalhe.data.data_nascimento ?? "",
         detalhe: detalhe.data.detalhe ?? "",
+        bairro: detalhe.data.bairro ?? "",
         observacao: detalhe.data.observacao ?? "",
         grupo_familiar_id: detalhe.data.grupo_familiar_id ?? "",
         regiao_id: detalhe.data.regiao_id ?? "",
@@ -122,6 +125,7 @@ export default function UsuariosPage() {
         contato: form.contato || null,
         data_nascimento: form.data_nascimento || null,
         detalhe: form.detalhe || null,
+        bairro: form.bairro || null,
         observacao: form.observacao || null,
         grupo_familiar_id: form.grupo_familiar_id || null,
         regiao_id: form.regiao_id || null,
@@ -147,6 +151,7 @@ export default function UsuariosPage() {
           contato: basico.contato || null,
           data_nascimento: basico.data_nascimento || null,
           detalhe: basico.detalhe || null,
+          bairro: basico.bairro || null,
           observacao: basico.observacao || null,
           grupo_familiar_id: basico.grupo_familiar_id || null,
           regiao_id: basico.regiao_id || null,
@@ -289,6 +294,10 @@ export default function UsuariosPage() {
             </div>
             <div className="linha-toolbar">
               <div className="campo" style={{ flex: 1 }}>
+                <label>Bairro</label>
+                <input value={form.bairro} onChange={(e) => setForm({ ...form, bairro: e.target.value })} />
+              </div>
+              <div className="campo" style={{ flex: 1 }}>
                 <label>Detalhe</label>
                 <input value={form.detalhe} onChange={(e) => setForm({ ...form, detalhe: e.target.value })} />
               </div>
@@ -399,6 +408,14 @@ export default function UsuariosPage() {
               </div>
               <div className="linha-toolbar">
                 <div className="campo" style={{ flex: 1 }}>
+                  <label>Bairro</label>
+                  <input
+                    value={basico.bairro}
+                    onChange={(e) => setBasico({ ...basico, bairro: e.target.value })}
+                    disabled={!isAdmin}
+                  />
+                </div>
+                <div className="campo" style={{ flex: 1 }}>
                   <label>Detalhe</label>
                   <input
                     value={basico.detalhe}
@@ -426,6 +443,7 @@ export default function UsuariosPage() {
             <div className="painel">
               <AgendaSemanalEditor
                 usuarioId={detalhe.data.id}
+                usuarioBairro={detalhe.data.bairro}
                 agenda={detalhe.data.agenda_semanal}
                 regioes={regioes ?? []}
                 locais={locais ?? []}
@@ -436,6 +454,7 @@ export default function UsuariosPage() {
             <div className="painel">
               <ExcecoesEditor
                 usuarioId={detalhe.data.id}
+                usuarioBairro={detalhe.data.bairro}
                 excecoes={detalhe.data.excecoes}
                 agendaSemanal={detalhe.data.agenda_semanal}
                 regioes={regioes ?? []}
