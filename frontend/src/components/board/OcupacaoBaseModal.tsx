@@ -437,7 +437,14 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                           }}
                         >
                           {m.usuario_abbr || m.usuario_nome} ·{" "}
-                          {rotuloPonto(m.destino_tipo, nomeLocal(m.destino_id), m.destino_texto, m.usuario_abbr, m.usuario_nome)}
+                          {rotuloPonto(
+                            m.destino_tipo,
+                            nomeLocal(m.destino_id),
+                            m.destino_texto,
+                            m.usuario_abbr,
+                            m.usuario_nome,
+                            m.usuario_bairro,
+                          )}
                           {m.acompanhante ? " (+1 acomp.)" : ""}
                         </li>
                       )),

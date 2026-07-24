@@ -292,6 +292,7 @@ export interface MembroBase {
   usuario_id: number;
   usuario_nome: string;
   usuario_abbr: string;
+  usuario_bairro: string | null;
   usuario_data_nascimento: string | null;
   usuario_ativo: boolean;
   atendimento_ativo: boolean;
@@ -353,6 +354,7 @@ export interface NaoClassificadoBase {
   usuario_id: number;
   usuario_nome: string;
   usuario_abbr: string;
+  usuario_bairro: string | null;
   usuario_data_nascimento: string | null;
   hora: string;
   usuario_grupo_familiar_id: number | null;

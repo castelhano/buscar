@@ -693,19 +693,19 @@ def _idade(data_nascimento: dt.date | None) -> int | None:
     return idade
 
 
-def _primeiro_atendimento_por_usuario(grupo: list[ViagemDia]) -> dict[int, ViagemDiaPassageiro]:
-    """Um usuario pode aparecer em mais de uma leg do mesmo periodo (ex: ida e
-    volta ambas de manha) -- pro resumo (enxuto) so mostra o primeiro horario.
+def _atendimentos_do_grupo(grupo: list[ViagemDia]) -> list[ViagemDiaPassageiro]:
+    """Todos os atendimentos (nao cancelados) do grupo, ordenados por horario --
+    um usuario pode aparecer mais de uma vez (ex: ida e volta), cada partida
+    entra como uma linha propria no resumo.
     """
-    primeiro: dict[int, ViagemDiaPassageiro] = {}
-    for viagem in grupo:
-        for passageiro in viagem.passageiros:
-            if passageiro.status == StatusAtendimentoDia.CANCELADO:
-                continue
-            atual = primeiro.get(passageiro.usuario_id)
-            if atual is None or passageiro.hora < atual.hora:
-                primeiro[passageiro.usuario_id] = passageiro
-    return primeiro
+    atendimentos = [
+        passageiro
+        for viagem in grupo
+        for passageiro in viagem.passageiros
+        if passageiro.status != StatusAtendimentoDia.CANCELADO
+    ]
+    atendimentos.sort(key=lambda p: (p.hora, p.usuario.nome))
+    return atendimentos
 
 
 def _linha_origem_destino(
@@ -756,7 +756,7 @@ def _card_grupo_resumo(
         f"{veiculo.prefixo if veiculo else '-'} - {apelido_condutor}", largura_cabecalho_pt, "Helvetica-Bold"
     )
 
-    atendimentos = sorted(_primeiro_atendimento_por_usuario(grupo).values(), key=lambda p: p.hora)
+    atendimentos = _atendimentos_do_grupo(grupo)
     linhas = [[cabecalho, ""]]
     for passageiro in atendimentos:
         idade = _idade(passageiro.usuario.data_nascimento)
@@ -854,8 +854,8 @@ def gerar_pdf_resumo_dia(db: Session, data: dt.date) -> bytes | None:
     grupos_manha = [g for g in grupos if _periodo_da_leg(g[0]) == "Manha"]
     grupos_tarde = [g for g in grupos if _periodo_da_leg(g[0]) == "Tarde"]
 
-    atendimentos_manha = sum(len(_primeiro_atendimento_por_usuario(g)) for g in grupos_manha)
-    atendimentos_tarde = sum(len(_primeiro_atendimento_por_usuario(g)) for g in grupos_tarde)
+    atendimentos_manha = sum(len(_atendimentos_do_grupo(g)) for g in grupos_manha)
+    atendimentos_tarde = sum(len(_atendimentos_do_grupo(g)) for g in grupos_tarde)
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(

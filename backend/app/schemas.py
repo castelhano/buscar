@@ -418,6 +418,7 @@ class MembroBaseRead(BaseModel):
     usuario_id: int
     usuario_nome: str
     usuario_abbr: str
+    usuario_bairro: str | None
     usuario_data_nascimento: dt.date | None
     usuario_ativo: bool
     atendimento_ativo: bool
@@ -479,6 +480,7 @@ class NaoClassificadoRead(BaseModel):
     usuario_id: int
     usuario_nome: str
     usuario_abbr: str
+    usuario_bairro: str | None
     usuario_data_nascimento: dt.date | None
     hora: dt.time
     usuario_grupo_familiar_id: int | None

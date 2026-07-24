@@ -25,6 +25,31 @@ from app.models import (
 from app.services.geracao import agendas_fixo_da_semana, montar_pernas
 
 
+def _origem_herdada(trecho: UsuarioAgendaSemanalTrecho) -> dict | None:
+    """Resolve a origem herdada (`origem_tipo` nulo, ver
+    `UsuarioAgendaSemanalTrecho.origem_tipo`) a partir do destino do trecho
+    anterior NA MESMA agenda. Ao contrario do dia real -- onde o trecho
+    anterior pode acabar em outro carro/condutor nesse dia especifico,
+    exigindo consulta as viagens ja materializadas (ver
+    `pontos.resolver_origem_herdada`) -- no modo Base a lista de trechos do
+    usuario e fixa e ordenada por `ordem` (sem excecao/recesso, que so
+    existem pra uma data), entao o trecho anterior e sempre o mesmo, sem
+    ambiguidade de carro.
+    """
+    if trecho.origem_tipo is not None or trecho.ordem == 0:
+        return None
+    anterior = next((t for t in trecho.agenda.trechos if t.ordem == trecho.ordem - 1), None)
+    if anterior is None:
+        return None
+    return {
+        "origem_tipo": anterior.destino_tipo,
+        "origem_id": anterior.destino_id,
+        "origem_texto": anterior.destino_texto,
+        "origem_detalhe": anterior.destino_detalhe,
+        "regiao_origem_id": anterior.regiao_destino_id,
+    }
+
+
 def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
     """Le grupos/viagens/membros do dia da semana + calcula quem ainda nao
     esta classificado em nenhum grupo (agenda elegivel hoje sem
@@ -33,6 +58,7 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
     agendas = agendas_fixo_da_semana(db, dia_semana)
     pernas_por_regiao = montar_pernas(agendas, {}, set())
     pernas_por_trecho = {p["trecho_key"]: p for pernas in pernas_por_regiao.values() for p in pernas}
+    trechos_por_id = {trecho.id: trecho for agenda in agendas for trecho in agenda.trechos}
 
     grupos_db = (
         db.query(GrupoBase)
@@ -65,6 +91,7 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
             "usuario_id": perna["usuario_id"],
             "usuario_nome": perna["usuario"].nome,
             "usuario_abbr": perna["usuario"].abbr,
+            "usuario_bairro": perna["usuario"].bairro,
             "usuario_data_nascimento": perna["usuario"].data_nascimento,
             "usuario_ativo": perna["usuario"].status == StatusAtivoInativo.ATIVO,
             "atendimento_ativo": atendimento_ativo,
@@ -127,6 +154,9 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
                     perna_serializada = _serializar_perna(
                         _perna_reconstruida_do_trecho(trecho), atendimento_ativo=agenda.ativo
                     )
+                herdada = _origem_herdada(trecho)
+                if herdada is not None:
+                    perna_serializada.update(herdada)
                 membros_saida.append(
                     {
                         "id": membro.id,
@@ -154,15 +184,21 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
             }
         )
 
-    nao_classificados = [
-        {
+    def _nao_classificado(perna: dict) -> dict:
+        dados = {
             "agenda_trecho_id": perna["trecho_key"],
             "ordem_trecho": perna["ordem_trecho"],
             "hora": perna["hora"],
             **_serializar_perna(perna),
         }
-        for chave, perna in pernas_por_trecho.items()
-        if chave not in classificados
+        trecho = trechos_por_id.get(perna["trecho_key"])
+        herdada = _origem_herdada(trecho) if trecho is not None else None
+        if herdada is not None:
+            dados.update(herdada)
+        return dados
+
+    nao_classificados = [
+        _nao_classificado(perna) for chave, perna in pernas_por_trecho.items() if chave not in classificados
     ]
     nao_classificados.sort(key=lambda p: (p["hora"], p["usuario_nome"]))
 

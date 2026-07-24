@@ -48,10 +48,24 @@ function MembroNaoClassificadoCard({
       )}
       <div className="linha-2 linha-origem-destino">
         <span>
-          {rotuloPonto(membro.origem_tipo, origemLocalNome, membro.origem_texto, membro.usuario_abbr, membro.usuario_nome)}
+          {rotuloPonto(
+            membro.origem_tipo,
+            origemLocalNome,
+            membro.origem_texto,
+            membro.usuario_abbr,
+            membro.usuario_nome,
+            membro.usuario_bairro,
+          )}
         </span>
         <span>
-          {rotuloPonto(membro.destino_tipo, destinoLocalNome, membro.destino_texto, membro.usuario_abbr, membro.usuario_nome)}
+          {rotuloPonto(
+            membro.destino_tipo,
+            destinoLocalNome,
+            membro.destino_texto,
+            membro.usuario_abbr,
+            membro.usuario_nome,
+            membro.usuario_bairro,
+          )}
         </span>
       </div>
     </div>
