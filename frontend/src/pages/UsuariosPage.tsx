@@ -288,9 +288,6 @@ export default function UsuariosPage() {
                   ))}
                 </select>
               </div>
-              <button className="btn btn-primario" onClick={salvarNovo} disabled={criar.isPending}>
-                Salvar
-              </button>
             </div>
             <div className="linha-toolbar">
               <div className="campo" style={{ flex: 1 }}>
@@ -305,6 +302,11 @@ export default function UsuariosPage() {
                 <label>Observacao</label>
                 <input value={form.observacao} onChange={(e) => setForm({ ...form, observacao: e.target.value })} />
               </div>
+            </div>
+            <div className="linha-toolbar" style={{ justifyContent: "flex-end" }}>
+              <button className="btn btn-primario" onClick={salvarNovo} disabled={criar.isPending}>
+                Salvar
+              </button>
             </div>
           </div>
         )}
@@ -390,21 +392,6 @@ export default function UsuariosPage() {
                     ))}
                   </select>
                 </div>
-                {isAdmin && (
-                  <>
-                    <button className="btn btn-sm btn-primario" style={{padding: "7px", marginTop: "22px"}} onClick={salvarEdicaoBasica} disabled={atualizar.isPending}>
-                      Salvar
-                    </button>
-                    <button
-                      className="btn btn-sm btn-perigo"
-                      style={{ padding: "7px", marginTop: "22px" }}
-                      onClick={() => setConfirmandoRemocao(true)}
-                      disabled={removerMutation.isPending}
-                    >
-                      Remover usuario
-                    </button>
-                  </>
-                )}
               </div>
               <div className="linha-toolbar">
                 <div className="campo" style={{ flex: 1 }}>
@@ -432,6 +419,20 @@ export default function UsuariosPage() {
                   />
                 </div>
               </div>
+              {isAdmin && (
+                <div className="linha-toolbar" style={{ justifyContent: "flex-end" }}>
+                  <button className="btn btn-sm btn-primario" onClick={salvarEdicaoBasica} disabled={atualizar.isPending}>
+                    Salvar
+                  </button>
+                  <button
+                    className="btn btn-sm btn-perigo"
+                    onClick={() => setConfirmandoRemocao(true)}
+                    disabled={removerMutation.isPending}
+                  >
+                    Remover usuario
+                  </button>
+                </div>
+              )}
               {erroRemocao && (
                 <div className="erro-box" onClick={() => setErroRemocao(null)} style={{ cursor: "pointer" }}>
                   {erroRemocao} (clique para fechar)
