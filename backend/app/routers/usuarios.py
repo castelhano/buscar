@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import models, schemas
 from app.auth import exigir_admin, obter_conta_atual
 from app.database import get_db
+from app.services.pontos import PontoInvalido, resolver_trecho
 
 router = APIRouter(prefix="/usuarios", tags=["usuarios"], dependencies=[Depends(obter_conta_atual)])
 
@@ -14,6 +15,62 @@ def _get_usuario_ou_404(db: Session, usuario_id: int) -> models.Usuario:
     if usuario is None:
         raise HTTPException(status_code=404, detail=f"Usuario {usuario_id} nao encontrado")
     return usuario
+
+
+def _preparar_trecho_dados(db: Session, usuario: models.Usuario, trecho: schemas.TrechoCreate, primeiro: bool) -> dict:
+    """Resolve origem/destino do trecho a partir do tipo escolhido em cada
+    lado (ver `app.services.pontos.resolver_trecho`) e devolve os campos
+    prontos pra persistir, incluindo `hora`/`acompanhante`.
+    """
+    try:
+        dados = resolver_trecho(
+            db,
+            usuario,
+            origem_tipo=trecho.origem_tipo,
+            origem_id=trecho.origem_id,
+            origem_texto=trecho.origem_texto,
+            origem_detalhe=trecho.origem_detalhe,
+            regiao_origem_id=trecho.regiao_origem_id,
+            destino_tipo=trecho.destino_tipo,
+            destino_id=trecho.destino_id,
+            destino_texto=trecho.destino_texto,
+            destino_detalhe=trecho.destino_detalhe,
+            regiao_destino_id=trecho.regiao_destino_id,
+            primeiro=primeiro,
+        )
+    except PontoInvalido as erro:
+        raise HTTPException(status_code=400, detail=str(erro)) from erro
+    dados["hora"] = trecho.hora
+    dados["acompanhante"] = trecho.acompanhante
+    return dados
+
+
+def _sincronizar_trechos(
+    db: Session,
+    usuario: models.Usuario,
+    existentes: list,
+    novos: list[schemas.TrechoCreate],
+    trecho_cls: type,
+    campo_pai: str,
+    pai_id: int,
+) -> None:
+    """Substitui a lista de trechos casando por POSICAO (ordem), nao
+    apagando-e-recriando tudo -- um trecho cujo indice sobrevive na edicao
+    mantem o mesmo id, preservando vinculos externos que apontam pra ele
+    (`MembroViagemBase.agenda_trecho_id` no modo Base). So os trechos
+    excedentes (indices que deixaram de existir) sao removidos de fato.
+    """
+    existentes = sorted(existentes, key=lambda t: t.ordem)
+    for indice, trecho_payload in enumerate(novos):
+        dados = _preparar_trecho_dados(db, usuario, trecho_payload, primeiro=indice == 0)
+        if indice < len(existentes):
+            trecho = existentes[indice]
+            for campo, valor in dados.items():
+                setattr(trecho, campo, valor)
+        else:
+            db.add(trecho_cls(ordem=indice, **{campo_pai: pai_id}, **dados))
+    for excedente in existentes[len(novos):]:
+        db.delete(excedente)
 
 
 @router.get("", response_model=list[schemas.UsuarioRead])
@@ -45,9 +102,15 @@ def _verificar_grupo_familiar(db: Session, grupo_familiar_id: int | None) -> Non
         raise HTTPException(status_code=404, detail=f"Grupo familiar {grupo_familiar_id} nao encontrado")
 
 
+def _verificar_regiao(db: Session, regiao_id: int | None) -> None:
+    if regiao_id is not None and db.get(models.Regiao, regiao_id) is None:
+        raise HTTPException(status_code=404, detail=f"Regiao {regiao_id} nao encontrada")
+
+
 @router.post("", response_model=schemas.UsuarioRead, status_code=201, dependencies=[Depends(exigir_admin)])
 def criar_usuario(payload: schemas.UsuarioCreate, db: Session = Depends(get_db)):
     _verificar_grupo_familiar(db, payload.grupo_familiar_id)
+    _verificar_regiao(db, payload.regiao_id)
     usuario = models.Usuario(**payload.model_dump())
     db.add(usuario)
     db.commit()
@@ -72,6 +135,7 @@ def obter_usuario(usuario_id: int, db: Session = Depends(get_db)):
 def atualizar_usuario(usuario_id: int, payload: schemas.UsuarioCreate, db: Session = Depends(get_db)):
     usuario = _get_usuario_ou_404(db, usuario_id)
     _verificar_grupo_familiar(db, payload.grupo_familiar_id)
+    _verificar_regiao(db, payload.regiao_id)
     for campo, valor in payload.model_dump().items():
         setattr(usuario, campo, valor)
     db.commit()
@@ -105,6 +169,7 @@ def listar_agenda_semanal(usuario_id: int, db: Session = Depends(get_db)):
     _get_usuario_ou_404(db, usuario_id)
     return (
         db.query(models.UsuarioAgendaSemanal)
+        .options(joinedload(models.UsuarioAgendaSemanal.trechos))
         .filter(models.UsuarioAgendaSemanal.usuario_id == usuario_id)
         .all()
     )
@@ -117,24 +182,14 @@ def listar_agenda_semanal(usuario_id: int, db: Session = Depends(get_db)):
     dependencies=[Depends(exigir_admin)],
 )
 def criar_agenda_semanal(usuario_id: int, payload: schemas.UsuarioAgendaSemanalCreate, db: Session = Depends(get_db)):
-    _get_usuario_ou_404(db, usuario_id)
-    existente = (
-        db.query(models.UsuarioAgendaSemanal)
-        .filter(
-            models.UsuarioAgendaSemanal.usuario_id == usuario_id,
-            models.UsuarioAgendaSemanal.dia_semana == payload.dia_semana,
-            models.UsuarioAgendaSemanal.saida == payload.saida,
-            models.UsuarioAgendaSemanal.destino_id == payload.destino_id,
-        )
-        .first()
-    )
-    if existente is not None:
-        raise HTTPException(
-            status_code=409,
-            detail="Usuario ja possui esse mesmo horario/destino cadastrado para esse dia da semana",
-        )
-    agenda = models.UsuarioAgendaSemanal(usuario_id=usuario_id, **payload.model_dump())
+    usuario = _get_usuario_ou_404(db, usuario_id)
+    dados = payload.model_dump(exclude={"trechos"})
+    agenda = models.UsuarioAgendaSemanal(usuario_id=usuario_id, **dados)
     db.add(agenda)
+    db.flush()
+    for indice, trecho_payload in enumerate(payload.trechos):
+        trecho_dados = _preparar_trecho_dados(db, usuario, trecho_payload, primeiro=indice == 0)
+        db.add(models.UsuarioAgendaSemanalTrecho(agenda_id=agenda.id, ordem=indice, **trecho_dados))
     db.commit()
     db.refresh(agenda)
     return agenda
@@ -151,8 +206,12 @@ def atualizar_agenda_semanal(
     agenda = db.get(models.UsuarioAgendaSemanal, agenda_id)
     if agenda is None or agenda.usuario_id != usuario_id:
         raise HTTPException(status_code=404, detail="Agenda semanal nao encontrada para esse usuario")
-    for campo, valor in payload.model_dump().items():
+    dados = payload.model_dump(exclude={"trechos"})
+    for campo, valor in dados.items():
         setattr(agenda, campo, valor)
+    _sincronizar_trechos(
+        db, agenda.usuario, agenda.trechos, payload.trechos, models.UsuarioAgendaSemanalTrecho, "agenda_id", agenda.id
+    )
     db.commit()
     db.refresh(agenda)
     return agenda
@@ -174,7 +233,12 @@ def remover_agenda_semanal(usuario_id: int, agenda_id: int, db: Session = Depend
 @router.get("/{usuario_id}/excecoes", response_model=list[schemas.UsuarioExcecaoRead])
 def listar_excecoes(usuario_id: int, db: Session = Depends(get_db)):
     _get_usuario_ou_404(db, usuario_id)
-    return db.query(models.UsuarioExcecao).filter(models.UsuarioExcecao.usuario_id == usuario_id).all()
+    return (
+        db.query(models.UsuarioExcecao)
+        .options(joinedload(models.UsuarioExcecao.trechos))
+        .filter(models.UsuarioExcecao.usuario_id == usuario_id)
+        .all()
+    )
 
 
 @router.post(
@@ -184,9 +248,15 @@ def listar_excecoes(usuario_id: int, db: Session = Depends(get_db)):
     dependencies=[Depends(exigir_admin)],
 )
 def criar_excecao(usuario_id: int, payload: schemas.UsuarioExcecaoCreate, db: Session = Depends(get_db)):
-    _get_usuario_ou_404(db, usuario_id)
-    excecao = models.UsuarioExcecao(usuario_id=usuario_id, **payload.model_dump())
+    usuario = _get_usuario_ou_404(db, usuario_id)
+    dados = payload.model_dump(exclude={"trechos"})
+    excecao = models.UsuarioExcecao(usuario_id=usuario_id, **dados)
     db.add(excecao)
+    db.flush()
+    if excecao.operacao != models.OperacaoExcecao.SUSPENSAO:
+        for indice, trecho_payload in enumerate(payload.trechos):
+            trecho_dados = _preparar_trecho_dados(db, usuario, trecho_payload, primeiro=indice == 0)
+            db.add(models.UsuarioExcecaoTrecho(excecao_id=excecao.id, ordem=indice, **trecho_dados))
     db.commit()
     db.refresh(excecao)
     return excecao
@@ -201,8 +271,13 @@ def atualizar_excecao(
     excecao = db.get(models.UsuarioExcecao, excecao_id)
     if excecao is None or excecao.usuario_id != usuario_id:
         raise HTTPException(status_code=404, detail="Excecao nao encontrada para esse usuario")
-    for campo, valor in payload.model_dump().items():
+    dados = payload.model_dump(exclude={"trechos"})
+    for campo, valor in dados.items():
         setattr(excecao, campo, valor)
+    novos_trechos = [] if payload.operacao == models.OperacaoExcecao.SUSPENSAO else payload.trechos
+    _sincronizar_trechos(
+        db, excecao.usuario, excecao.trechos, novos_trechos, models.UsuarioExcecaoTrecho, "excecao_id", excecao.id
+    )
     db.commit()
     db.refresh(excecao)
     return excecao

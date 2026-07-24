@@ -10,12 +10,10 @@ from app.models import (
     GrupoBase,
     GrupoRevezamento,
     GrupoRevezamentoCondutor,
-    Local,
     LocalRecesso,
     OperacaoExcecao,
     PeriodoCondutor,
     RodizioCondutorFimDeSemana,
-    Sentido,
     StatusAtendimentoDia,
     StatusAtivoInativo,
     StatusCondutor,
@@ -57,7 +55,10 @@ def agendas_fixo_da_semana(db: Session, dia_semana: DiaSemana) -> list[UsuarioAg
     return (
         db.query(UsuarioAgendaSemanal)
         .join(Usuario, UsuarioAgendaSemanal.usuario_id == Usuario.id)
-        .options(joinedload(UsuarioAgendaSemanal.usuario).joinedload(Usuario.grupo_familiar))
+        .options(
+            joinedload(UsuarioAgendaSemanal.usuario).joinedload(Usuario.grupo_familiar),
+            joinedload(UsuarioAgendaSemanal.trechos),
+        )
         .filter(
             UsuarioAgendaSemanal.dia_semana == dia_semana,
             UsuarioAgendaSemanal.tipo == TipoAtendimento.FIXO,
@@ -87,7 +88,7 @@ def _agendas_do_dia(db: Session, data: dt.date):
     for e in (
         db.query(UsuarioExcecao)
         .join(Usuario, UsuarioExcecao.usuario_id == Usuario.id)
-        .options(joinedload(UsuarioExcecao.usuario))
+        .options(joinedload(UsuarioExcecao.usuario), joinedload(UsuarioExcecao.trechos))
         .filter(
             UsuarioExcecao.data_inicio <= data,
             UsuarioExcecao.data_fim >= data,
@@ -113,19 +114,24 @@ def _motivo_desconsideracao(
     isso e um problema de escala, tratado a parte no painel de Sobras, nao
     aqui). `agenda` pode ser None no atendimento avulso (so excecao, sem
     nenhuma linha de agenda pro dia da semana).
+
+    Quando ha excecao (nao-SUSPENSAO), ela e a fonte de verdade e seus
+    trechos substituem os do Fixo inteiramente (sem merge campo a campo) --
+    por isso os trechos considerados aqui sao os da excecao OU os do Fixo,
+    nunca uma mistura dos dois.
     """
     if excecao and excecao.operacao == OperacaoExcecao.SUSPENSAO:
         return f"Excecao de usuario: suspenso nesse dia ({excecao.motivo})" if excecao.motivo else "Excecao de usuario: suspenso nesse dia"
 
-    destino_id = excecao.destino_id if excecao and excecao.destino_id else (agenda.destino_id if agenda else None)
-    if destino_id is not None and destino_id in locais_em_recesso:
-        return "Local de destino em recesso"
+    trechos = excecao.trechos if excecao is not None else (agenda.trechos if agenda else [])
 
-    regiao_origem_id = (
-        excecao.regiao_origem_id
-        if excecao and excecao.regiao_origem_id
-        else (agenda.regiao_origem_id if agenda else None)
-    )
+    for trecho in trechos:
+        if trecho.destino_id is not None and trecho.destino_id in locais_em_recesso:
+            return "Local de destino em recesso"
+        if trecho.origem_id is not None and trecho.origem_id in locais_em_recesso:
+            return "Local de origem em recesso"
+
+    regiao_origem_id = trechos[0].regiao_origem_id if trechos else None
     if regiao_origem_id is None:
         return "Sem regiao de origem cadastrada"
 
@@ -155,76 +161,78 @@ def listar_desconsiderados_dia(db: Session, data: dt.date) -> list[dict]:
     return desconsiderados
 
 
-def regiao_alocacao(sentido: Sentido, regiao_origem_id: int, regiao_destino_id: int | None) -> int:
-    """No retorno o veiculo opera na regiao do destino (de onde o usuario esta
-    saindo nessa perna, ex: escola) em vez da regiao de origem/casa; sem
-    regiao de destino cadastrada, cai pra regiao de origem como na ida.
+def regiao_alocacao_trecho(
+    regiao_origem_id: int | None, regiao_destino_id: int | None, regiao_destino_anterior: int | None
+) -> int:
+    """Regiao em que o veiculo opera durante esse trecho: a de origem quando
+    o trecho tem uma (primeiro trecho do dia, ou qualquer trecho com origem
+    propria explicita); senao a de destino do trecho ANTERIOR (o veiculo esta
+    saindo de la, ex: escola, rumo a esse trecho -- caso classico do Retorno,
+    que "vem" do destino da Ida); na ausencia de ambos, cai pra propria
+    regiao de destino desse trecho.
     """
-    if sentido == Sentido.RETORNO and regiao_destino_id is not None:
-        return regiao_destino_id
-    return regiao_origem_id
+    if regiao_origem_id is not None:
+        return regiao_origem_id
+    if regiao_destino_anterior is not None:
+        return regiao_destino_anterior
+    return regiao_destino_id
 
 
 def _adicionar_pernas(
     pernas_por_regiao: dict[int, list[dict]],
-    agenda_id: int,
     usuario: Usuario,
-    agenda: UsuarioAgendaSemanal | None,
-    excecao: UsuarioExcecao | None,
-    locais_regiao: dict[int, int],
+    trechos: list,
+    sinal: int,
+    fixo: bool,
 ) -> None:
-    """Monta as pernas (Ida/Retorno) de um usuario nesse dia. Quando ha
-    excecao ela e a fonte de verdade (substitui o Fixo campo a campo onde
-    estiver preenchida) -- inclusive sozinha, sem nenhuma `agenda` (Fixo)
-    por tras, no atendimento avulso.
-    """
-    origem = excecao.origem if excecao and excecao.origem else (agenda.origem if agenda else None)
-    regiao_origem_id = (
-        excecao.regiao_origem_id
-        if excecao and excecao.regiao_origem_id
-        else (agenda.regiao_origem_id if agenda else None)
-    )
-    destino_id = excecao.destino_id if excecao and excecao.destino_id else (agenda.destino_id if agenda else None)
-    regiao_destino_id = locais_regiao.get(destino_id) if destino_id else None
-    acompanhante = (
-        excecao.acompanhante
-        if excecao and excecao.acompanhante is not None
-        else (agenda.acompanhante if agenda else False)
-    )
+    """Monta as pernas do itinerario do dia de um usuario a partir de UMA
+    lista ja resolvida de trechos, ja ordenada (`UsuarioAgendaSemanal.trechos`
+    OU `UsuarioExcecao.trechos` -- nunca as duas misturadas campo a campo:
+    quando ha excecao [nao-SUSPENSAO], seus trechos substituem os do Fixo
+    inteiramente, ver `montar_pernas`).
 
-    pernas = (
-        (Sentido.IDA, agenda.saida if agenda else None, excecao.saida if excecao else None),
-        (Sentido.RETORNO, agenda.retorno if agenda else None, excecao.retorno if excecao else None),
-    )
-    for sentido, hora_padrao, hora_excecao in pernas:
-        hora = hora_excecao or hora_padrao
-        if hora is None:
-            continue
-        regiao_alocacao_id = regiao_alocacao(sentido, regiao_origem_id, regiao_destino_id)
+    `sinal` (+1 pro Fixo, -1 pra excecao) evita colisao entre o id de uma
+    `UsuarioAgendaSemanalTrecho` e o de uma `UsuarioExcecaoTrecho` (tabelas /
+    sequences diferentes) na chave usada por `pernas_por_trecho` em
+    `gerar_agendamento_dia` (equivalente ao antigo `agenda_id` positivo /
+    `-excecao.id` negativo).
+    """
+    regiao_destino_anterior: int | None = None
+    for indice, trecho in enumerate(trechos):
+        regiao_alocacao_id = regiao_alocacao_trecho(
+            trecho.regiao_origem_id, trecho.regiao_destino_id, regiao_destino_anterior
+        )
         pernas_por_regiao[regiao_alocacao_id].append(
             {
-                "agenda_id": agenda_id,
+                "trecho_key": sinal * trecho.id,
                 "usuario_id": usuario.id,
                 "usuario": usuario,
-                "sentido": sentido,
-                "hora": hora,
-                "origem": origem,
-                "regiao_origem_id": regiao_origem_id,
-                "destino_id": destino_id,
-                "regiao_destino_id": regiao_destino_id,
-                "acompanhante": acompanhante,
-                "fixo": excecao is None,
+                "ordem_trecho": indice,
+                "hora": trecho.hora,
+                "origem_tipo": trecho.origem_tipo,
+                "origem_id": trecho.origem_id,
+                "origem_texto": trecho.origem_texto,
+                "origem_detalhe": trecho.origem_detalhe,
+                "regiao_origem_id": trecho.regiao_origem_id,
+                "destino_tipo": trecho.destino_tipo,
+                "destino_id": trecho.destino_id,
+                "destino_texto": trecho.destino_texto,
+                "destino_detalhe": trecho.destino_detalhe,
+                "regiao_destino_id": trecho.regiao_destino_id,
+                "regiao_alocacao_id": regiao_alocacao_id,
+                "acompanhante": trecho.acompanhante,
+                "fixo": fixo,
             }
         )
+        regiao_destino_anterior = trecho.regiao_destino_id
 
 
 def montar_pernas(
     agendas: list[UsuarioAgendaSemanal],
     excecoes: dict[int, UsuarioExcecao],
     locais_em_recesso: set[int],
-    locais_regiao: dict[int, int],
 ) -> dict[int, list[dict]]:
-    """Monta as pernas (Ida/Retorno) de cada usuario elegivel nesse dia,
+    """Monta as pernas do itinerario de cada usuario elegivel nesse dia,
     agrupadas por regiao de alocacao -- usado tanto pela geracao real (com
     excecao/recesso de uma data) quanto pela leitura do modo Base (sem
     excecao/recesso, que so existem pra uma data especifica).
@@ -234,9 +242,9 @@ def montar_pernas(
     nesse dia da semana -- cobre o atendimento avulso (uma vez na vida) sem
     precisar cadastrar um padrao semanal so pra essa ocorrencia.
 
-    Quando a excecao e do tipo ADICAO e o usuario tem agenda Fixo, as duas
-    pernas coexistem (Fixo original + excecao), em vez da excecao substituir o
-    Fixo campo a campo como no MODIFICACAO.
+    Quando a excecao e do tipo ADICAO e o usuario tem agenda Fixo, os dois
+    itinerarios coexistem (Fixo original + excecao, cada um com seus proprios
+    trechos), em vez da excecao substituir o Fixo como no MODIFICACAO.
     """
     pernas_por_regiao: dict[int, list[dict]] = defaultdict(list)
     usuarios_com_agenda: set[int] = set()
@@ -247,12 +255,12 @@ def montar_pernas(
         if excecao is not None and excecao.operacao == OperacaoExcecao.ADICAO:
             motivo_fixo = _motivo_desconsideracao(agenda, None, locais_em_recesso)
             if motivo_fixo is None:
-                _adicionar_pernas(pernas_por_regiao, agenda.id, agenda.usuario, agenda, None, locais_regiao)
+                _adicionar_pernas(pernas_por_regiao, agenda.usuario, agenda.trechos, sinal=1, fixo=True)
             else:
                 print(f"[geracao] usuario_id={agenda.usuario_id}: {motivo_fixo}, Fixo ficou de fora (excecao ADICAO mantida)")
             motivo_excecao = _motivo_desconsideracao(None, excecao, locais_em_recesso)
             if motivo_excecao is None:
-                _adicionar_pernas(pernas_por_regiao, -excecao.id, agenda.usuario, None, excecao, locais_regiao)
+                _adicionar_pernas(pernas_por_regiao, excecao.usuario, excecao.trechos, sinal=-1, fixo=False)
             else:
                 print(f"[geracao] usuario_id={agenda.usuario_id}: {motivo_excecao}, excecao ADICAO ficou de fora")
             continue
@@ -260,7 +268,11 @@ def montar_pernas(
         if motivo is not None:
             print(f"[geracao] usuario_id={agenda.usuario_id}: {motivo}, ficou de fora")
             continue
-        _adicionar_pernas(pernas_por_regiao, agenda.id, agenda.usuario, agenda, excecao, locais_regiao)
+        if excecao is not None:
+            # MODIFICACAO: os trechos da excecao substituem os do Fixo por inteiro.
+            _adicionar_pernas(pernas_por_regiao, excecao.usuario, excecao.trechos, sinal=-1, fixo=False)
+        else:
+            _adicionar_pernas(pernas_por_regiao, agenda.usuario, agenda.trechos, sinal=1, fixo=True)
 
     for usuario_id, excecao in excecoes.items():
         if usuario_id in usuarios_com_agenda:
@@ -269,7 +281,7 @@ def montar_pernas(
         if motivo is not None:
             print(f"[geracao] usuario_id={usuario_id}: {motivo}, ficou de fora (avulso)")
             continue
-        _adicionar_pernas(pernas_por_regiao, -excecao.id, excecao.usuario, None, excecao, locais_regiao)
+        _adicionar_pernas(pernas_por_regiao, excecao.usuario, excecao.trechos, sinal=-1, fixo=False)
 
     print(f"[geracao] pernas por regiao: { {k: len(v) for k, v in pernas_por_regiao.items()} }")
     return pernas_por_regiao
@@ -339,19 +351,15 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     print(
         f"[geracao] {data} ({dia_semana.name}): {len(agendas)} agendas Fixo + {len(excecoes)} excecoes encontradas"
     )
-    locais_regiao = dict(db.query(Local.id, Local.regiao_id).all())
     empresas_por_regiao = _mapa_empresas_por_regiao(db)
 
-    pernas_por_regiao = montar_pernas(agendas, excecoes, locais_em_recesso, locais_regiao)
-    pernas_por_agenda_sentido = {
-        (p["agenda_id"], p["sentido"]): p for pernas in pernas_por_regiao.values() for p in pernas
-    }
+    pernas_por_regiao = montar_pernas(agendas, excecoes, locais_em_recesso)
+    pernas_por_trecho = {p["trecho_key"]: p for pernas in pernas_por_regiao.values() for p in pernas}
 
     todas_viagens: list[ViagemDia] = []
-    ocupacao: dict[tuple[int, Sentido, dt.time], int] = defaultdict(int)
     regioes_por_viagem: dict[int, set[int]] = defaultdict(set)
     proximo_ordem: dict[int, int] = {}
-    consumidos: set[tuple[int, Sentido]] = set()
+    consumidos: set[int] = set()
     grupo_por_viagem_id: dict[int, int] = {}
 
     grupos_base = (
@@ -364,19 +372,18 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
     for grupo in grupos_base:
         _gerar_carro_do_grupo_base(
             grupo,
-            pernas_por_agenda_sentido,
+            pernas_por_trecho,
             data,
             db,
             todas_viagens,
-            ocupacao,
             regioes_por_viagem,
             proximo_ordem,
             consumidos,
             grupo_por_viagem_id,
         )
 
-    pernas_residuais = [perna for chave, perna in pernas_por_agenda_sentido.items() if chave not in consumidos]
-    pernas_residuais.sort(key=lambda p: (p["sentido"].value, p["hora"]))
+    pernas_residuais = [perna for chave, perna in pernas_por_trecho.items() if chave not in consumidos]
+    pernas_residuais.sort(key=lambda p: (p["ordem_trecho"], p["hora"]))
     _deixar_para_alocacao_manual(db, pernas_residuais, data)
 
     db.flush()
@@ -389,7 +396,7 @@ def gerar_agendamento_dia(db: Session, data: dt.date) -> list[ViagemDia]:
 
 
 def _regioes_do_grupo_base(
-    grupo: GrupoBase, pernas_por_agenda_sentido: dict[tuple[int, Sentido], dict]
+    grupo: GrupoBase, pernas_por_trecho: dict[int, dict]
 ) -> tuple[list[tuple[ViagemBase, list[dict]]], set[int]]:
     """Pra cada viagem_base do grupo, filtra so os membros elegiveis hoje
     (excecao/recesso podem ter tirado alguem), e devolve junto o conjunto de
@@ -399,10 +406,10 @@ def _regioes_do_grupo_base(
     """
     viagens_membros: list[tuple[ViagemBase, list[dict]]] = []
     regioes: set[int] = set()
-    for viagem in sorted(grupo.viagens, key=lambda v: (v.sentido.value, v.hora)):
+    for viagem in sorted(grupo.viagens, key=lambda v: v.hora):
         membros_hoje = []
         for membro in sorted(viagem.membros, key=lambda m: m.ordem):
-            perna = pernas_por_agenda_sentido.get((membro.agenda_id, viagem.sentido))
+            perna = pernas_por_trecho.get(membro.agenda_trecho_id)
             if perna is None:
                 continue
             if perna["hora"] != viagem.hora:
@@ -412,12 +419,12 @@ def _regioes_do_grupo_base(
                 # aqui; vira "nao classificado" nessa geracao em vez de
                 # corromper o carro com gente de dois horarios.
                 print(
-                    f"[geracao] membro_viagem_base agenda_id={membro.agenda_id}: horario real "
+                    f"[geracao] membro_viagem_base agenda_trecho_id={membro.agenda_trecho_id}: horario real "
                     f"({perna['hora']}) nao bate com o da viagem_base ({viagem.hora}), ignorado"
                 )
                 continue
             membros_hoje.append(perna)
-            regioes.add(regiao_alocacao(viagem.sentido, perna["regiao_origem_id"], perna["regiao_destino_id"]))
+            regioes.add(perna["regiao_alocacao_id"])
         if membros_hoje:
             viagens_membros.append((viagem, membros_hoje))
     return viagens_membros, regioes
@@ -425,21 +432,20 @@ def _regioes_do_grupo_base(
 
 def _gerar_carro_do_grupo_base(
     grupo: GrupoBase,
-    pernas_por_agenda_sentido: dict[tuple[int, Sentido], dict],
+    pernas_por_trecho: dict[int, dict],
     data: dt.date,
     db: Session,
     todas_viagens: list[ViagemDia],
-    ocupacao: dict[tuple[int, Sentido, dt.time], int],
     regioes_por_viagem: dict[int, set[int]],
     proximo_ordem: dict[int, int],
-    consumidos: set[tuple[int, Sentido]],
+    consumidos: set[int],
     grupo_por_viagem_id: dict[int, int],
 ) -> None:
     """Sempre cria a `ViagemDia` de cada perna do grupo, sem condutor/veiculo
     (essa atribuicao acontece depois, em `_atribuir_condutores`, a partir do
     `GrupoRevezamento` -- ver docstring de `gerar_agendamento_dia`).
     """
-    viagens_membros, regioes = _regioes_do_grupo_base(grupo, pernas_por_agenda_sentido)
+    viagens_membros, regioes = _regioes_do_grupo_base(grupo, pernas_por_trecho)
     if not viagens_membros:
         return  # ninguem do grupo esta elegivel hoje
 
@@ -449,11 +455,7 @@ def _gerar_carro_do_grupo_base(
     for viagem_base, membros in viagens_membros:
         qtd_usuarios = len(membros)
         qtd_acompanhantes = sum(1 for m in membros if m["acompanhante"])
-        regiao_da_viagem = rotulo_regiao
-        if regiao_da_viagem is None:
-            regiao_da_viagem = regiao_alocacao(
-                viagem_base.sentido, membros[0]["regiao_origem_id"], membros[0]["regiao_destino_id"]
-            )
+        regiao_da_viagem = rotulo_regiao if rotulo_regiao is not None else membros[0]["regiao_alocacao_id"]
         # So a primeira perna do carro sai da garagem (por isso o desconto de
         # TEMPO_SAIDA_GARAGEM_MINUTOS); as pernas seguintes do mesmo carro
         # (ex: segundo horario de retorno) partem de onde a anterior terminou,
@@ -489,22 +491,25 @@ def _gerar_carro_do_grupo_base(
                 ViagemDiaPassageiro(
                     viagem_dia_id=viagem.id,
                     usuario_id=perna["usuario_id"],
-                    sentido=perna["sentido"],
+                    ordem_trecho=perna["ordem_trecho"],
                     hora=perna["hora"],
-                    origem=perna["origem"],
+                    origem_tipo=perna["origem_tipo"],
+                    origem_id=perna["origem_id"],
+                    origem_texto=perna["origem_texto"],
+                    origem_detalhe=perna["origem_detalhe"],
                     regiao_origem_id=perna["regiao_origem_id"],
+                    destino_tipo=perna["destino_tipo"],
                     destino_id=perna["destino_id"],
+                    destino_texto=perna["destino_texto"],
+                    destino_detalhe=perna["destino_detalhe"],
                     regiao_destino_id=perna["regiao_destino_id"],
                     acompanhante=perna["acompanhante"],
                     fixo=perna["fixo"],
                     ordem=indice,
                 )
             )
-            lugares = 2 if perna["acompanhante"] else 1
-            regiao_pessoa = regiao_alocacao(perna["sentido"], perna["regiao_origem_id"], perna["regiao_destino_id"])
-            ocupacao[(viagem.id, perna["sentido"], perna["hora"])] += lugares
-            regioes_por_viagem[viagem.id].add(regiao_pessoa)
-            consumidos.add((perna["agenda_id"], perna["sentido"]))
+            regioes_por_viagem[viagem.id].add(perna["regiao_alocacao_id"])
+            consumidos.add(perna["trecho_key"])
 
         proximo_ordem[viagem.id] = len(membros)
 
@@ -522,11 +527,17 @@ def _deixar_para_alocacao_manual(db: Session, pernas: list[dict], data: dt.date)
                 viagem_dia_id=None,
                 data=data,
                 usuario_id=perna["usuario_id"],
-                sentido=perna["sentido"],
+                ordem_trecho=perna["ordem_trecho"],
                 hora=perna["hora"],
-                origem=perna["origem"],
+                origem_tipo=perna["origem_tipo"],
+                origem_id=perna["origem_id"],
+                origem_texto=perna["origem_texto"],
+                origem_detalhe=perna["origem_detalhe"],
                 regiao_origem_id=perna["regiao_origem_id"],
+                destino_tipo=perna["destino_tipo"],
                 destino_id=perna["destino_id"],
+                destino_texto=perna["destino_texto"],
+                destino_detalhe=perna["destino_detalhe"],
                 regiao_destino_id=perna["regiao_destino_id"],
                 acompanhante=perna["acompanhante"],
                 fixo=perna["fixo"],

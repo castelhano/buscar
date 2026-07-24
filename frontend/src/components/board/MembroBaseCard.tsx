@@ -1,23 +1,32 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { MembroBase, Sentido } from "../../api/types";
+import type { MembroBase } from "../../api/types";
+import { rotuloPonto, rotuloTrecho } from "../../api/types";
 import { rotuloIdade } from "../../utils/data";
 import { corGrupoFamiliar } from "./coresGrupoFamiliar";
 
 interface Props {
   viagemBaseId: number;
   grupoBaseId: number;
-  sentido: Sentido;
   hora: string;
   membro: MembroBase;
-  destinoNome?: string;
+  origemLocalNome?: string;
+  destinoLocalNome?: string;
   onRemover: (membroId: number) => void;
 }
 
-export default function MembroBaseCard({ viagemBaseId, grupoBaseId, sentido, hora, membro, destinoNome, onRemover }: Props) {
+export default function MembroBaseCard({
+  viagemBaseId,
+  grupoBaseId,
+  hora,
+  membro,
+  origemLocalNome,
+  destinoLocalNome,
+  onRemover,
+}: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `membro-${membro.id}`,
-    data: { tipo: "membro-base", agendaId: membro.agenda_id, viagemBaseId, grupoBaseId, sentido, hora },
+    data: { tipo: "membro-base", agendaTrechoId: membro.agenda_trecho_id, viagemBaseId, grupoBaseId, hora },
   });
 
   const style = {
@@ -76,6 +85,9 @@ export default function MembroBaseCard({ viagemBaseId, grupoBaseId, sentido, hor
           {membro.usuario_abbr || membro.usuario_nome}{" "}
           <span style={{ color: "var(--cor-texto-suave)" }}>{rotuloIdade(membro.usuario_data_nascimento)}</span>
         </span>
+        <span className="badge-rotulo" style={{ marginLeft: "0.4rem" }}>
+          {rotuloTrecho(membro.ordem_trecho)}
+        </span>
         {usuarioInativo && <span className="tag tag-inativo" style={{ marginLeft: "0.4rem" }}>Inativo</span>}
         {!usuarioInativo && atendimentoInativo && (
           <span className="tag tag-inativo" style={{ marginLeft: "0.4rem" }}>
@@ -94,17 +106,12 @@ export default function MembroBaseCard({ viagemBaseId, grupoBaseId, sentido, hor
         </div>
       )}
       <div className="linha-2 linha-origem-destino">
-        {sentido === "Retorno" ? (
-          <>
-            <span title={destinoNome}>{membro.destino_id ? destinoNome ?? "destino cadastrado" : "-"}</span>
-            <span title={membro.origem ?? undefined}>{membro.origem ?? "-"}</span>
-          </>
-        ) : (
-          <>
-            <span title={membro.origem ?? undefined}>{membro.origem ?? "-"}</span>
-            <span title={destinoNome}>{membro.destino_id ? destinoNome ?? "destino cadastrado" : "-"}</span>
-          </>
-        )}
+        <span>
+          {rotuloPonto(membro.origem_tipo, origemLocalNome, membro.origem_texto, membro.usuario_abbr, membro.usuario_nome)}
+        </span>
+        <span>
+          {rotuloPonto(membro.destino_tipo, destinoLocalNome, membro.destino_texto, membro.usuario_abbr, membro.usuario_nome)}
+        </span>
       </div>
     </div>
   );

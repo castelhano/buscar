@@ -19,6 +19,7 @@ interface FormState {
   detalhe: string;
   observacao: string;
   grupo_familiar_id: number | "";
+  regiao_id: number | "";
 }
 
 const vazio: FormState = {
@@ -30,6 +31,7 @@ const vazio: FormState = {
   detalhe: "",
   observacao: "",
   grupo_familiar_id: "",
+  regiao_id: "",
 };
 
 export default function UsuariosPage() {
@@ -94,6 +96,7 @@ export default function UsuariosPage() {
         detalhe: detalhe.data.detalhe ?? "",
         observacao: detalhe.data.observacao ?? "",
         grupo_familiar_id: detalhe.data.grupo_familiar_id ?? "",
+        regiao_id: detalhe.data.regiao_id ?? "",
       });
     }
   }, [detalhe.data]);
@@ -121,6 +124,7 @@ export default function UsuariosPage() {
         detalhe: form.detalhe || null,
         observacao: form.observacao || null,
         grupo_familiar_id: form.grupo_familiar_id || null,
+        regiao_id: form.regiao_id || null,
       },
       {
         onSuccess: (usuario) => {
@@ -145,6 +149,7 @@ export default function UsuariosPage() {
           detalhe: basico.detalhe || null,
           observacao: basico.observacao || null,
           grupo_familiar_id: basico.grupo_familiar_id || null,
+          regiao_id: basico.regiao_id || null,
         },
       },
       {
@@ -264,6 +269,20 @@ export default function UsuariosPage() {
                   ))}
                 </select>
               </div>
+              <div className="campo">
+                <label>Regiao</label>
+                <select
+                  value={form.regiao_id}
+                  onChange={(e) => setForm({ ...form, regiao_id: e.target.value ? Number(e.target.value) : "" })}
+                >
+                  <option value="">Nenhuma</option>
+                  {(regioes ?? []).map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <button className="btn btn-primario" onClick={salvarNovo} disabled={criar.isPending}>
                 Salvar
               </button>
@@ -347,6 +366,21 @@ export default function UsuariosPage() {
                     ))}
                   </select>
                 </div>
+                <div className="campo">
+                  <label>Regiao</label>
+                  <select
+                    value={basico.regiao_id}
+                    onChange={(e) => setBasico({ ...basico, regiao_id: e.target.value ? Number(e.target.value) : "" })}
+                    disabled={!isAdmin}
+                  >
+                    <option value="">Nenhuma</option>
+                    {(regioes ?? []).map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.nome}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 {isAdmin && (
                   <>
                     <button className="btn btn-sm btn-primario" style={{padding: "7px", marginTop: "22px"}} onClick={salvarEdicaoBasica} disabled={atualizar.isPending}>
@@ -403,6 +437,7 @@ export default function UsuariosPage() {
               <ExcecoesEditor
                 usuarioId={detalhe.data.id}
                 excecoes={detalhe.data.excecoes}
+                agendaSemanal={detalhe.data.agenda_semanal}
                 regioes={regioes ?? []}
                 locais={locais ?? []}
                 somenteLeitura={!isAdmin}

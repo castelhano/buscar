@@ -2,8 +2,9 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { api } from "../../api/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { DIAS_SEMANA, DIAS_SEMANA_LABEL } from "../../api/types";
-import type { DiaSemana, Local, Regiao, TipoAtendimento, UsuarioAgendaSemanal } from "../../api/types";
+import { DIAS_SEMANA, DIAS_SEMANA_LABEL, rotuloPonto, rotuloTrecho } from "../../api/types";
+import type { DiaSemana, Local, Regiao, TipoAtendimento, TrechoInput, UsuarioAgendaSemanal } from "../../api/types";
+import TrechoListEditor, { trechoParaInput, trechoVazio } from "../../components/usuarios/TrechoListEditor";
 import ReplicarModal from "./ReplicarModal";
 
 interface Props {
@@ -16,25 +17,11 @@ interface Props {
 
 interface FormState {
   tipo: TipoAtendimento;
-  acompanhante: boolean;
-  saida: string;
-  retorno: string;
-  origem: string;
-  regiao_origem_id: number | "";
-  destino_id: number | "";
   ativo: boolean;
+  trechos: TrechoInput[];
 }
 
-const formVazio: FormState = {
-  tipo: "Fixo",
-  acompanhante: false,
-  saida: "",
-  retorno: "",
-  origem: "",
-  regiao_origem_id: "",
-  destino_id: "",
-  ativo: true,
-};
+const formVazio = (): FormState => ({ tipo: "Fixo", ativo: true, trechos: [trechoVazio(true)] });
 
 // Um dia pode ter mais de um atendimento (ex: terapia de manha, escola a
 // noite). entradaId null = criando um atendimento novo pro dia; caso
@@ -47,7 +34,7 @@ interface Edicao {
 export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais, somenteLeitura = false }: Props) {
   const queryClient = useQueryClient();
   const [edicao, setEdicao] = useState<Edicao | null>(null);
-  const [form, setForm] = useState<FormState>(formVazio);
+  const [form, setForm] = useState<FormState>(formVazio());
   const [erro, setErro] = useState<string | null>(null);
   const [replicando, setReplicando] = useState<UsuarioAgendaSemanal | null>(null);
 
@@ -55,6 +42,10 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
 
   function mensagemErro(e: unknown, fallback: string): string {
     return e instanceof Error ? e.message : fallback;
+  }
+
+  function nomeLocal(id: number | null): string | undefined {
+    return id ? locais.find((l) => l.id === id)?.nome : undefined;
   }
 
   const porDia = new Map<DiaSemana, UsuarioAgendaSemanal[]>();
@@ -67,15 +58,10 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
       existente
         ? {
             tipo: existente.tipo,
-            acompanhante: existente.acompanhante,
-            saida: existente.saida ?? "",
-            retorno: existente.retorno ?? "",
-            origem: existente.origem ?? "",
-            regiao_origem_id: existente.regiao_origem_id ?? "",
-            destino_id: existente.destino_id ?? "",
             ativo: existente.ativo,
+            trechos: existente.trechos.length ? existente.trechos.map(trechoParaInput) : [trechoVazio(true)],
           }
-        : formVazio,
+        : formVazio(),
     );
   }
 
@@ -83,13 +69,8 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
     return {
       dia_semana: dia,
       tipo: form.tipo,
-      acompanhante: form.acompanhante,
-      saida: form.saida || null,
-      retorno: form.retorno || null,
-      origem: form.origem || null,
-      regiao_origem_id: form.regiao_origem_id === "" ? null : form.regiao_origem_id,
-      destino_id: form.destino_id === "" ? null : form.destino_id,
       ativo: form.ativo,
+      trechos: form.trechos,
     };
   }
 
@@ -113,13 +94,8 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
     return {
       dia_semana: dia,
       tipo: existente.tipo,
-      acompanhante: existente.acompanhante,
-      saida: existente.saida,
-      retorno: existente.retorno,
-      origem: existente.origem,
-      regiao_origem_id: existente.regiao_origem_id,
-      destino_id: existente.destino_id,
       ativo: existente.ativo,
+      trechos: existente.trechos.map(trechoParaInput),
     };
   }
 
@@ -150,52 +126,26 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
   function linhaFormulario(dia: DiaSemana, key: string) {
     return (
       <tr key={key}>
-        <td colSpan={8}>
-          <div className="linha-toolbar" style={{ margin: 0 }}>
-            <strong>{DIAS_SEMANA_LABEL[dia]}</strong>
-            <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value as TipoAtendimento })}>
-              <option value="Fixo">Fixo</option>
-              <option value="Eventual">Eventual</option>
-            </select>
-            <input type="time" value={form.saida} onChange={(e) => setForm({ ...form, saida: e.target.value })} title="Saida" />
-            <input type="time" value={form.retorno} onChange={(e) => setForm({ ...form, retorno: e.target.value })} title="Retorno" />
-            <input
-              placeholder="Origem (endereco)"
-              value={form.origem}
-              onChange={(e) => setForm({ ...form, origem: e.target.value })}
-            />
-            <select
-              value={form.regiao_origem_id}
-              onChange={(e) => setForm({ ...form, regiao_origem_id: e.target.value ? Number(e.target.value) : "" })}
-            >
-              <option value="">Regiao origem</option>
-              {regioes.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.nome}
-                </option>
-              ))}
-            </select>
-            <select value={form.destino_id} onChange={(e) => setForm({ ...form, destino_id: e.target.value ? Number(e.target.value) : "" })}>
-              <option value="">Destino</option>
-              {locais.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.nome}
-                </option>
-              ))}
-            </select>
-            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexBasis: "100%" }}>
-              <label style={{ display: "flex", gap: "0.25rem", alignItems: "center", fontWeight: "normal" }}>
-                <input
-                  type="checkbox"
-                  checked={form.acompanhante}
-                  onChange={(e) => setForm({ ...form, acompanhante: e.target.checked })}
-                />
-                Acompanhante
-              </label>
+        <td colSpan={5}>
+          <div style={{ margin: 0 }}>
+            <div className="linha-toolbar">
+              <strong>{DIAS_SEMANA_LABEL[dia]}</strong>
+              <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value as TipoAtendimento })}>
+                <option value="Fixo">Fixo</option>
+                <option value="Eventual">Eventual</option>
+              </select>
               <label style={{ display: "flex", gap: "0.25rem", alignItems: "center", fontWeight: "normal" }}>
                 <input type="checkbox" checked={form.ativo} onChange={(e) => setForm({ ...form, ativo: e.target.checked })} />
                 Ativo
               </label>
+            </div>
+            <TrechoListEditor
+              trechos={form.trechos}
+              onChange={(trechos) => setForm({ ...form, trechos })}
+              regioes={regioes}
+              locais={locais}
+            />
+            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.6rem" }}>
               <button className="btn btn-primario btn-sm" onClick={() => salvarMutation.mutate()} disabled={salvarMutation.isPending}>
                 Salvar
               </button>
@@ -222,11 +172,8 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
           <tr>
             <th>Dia</th>
             <th>Tipo</th>
-            <th>Saida</th>
-            <th>Retorno</th>
-            <th>Regiao</th>
-            <th>Destino</th>
-            <th>Acomp</th>
+            <th>Itinerario</th>
+            <th>Ativo</th>
             <th></th>
           </tr>
         </thead>
@@ -248,11 +195,19 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
                   <td>
                     <span className="tag">{existente.tipo}</span>
                   </td>
-                  <td>{existente.saida ?? "-"}</td>
-                  <td>{existente.retorno ?? "-"}</td>
-                  <td>{existente.regiao_origem_id ? regioes.find((r) => r.id === existente.regiao_origem_id)?.nome ?? "-" : "-"}</td>
-                  <td>{existente.destino_id ? locais.find((l) => l.id === existente.destino_id)?.nome ?? "-" : "-"}</td>
-                  <td>{existente.acompanhante ? "Sim" : "Nao"}</td>
+                  <td>
+                    {existente.trechos.map((t) => (
+                      <div key={t.id} style={{ fontSize: "0.82rem" }}>
+                        <span className="badge-rotulo" style={{ marginRight: "0.4rem" }}>
+                          {rotuloTrecho(t.ordem)}
+                        </span>
+                        {t.hora} · {rotuloPonto(t.origem_tipo, nomeLocal(t.origem_id), t.origem_texto, undefined, "endereco do usuario")} →{" "}
+                        {rotuloPonto(t.destino_tipo, nomeLocal(t.destino_id), t.destino_texto, undefined, "endereco do usuario")}
+                        {t.acompanhante && <span className="tag-acompanhante" style={{ marginLeft: "0.3rem" }}>+ acomp</span>}
+                      </div>
+                    ))}
+                  </td>
+                  <td>{existente.ativo ? "Sim" : "Nao"}</td>
                   <td>
                     {!somenteLeitura && (
                       <>
@@ -294,7 +249,7 @@ export default function AgendaSemanalEditor({ usuarioId, agenda, regioes, locais
               linhas.push(
                 <tr key={dia}>
                   <td>{DIAS_SEMANA_LABEL[dia]}</td>
-                  <td colSpan={6}>-</td>
+                  <td colSpan={3}>-</td>
                   <td>
                     {!somenteLeitura && (
                       <button className="btn btn-sm" onClick={() => abrirEdicao(dia, null)}>

@@ -81,9 +81,21 @@ class TipoLocal(str, enum.Enum):
     OUTROS = "Outros"
 
 
-class Sentido(str, enum.Enum):
-    IDA = "Ida"
-    RETORNO = "Retorno"
+class TipoPonto(str, enum.Enum):
+    """O que a origem ou o destino de um trecho representa.
+
+    `LOCAL`: um `Local` cadastrado -- rotulo/endereco/regiao vem de la.
+    `USUARIO`: o endereco principal do proprio usuario do atendimento --
+    rotulo/endereco/regiao vem do cadastro dele (`Usuario.abbr`/`detalhe`/
+    `regiao_id`), sem precisar redigitar em cada trecho.
+    `AVULSO`: endereco livre, sem Local nem usuario associado -- rotulo e
+    endereco completo digitados na hora, regiao informada manualmente (unico
+    caso em que nao ha de onde derivar automaticamente).
+    """
+
+    LOCAL = "Local"
+    USUARIO = "Usuario"
+    AVULSO = "Avulso"
 
 
 class StatusViagemDia(str, enum.Enum):
@@ -263,10 +275,15 @@ class Usuario(Base):
     detalhe: Mapped[str | None] = mapped_column(Text, nullable=True)
     observacao: Mapped[str | None] = mapped_column(Text, nullable=True)
     grupo_familiar_id: Mapped[int | None] = mapped_column(ForeignKey("grupo_familiar.id"), nullable=True)
+    # Regiao "de casa" do usuario -- usada automaticamente (sem precisar
+    # redigitar por trecho) quando um trecho referencia o endereco principal
+    # dele (TipoPonto.USUARIO) como origem ou destino.
+    regiao_id: Mapped[int | None] = mapped_column(ForeignKey("regiao.id"), nullable=True)
 
     agenda_semanal: Mapped[list["UsuarioAgendaSemanal"]] = relationship(back_populates="usuario")
     excecoes: Mapped[list["UsuarioExcecao"]] = relationship(back_populates="usuario")
     grupo_familiar: Mapped["GrupoFamiliar | None"] = relationship(back_populates="usuarios")
+    regiao: Mapped["Regiao | None"] = relationship()
 
 
 class UsuarioAgendaSemanal(Base):
@@ -275,9 +292,13 @@ class UsuarioAgendaSemanal(Base):
     Cobre nativamente o caso de um usuario ser Fixo de Seg-Qui e Eventual na Sex,
     com horarios/locais diferentes, sem precisar de um conceito separado de excecao.
 
+    O itinerario do dia (1 a N trechos, ex: Origem -> Destino 1 -> Destino 2 ->
+    Origem, ou retorno para um local diferente da origem) fica em `trechos`,
+    ordenado por `ordem` -- nao ha mais um par fixo saida/retorno aqui.
+
     O agrupamento em carros pro modo Base (`GrupoBase`/`ViagemBase`/
-    `MembroViagemBase`) e curado a parte, sem nenhum campo aqui -- essa agenda
-    so descreve o atendimento em si (horario/local/regiao).
+    `MembroViagemBase`) e curado a parte, ligado direto a cada trecho -- essa
+    agenda so descreve o atendimento em si.
     """
 
     __tablename__ = "usuario_agenda_semanal"
@@ -286,23 +307,51 @@ class UsuarioAgendaSemanal(Base):
     usuario_id: Mapped[int] = mapped_column(ForeignKey("usuario.id"))
     dia_semana: Mapped[DiaSemana] = mapped_column(_enum(DiaSemana), index=True)
     tipo: Mapped[TipoAtendimento] = mapped_column(_enum(TipoAtendimento))
-    acompanhante: Mapped[bool] = mapped_column(default=False)
-    saida: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
-    retorno: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
-    origem: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    regiao_origem_id: Mapped[int | None] = mapped_column(ForeignKey("regiao.id"), nullable=True)
-    destino_id: Mapped[int | None] = mapped_column(ForeignKey("local.id"), nullable=True)
     ativo: Mapped[bool] = mapped_column(default=True)
     detalhe: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     usuario: Mapped["Usuario"] = relationship(back_populates="agenda_semanal")
-    regiao_origem: Mapped["Regiao | None"] = relationship()
-    destino: Mapped["Local | None"] = relationship()
+    trechos: Mapped[list["UsuarioAgendaSemanalTrecho"]] = relationship(
+        back_populates="agenda", cascade="all, delete-orphan", order_by="UsuarioAgendaSemanalTrecho.ordem"
+    )
+
+
+class UsuarioAgendaSemanalTrecho(Base):
+    """Um trecho (perna) do itinerario do dia de um atendimento Fixo, na
+    posicao `ordem` (0-based). Ida-e-volta convencional e 2 trechos; um
+    itinerario com paradas extras ou retorno para local diferente da origem
+    e so uma lista mais longa, sem tratamento especial.
+    """
+
+    __tablename__ = "usuario_agenda_semanal_trecho"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    agenda_id: Mapped[int] = mapped_column(ForeignKey("usuario_agenda_semanal.id", ondelete="CASCADE"))
+    ordem: Mapped[int] = mapped_column(Integer, default=0)
+    hora: Mapped[dt.time] = mapped_column(Time)
+    # origem_tipo nulo so e valido em trechos com ordem > 0 -- significa
+    # "herda o destino do trecho anterior" (unico caso sem de onde derivar
+    # sozinho um ponto de partida). Ver TipoPonto.
+    origem_tipo: Mapped[TipoPonto | None] = mapped_column(_enum(TipoPonto), nullable=True)
+    origem_id: Mapped[int | None] = mapped_column(ForeignKey("local.id"), nullable=True)
+    origem_texto: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    origem_detalhe: Mapped[str | None] = mapped_column(Text, nullable=True)
+    regiao_origem_id: Mapped[int | None] = mapped_column(ForeignKey("regiao.id"), nullable=True)
+    destino_tipo: Mapped[TipoPonto] = mapped_column(_enum(TipoPonto), default=TipoPonto.LOCAL)
+    destino_id: Mapped[int | None] = mapped_column(ForeignKey("local.id"), nullable=True)
+    destino_texto: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    destino_detalhe: Mapped[str | None] = mapped_column(Text, nullable=True)
+    regiao_destino_id: Mapped[int | None] = mapped_column(ForeignKey("regiao.id"), nullable=True)
+    acompanhante: Mapped[bool] = mapped_column(default=False)
+
+    agenda: Mapped["UsuarioAgendaSemanal"] = relationship(back_populates="trechos")
+    origem_local: Mapped["Local | None"] = relationship(foreign_keys=[origem_id])
+    regiao_origem: Mapped["Regiao | None"] = relationship(foreign_keys=[regiao_origem_id])
+    destino: Mapped["Local | None"] = relationship(foreign_keys=[destino_id])
+    regiao_destino: Mapped["Regiao | None"] = relationship(foreign_keys=[regiao_destino_id])
 
     __table_args__ = (
-        UniqueConstraint(
-            "usuario_id", "dia_semana", "saida", "destino_id", name="uq_usuario_dia_semana_horario_destino"
-        ),
+        UniqueConstraint("agenda_id", "ordem", name="uq_agenda_trecho_ordem"),
     )
 
 
@@ -328,6 +377,11 @@ class UsuarioExcecao(Base):
     Intervalos de excecoes do mesmo usuario podem se sobrepor sem validacao
     (igual ao resto do sistema); quando sobrepoem, `_agendas_do_dia` resolve
     pegando a excecao de maior id (mais recente) pra cada dia.
+    Assim como o Fixo, o itinerario da excecao (quando `operacao` nao e
+    SUSPENSAO) fica em `trechos`. Uma MODIFICACAO com `trechos` preenchidos
+    substitui o itinerario do dia inteiro (nao ha mais merge campo-a-campo com
+    o Fixo, que perdeu sentido unico com lista de tamanho variavel) -- a tela
+    de exceção oferece "clonar do Fixo" pra pre-popular o formulario.
     """
 
     __tablename__ = "usuario_excecao"
@@ -338,17 +392,46 @@ class UsuarioExcecao(Base):
     data_fim: Mapped[dt.date] = mapped_column(Date)
     operacao: Mapped[OperacaoExcecao] = mapped_column(_enum(OperacaoExcecao), default=OperacaoExcecao.MODIFICACAO)
     tipo: Mapped[TipoAtendimento | None] = mapped_column(_enum(TipoAtendimento), nullable=True)
-    saida: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
-    retorno: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
-    origem: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    regiao_origem_id: Mapped[int | None] = mapped_column(ForeignKey("regiao.id"), nullable=True)
-    destino_id: Mapped[int | None] = mapped_column(ForeignKey("local.id"), nullable=True)
-    acompanhante: Mapped[bool | None] = mapped_column(nullable=True)
     motivo: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     usuario: Mapped["Usuario"] = relationship(back_populates="excecoes")
-    regiao_origem: Mapped["Regiao | None"] = relationship()
-    destino: Mapped["Local | None"] = relationship()
+    trechos: Mapped[list["UsuarioExcecaoTrecho"]] = relationship(
+        back_populates="excecao", cascade="all, delete-orphan", order_by="UsuarioExcecaoTrecho.ordem"
+    )
+
+
+class UsuarioExcecaoTrecho(Base):
+    """Um trecho do itinerario override de uma UsuarioExcecao (ADICAO ou
+    MODIFICACAO). SUSPENSAO nao tem nenhuma linha aqui.
+    """
+
+    __tablename__ = "usuario_excecao_trecho"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    excecao_id: Mapped[int] = mapped_column(ForeignKey("usuario_excecao.id", ondelete="CASCADE"))
+    ordem: Mapped[int] = mapped_column(Integer, default=0)
+    hora: Mapped[dt.time] = mapped_column(Time)
+    origem_tipo: Mapped[TipoPonto | None] = mapped_column(_enum(TipoPonto), nullable=True)
+    origem_id: Mapped[int | None] = mapped_column(ForeignKey("local.id"), nullable=True)
+    origem_texto: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    origem_detalhe: Mapped[str | None] = mapped_column(Text, nullable=True)
+    regiao_origem_id: Mapped[int | None] = mapped_column(ForeignKey("regiao.id"), nullable=True)
+    destino_tipo: Mapped[TipoPonto] = mapped_column(_enum(TipoPonto), default=TipoPonto.LOCAL)
+    destino_id: Mapped[int | None] = mapped_column(ForeignKey("local.id"), nullable=True)
+    destino_texto: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    destino_detalhe: Mapped[str | None] = mapped_column(Text, nullable=True)
+    regiao_destino_id: Mapped[int | None] = mapped_column(ForeignKey("regiao.id"), nullable=True)
+    acompanhante: Mapped[bool] = mapped_column(default=False)
+
+    excecao: Mapped["UsuarioExcecao"] = relationship(back_populates="trechos")
+    origem_local: Mapped["Local | None"] = relationship(foreign_keys=[origem_id])
+    regiao_origem: Mapped["Regiao | None"] = relationship(foreign_keys=[regiao_origem_id])
+    destino: Mapped["Local | None"] = relationship(foreign_keys=[destino_id])
+    regiao_destino: Mapped["Regiao | None"] = relationship(foreign_keys=[regiao_destino_id])
+
+    __table_args__ = (
+        UniqueConstraint("excecao_id", "ordem", name="uq_excecao_trecho_ordem"),
+    )
 
 
 # --------------------------------------------------------------------------
@@ -463,16 +546,16 @@ class RodizioCondutorFimDeSemana(Base):
 
 
 class ViagemBase(Base):
-    """Um horario (Ida ou Retorno) dentro de um `GrupoBase` -- vira uma
-    `ViagemDia` na geracao real, tentando reaproveitar o mesmo veiculo das
-    outras viagens do mesmo grupo.
+    """Um horario dentro de um `GrupoBase` -- vira uma `ViagemDia` na geracao
+    real, tentando reaproveitar o mesmo veiculo das outras viagens do mesmo
+    grupo. Sem conceito de sentido proprio: e so "um carro conceitual, num
+    horario" -- cada membro aponta direto pro trecho que ocupa ali.
     """
 
     __tablename__ = "viagem_base"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     grupo_base_id: Mapped[int] = mapped_column(ForeignKey("grupo_base.id", ondelete="CASCADE"))
-    sentido: Mapped[Sentido] = mapped_column(_enum(Sentido))
     hora: Mapped[dt.time] = mapped_column(Time)
 
     grupo: Mapped["GrupoBase"] = relationship(back_populates="viagens")
@@ -481,28 +564,30 @@ class ViagemBase(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("grupo_base_id", "sentido", "hora", name="uq_viagem_base_horario"),
+        UniqueConstraint("grupo_base_id", "hora", name="uq_viagem_base_horario"),
     )
 
 
 class MembroViagemBase(Base):
-    """Um usuario (via sua `UsuarioAgendaSemanal`) dentro de uma `ViagemBase`,
-    com sua posicao entre os demais dessa viagem -- sem limite rigido, so um
-    alerta visual na tela quando passa de 4.
+    """Um trecho especifico (via `UsuarioAgendaSemanalTrecho`) dentro de uma
+    `ViagemBase`, com sua posicao entre os demais dessa viagem -- sem limite
+    rigido, so um alerta visual na tela quando passa de 4.
     """
 
     __tablename__ = "membro_viagem_base"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     viagem_base_id: Mapped[int] = mapped_column(ForeignKey("viagem_base.id", ondelete="CASCADE"))
-    agenda_id: Mapped[int] = mapped_column(ForeignKey("usuario_agenda_semanal.id", ondelete="CASCADE"))
+    agenda_trecho_id: Mapped[int] = mapped_column(
+        ForeignKey("usuario_agenda_semanal_trecho.id", ondelete="CASCADE")
+    )
     ordem: Mapped[int] = mapped_column(Integer, default=0)
 
     viagem: Mapped["ViagemBase"] = relationship(back_populates="membros")
-    agenda: Mapped["UsuarioAgendaSemanal"] = relationship()
+    agenda_trecho: Mapped["UsuarioAgendaSemanalTrecho"] = relationship()
 
     __table_args__ = (
-        UniqueConstraint("viagem_base_id", "agenda_id", name="uq_membro_viagem_base"),
+        UniqueConstraint("viagem_base_id", "agenda_trecho_id", name="uq_membro_viagem_base"),
     )
 
 
@@ -569,8 +654,11 @@ class DiaTravado(Base):
 class ViagemDiaPassageiro(Base):
     """Um usuario dentro de uma ViagemDia (o card de passageiro na tela de agendamento).
 
-    Campos de origem/destino/regiao sao uma copia (snapshot) do cadastro do
-    usuario no momento da geracao, editavel independentemente do cadastro base.
+    Ja e, em si, um trecho materializado do itinerario do dia (nao precisa de
+    tabela pai+filha como a config recorrente) -- `ordem_trecho` marca sua
+    posicao (0-based) no itinerario do usuario naquele dia. Campos de
+    origem/destino/regiao sao uma copia (snapshot) do cadastro do usuario no
+    momento da geracao, editavel independentemente do cadastro base.
 
     `viagem_dia_id` pode ser nulo: e o caso de quem ficou sem vaga na geracao
     (frota esgotada) -- fica "orfao" (sem carro), com `data` preenchida pra
@@ -584,11 +672,17 @@ class ViagemDiaPassageiro(Base):
     viagem_dia_id: Mapped[int | None] = mapped_column(ForeignKey("viagem_dia.id"), nullable=True)
     data: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     usuario_id: Mapped[int] = mapped_column(ForeignKey("usuario.id"))
-    sentido: Mapped[Sentido] = mapped_column(_enum(Sentido))
+    ordem_trecho: Mapped[int] = mapped_column(Integer, default=0)
     hora: Mapped[dt.time] = mapped_column(Time)
-    origem: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    origem_tipo: Mapped[TipoPonto | None] = mapped_column(_enum(TipoPonto), nullable=True)
+    origem_id: Mapped[int | None] = mapped_column(ForeignKey("local.id"), nullable=True)
+    origem_texto: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    origem_detalhe: Mapped[str | None] = mapped_column(Text, nullable=True)
     regiao_origem_id: Mapped[int | None] = mapped_column(ForeignKey("regiao.id"), nullable=True)
+    destino_tipo: Mapped[TipoPonto] = mapped_column(_enum(TipoPonto), default=TipoPonto.LOCAL)
     destino_id: Mapped[int | None] = mapped_column(ForeignKey("local.id"), nullable=True)
+    destino_texto: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    destino_detalhe: Mapped[str | None] = mapped_column(Text, nullable=True)
     regiao_destino_id: Mapped[int | None] = mapped_column(ForeignKey("regiao.id"), nullable=True)
     acompanhante: Mapped[bool] = mapped_column(default=False)
     ordem: Mapped[int] = mapped_column(Integer, default=0)
@@ -598,12 +692,13 @@ class ViagemDiaPassageiro(Base):
 
     viagem_dia: Mapped["ViagemDia | None"] = relationship(back_populates="passageiros")
     usuario: Mapped["Usuario"] = relationship()
+    origem_local: Mapped["Local | None"] = relationship(foreign_keys=[origem_id])
     regiao_origem: Mapped["Regiao | None"] = relationship(foreign_keys=[regiao_origem_id])
-    destino: Mapped["Local | None"] = relationship()
+    destino: Mapped["Local | None"] = relationship(foreign_keys=[destino_id])
     regiao_destino: Mapped["Regiao | None"] = relationship(foreign_keys=[regiao_destino_id])
 
     __table_args__ = (
-        UniqueConstraint("viagem_dia_id", "usuario_id", "sentido", name="uq_viagem_dia_passageiro"),
+        UniqueConstraint("viagem_dia_id", "usuario_id", "ordem_trecho", name="uq_viagem_dia_passageiro"),
     )
 
 

@@ -1041,3 +1041,180 @@ th {
   vertical-align: middle;
   pointer-events: none;
 }
+
+/* Editor de lista de trechos (agenda semanal, excecoes, passageiro avulso) */
+
+.trecho-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.trecho-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  border: 1px solid var(--cor-borda);
+  border-radius: 7px;
+  padding: 0.6rem 0.7rem;
+  background: var(--cor-fundo);
+}
+
+.trecho-row-badge {
+  padding-top: 0.35rem;
+  flex-shrink: 0;
+  width: 76px;
+}
+
+.badge-rotulo {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.14rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--cor-primaria) 15%, transparent);
+  color: var(--cor-primaria);
+  white-space: nowrap;
+}
+
+.trecho-row-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.trecho-row-fields .campo {
+  font-size: 0.76rem;
+  color: var(--cor-texto-suave);
+}
+
+.campo-hora {
+  width: 96px;
+}
+
+.campo-origem {
+  width: 190px;
+}
+
+.campo-destino {
+  width: 230px;
+}
+
+.campo-ponto {
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.campo-ponto select,
+.campo-ponto input {
+  width: 100%;
+}
+
+.campo-herdar {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+}
+
+.campo-herdar input {
+  width: 14px;
+  height: 14px;
+}
+
+.campo-nota {
+  margin: 0;
+  font-size: 0.72rem;
+  font-style: italic;
+  color: var(--cor-texto-suave);
+}
+
+.destino-toggle {
+  display: flex;
+  border: 1px solid var(--cor-borda);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 0.22rem;
+  width: fit-content;
+}
+
+.destino-toggle button {
+  border: none;
+  background: var(--cor-superficie);
+  color: var(--cor-texto-suave);
+  padding: 0.2rem 0.5rem;
+  font-size: 0.7rem;
+}
+
+.destino-toggle button + button {
+  border-left: 1px solid var(--cor-borda);
+}
+
+.destino-toggle button.ativo {
+  background: var(--cor-primaria);
+  color: white;
+}
+
+.campo-acompanhante {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  padding-top: 1.35rem;
+  font-size: 0.8rem;
+  color: var(--cor-texto);
+  white-space: nowrap;
+}
+
+.campo-acompanhante input {
+  width: 15px;
+  height: 15px;
+}
+
+.trecho-row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-top: 0.2rem;
+}
+
+.trecho-row-actions button {
+  border: 1px solid var(--cor-borda);
+  background: var(--cor-superficie);
+  border-radius: 5px;
+  width: 26px;
+  height: 24px;
+  font-size: 0.78rem;
+  color: var(--cor-texto-suave);
+}
+
+.trecho-row-actions button:hover {
+  background: var(--cor-fundo);
+  color: var(--cor-texto);
+}
+
+.trecho-row-actions button.rm:hover {
+  background: var(--cor-perigo-fundo);
+  color: var(--cor-perigo);
+  border-color: var(--cor-perigo);
+}
+
+.trecho-add {
+  border: 1px dashed var(--cor-borda);
+  border-radius: 7px;
+  padding: 0.5rem;
+  text-align: center;
+  color: var(--cor-texto-suave);
+  font-size: 0.8rem;
+  background: transparent;
+  width: 100%;
+}
+
+.trecho-add:hover {
+  background: var(--cor-fundo);
+  color: var(--cor-texto);
+}

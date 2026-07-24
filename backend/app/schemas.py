@@ -7,7 +7,6 @@ from app.models import (
     OperacaoExcecao,
     PapelConta,
     PeriodoCondutor,
-    Sentido,
     StatusAtivoInativo,
     StatusAtendimentoDia,
     StatusCondutor,
@@ -16,6 +15,7 @@ from app.models import (
     StatusViagemDia,
     TipoAtendimento,
     TipoLocal,
+    TipoPonto,
 )
 
 
@@ -143,20 +143,64 @@ class CondutorFeriasRead(ORMModel):
 
 
 # --------------------------------------------------------------------------
+# Trecho: uma perna do itinerario do dia (origem/destino/hora/acompanhante),
+# na posicao `ordem` (0-based) -- reaproveitado em UsuarioAgendaSemanal e
+# UsuarioExcecao. Ida-e-volta convencional e so uma lista de 2 trechos; um
+# itinerario com paradas extras ou retorno pra local diferente da origem e
+# so uma lista mais longa, sem tratamento especial.
+#
+# Origem e destino sao cada um um "ponto" com tipo (ver `TipoPonto`): Local
+# cadastrado (`*_id`), endereco do proprio usuario (sem campo extra -- deriva
+# de `Usuario.abbr`/`detalhe`/`regiao_id`) ou avulso (`*_texto` + `*_detalhe`
+# opcional + `regiao_*_id` obrigatorio, unico caso sem de onde derivar a
+# regiao sozinho). Validado/resolvido no servidor, nao como constraint de
+# banco (`app.services.pontos.resolver_trecho`). `origem_tipo` nulo so vale
+# em trechos que nao sao o primeiro do itinerario -- significa "herda o
+# destino do trecho anterior".
+# --------------------------------------------------------------------------
+
+class TrechoCreate(BaseModel):
+    hora: dt.time
+    origem_tipo: TipoPonto | None = None
+    origem_id: int | None = None
+    origem_texto: str | None = None
+    origem_detalhe: str | None = None
+    regiao_origem_id: int | None = None
+    destino_tipo: TipoPonto = TipoPonto.LOCAL
+    destino_id: int | None = None
+    destino_texto: str | None = None
+    destino_detalhe: str | None = None
+    regiao_destino_id: int | None = None
+    acompanhante: bool = False
+
+
+class TrechoRead(ORMModel):
+    id: int
+    ordem: int
+    hora: dt.time
+    origem_tipo: TipoPonto | None
+    origem_id: int | None
+    origem_texto: str | None
+    origem_detalhe: str | None
+    regiao_origem_id: int | None
+    destino_tipo: TipoPonto
+    destino_id: int | None
+    destino_texto: str | None
+    destino_detalhe: str | None
+    regiao_destino_id: int | None
+    acompanhante: bool
+
+
+# --------------------------------------------------------------------------
 # Usuario + agenda semanal + excecoes
 # --------------------------------------------------------------------------
 
 class UsuarioAgendaSemanalCreate(BaseModel):
     dia_semana: DiaSemana
     tipo: TipoAtendimento
-    acompanhante: bool = False
-    saida: dt.time | None = None
-    retorno: dt.time | None = None
-    origem: str | None = None
-    regiao_origem_id: int | None = None
-    destino_id: int | None = None
     ativo: bool = True
     detalhe: str | None = None
+    trechos: list[TrechoCreate] = []
 
 
 class UsuarioAgendaSemanalRead(ORMModel):
@@ -164,14 +208,9 @@ class UsuarioAgendaSemanalRead(ORMModel):
     usuario_id: int
     dia_semana: DiaSemana
     tipo: TipoAtendimento
-    acompanhante: bool
-    saida: dt.time | None
-    retorno: dt.time | None
-    origem: str | None
-    regiao_origem_id: int | None
-    destino_id: int | None
     ativo: bool
     detalhe: str | None
+    trechos: list[TrechoRead] = []
 
 
 class UsuarioExcecaoCreate(BaseModel):
@@ -179,13 +218,8 @@ class UsuarioExcecaoCreate(BaseModel):
     data_fim: dt.date
     operacao: OperacaoExcecao = OperacaoExcecao.MODIFICACAO
     tipo: TipoAtendimento | None = TipoAtendimento.EVENTUAL
-    saida: dt.time | None = None
-    retorno: dt.time | None = None
-    origem: str | None = None
-    regiao_origem_id: int | None = None
-    destino_id: int | None = None
-    acompanhante: bool | None = None
     motivo: str | None = None
+    trechos: list[TrechoCreate] = []
 
 
 class UsuarioExcecaoRead(ORMModel):
@@ -195,13 +229,8 @@ class UsuarioExcecaoRead(ORMModel):
     data_fim: dt.date
     operacao: OperacaoExcecao
     tipo: TipoAtendimento | None
-    saida: dt.time | None
-    retorno: dt.time | None
-    origem: str | None
-    regiao_origem_id: int | None
-    destino_id: int | None
-    acompanhante: bool | None
     motivo: str | None
+    trechos: list[TrechoRead] = []
 
 
 class GrupoFamiliarCreate(BaseModel):
@@ -222,6 +251,7 @@ class UsuarioCreate(BaseModel):
     detalhe: str | None = None
     observacao: str | None = None
     grupo_familiar_id: int | None = None
+    regiao_id: int | None = None
 
 
 class UsuarioRead(ORMModel):
@@ -235,6 +265,7 @@ class UsuarioRead(ORMModel):
     detalhe: str | None
     observacao: str | None
     grupo_familiar_id: int | None
+    regiao_id: int | None
 
 
 class UsuarioComAgendaRead(UsuarioRead):
@@ -255,11 +286,17 @@ class ViagemDiaPassageiroRead(ORMModel):
     viagem_dia_id: int | None
     usuario_id: int
     usuario: UsuarioRead
-    sentido: Sentido
+    ordem_trecho: int
     hora: dt.time
-    origem: str | None
+    origem_tipo: TipoPonto | None
+    origem_id: int | None
+    origem_texto: str | None
+    origem_detalhe: str | None
     regiao_origem_id: int | None
+    destino_tipo: TipoPonto
     destino_id: int | None
+    destino_texto: str | None
+    destino_detalhe: str | None
     regiao_destino_id: int | None
     acompanhante: bool
     ordem: int
@@ -294,22 +331,34 @@ class ViagemDiaRead(ORMModel):
 
 class ViagemDiaPassageiroCreate(BaseModel):
     usuario_id: int
-    sentido: Sentido
+    ordem_trecho: int = 0
     hora: dt.time
-    origem: str | None = None
+    origem_tipo: TipoPonto | None = None
+    origem_id: int | None = None
+    origem_texto: str | None = None
+    origem_detalhe: str | None = None
     regiao_origem_id: int | None = None
+    destino_tipo: TipoPonto = TipoPonto.LOCAL
     destino_id: int | None = None
+    destino_texto: str | None = None
+    destino_detalhe: str | None = None
     regiao_destino_id: int | None = None
     acompanhante: bool = False
     observacoes: str | None = None
 
 
 class ViagemDiaPassageiroAtualizar(BaseModel):
-    sentido: Sentido | None = None
+    ordem_trecho: int | None = None
     hora: dt.time | None = None
-    origem: str | None = None
+    origem_tipo: TipoPonto | None = None
+    origem_id: int | None = None
+    origem_texto: str | None = None
+    origem_detalhe: str | None = None
     regiao_origem_id: int | None = None
+    destino_tipo: TipoPonto | None = None
     destino_id: int | None = None
+    destino_texto: str | None = None
+    destino_detalhe: str | None = None
     regiao_destino_id: int | None = None
     acompanhante: bool | None = None
     observacoes: str | None = None
@@ -361,7 +410,8 @@ class DiaTravadoRead(BaseModel):
 
 class MembroBaseRead(BaseModel):
     id: int
-    agenda_id: int
+    agenda_trecho_id: int
+    ordem_trecho: int
     ordem: int
     usuario_id: int
     usuario_nome: str
@@ -371,9 +421,15 @@ class MembroBaseRead(BaseModel):
     atendimento_ativo: bool
     usuario_grupo_familiar_id: int | None
     usuario_grupo_familiar_nome: str | None
-    origem: str | None
+    origem_tipo: TipoPonto | None
+    origem_id: int | None
+    origem_texto: str | None
+    origem_detalhe: str | None
     regiao_origem_id: int | None
+    destino_tipo: TipoPonto
     destino_id: int | None
+    destino_texto: str | None
+    destino_detalhe: str | None
     regiao_destino_id: int | None
     acompanhante: bool
     hora_agenda: dt.time
@@ -382,7 +438,6 @@ class MembroBaseRead(BaseModel):
 class ViagemBaseRead(BaseModel):
     id: int
     grupo_base_id: int
-    sentido: Sentido
     hora: dt.time
     membros: list[MembroBaseRead] = []
 
@@ -417,18 +472,24 @@ class GrupoRevezamentoRead(BaseModel):
 
 
 class NaoClassificadoRead(BaseModel):
-    agenda_id: int
+    agenda_trecho_id: int
+    ordem_trecho: int
     usuario_id: int
     usuario_nome: str
     usuario_abbr: str
     usuario_data_nascimento: dt.date | None
-    sentido: Sentido
     hora: dt.time
     usuario_grupo_familiar_id: int | None
     usuario_grupo_familiar_nome: str | None
-    origem: str | None
+    origem_tipo: TipoPonto | None
+    origem_id: int | None
+    origem_texto: str | None
+    origem_detalhe: str | None
     regiao_origem_id: int | None
+    destino_tipo: TipoPonto
     destino_id: int | None
+    destino_texto: str | None
+    destino_detalhe: str | None
     regiao_destino_id: int | None
     acompanhante: bool
 
@@ -440,12 +501,10 @@ class EstruturaBaseRead(BaseModel):
 
 
 class ViagemBaseCreate(BaseModel):
-    sentido: Sentido
     hora: dt.time
 
 
 class MembroBaseMover(BaseModel):
-    sentido: Sentido
     grupo_base_id: int
     hora: dt.time
     ordem: int | None = None

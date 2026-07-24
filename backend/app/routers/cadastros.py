@@ -105,13 +105,18 @@ def listar_fixos_local(local_id: int, db: Session = Depends(get_db)):
     linhas = (
         db.query(models.UsuarioAgendaSemanal, models.Usuario)
         .join(models.Usuario, models.UsuarioAgendaSemanal.usuario_id == models.Usuario.id)
+        .join(
+            models.UsuarioAgendaSemanalTrecho,
+            models.UsuarioAgendaSemanalTrecho.agenda_id == models.UsuarioAgendaSemanal.id,
+        )
         .filter(
-            models.UsuarioAgendaSemanal.destino_id == local_id,
+            models.UsuarioAgendaSemanalTrecho.destino_id == local_id,
             models.UsuarioAgendaSemanal.tipo == models.TipoAtendimento.FIXO,
             models.UsuarioAgendaSemanal.ativo.is_(True),
             models.Usuario.status == models.StatusAtivoInativo.ATIVO,
         )
         .order_by(models.Usuario.abbr)
+        .distinct()
         .all()
     )
     ordem = list(models.DiaSemana)

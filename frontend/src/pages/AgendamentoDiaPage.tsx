@@ -26,8 +26,8 @@ import type {
   GrupoRevezamento,
   Local,
   Regiao,
-  Sentido,
   Sobras,
+  TrechoInput,
   UsuarioDesconsiderado,
   Veiculo,
   ViagemBase,
@@ -130,7 +130,30 @@ export default function AgendamentoDiaPage() {
   });
 
   const adicionarPassageiro = useMutation({
-    mutationFn: ({ viagemId, body }: { viagemId: number; body: unknown }) => api.post(`/viagens/${viagemId}/passageiros`, body),
+    mutationFn: async ({
+      viagemId,
+      usuarioId,
+      trechos,
+      observacoes,
+    }: {
+      viagemId: number;
+      usuarioId: number;
+      trechos: TrechoInput[];
+      observacoes: string | null;
+    }) => {
+      // Cada trecho do itinerario vira um ViagemDiaPassageiro proprio, lancado
+      // no mesmo carro clicado -- o operador reposiciona os demais trechos
+      // (ex: retorno num carro diferente) arrastando depois, igual a
+      // qualquer outro passageiro.
+      for (const [ordemTrecho, trecho] of trechos.entries()) {
+        await api.post(`/viagens/${viagemId}/passageiros`, {
+          usuario_id: usuarioId,
+          ordem_trecho: ordemTrecho,
+          ...trecho,
+          observacoes,
+        });
+      }
+    },
     onSuccess: invalidarDia,
   });
   const removerPassageiro = useMutation({
@@ -169,8 +192,8 @@ export default function AgendamentoDiaPage() {
     onSuccess: atualizarEstruturaBase,
   });
   const criarViagemBase = useMutation({
-    mutationFn: ({ grupoId, sentido, hora }: { grupoId: number; sentido: Sentido; hora: string }) =>
-      api.post<EstruturaBase>(`/base/grupos/${grupoId}/viagens`, { sentido, hora }),
+    mutationFn: ({ grupoId, hora }: { grupoId: number; hora: string }) =>
+      api.post<EstruturaBase>(`/base/grupos/${grupoId}/viagens`, { hora }),
     onSuccess: atualizarEstruturaBase,
   });
   const removerViagemBase = useMutation({
@@ -188,18 +211,16 @@ export default function AgendamentoDiaPage() {
   });
   const moverMembroBase = useMutation({
     mutationFn: ({
-      agendaId,
-      sentido,
+      agendaTrechoId,
       grupoBaseId,
       hora,
       ordem,
     }: {
-      agendaId: number;
-      sentido: Sentido;
+      agendaTrechoId: number;
       grupoBaseId: number;
       hora: string;
       ordem?: number;
-    }) => api.patch<EstruturaBase>(`/base/membros/${agendaId}/mover`, { sentido, grupo_base_id: grupoBaseId, hora, ordem }),
+    }) => api.patch<EstruturaBase>(`/base/membros/${agendaTrechoId}/mover`, { grupo_base_id: grupoBaseId, hora, ordem }),
     onSuccess: atualizarEstruturaBase,
   });
   const criarRevezamento = useMutation({
@@ -384,62 +405,61 @@ export default function AgendamentoDiaPage() {
   }
 
   type ItemBase =
-    | { tipo: "membro-base"; agendaId: number; viagemBaseId: number; grupoBaseId: number; sentido: Sentido; hora: string }
-    | { tipo: "nao-classificado"; agendaId: number; sentido: Sentido; hora: string };
+    | { tipo: "membro-base"; agendaTrechoId: number; viagemBaseId: number; grupoBaseId: number; hora: string }
+    | { tipo: "nao-classificado"; agendaTrechoId: number; hora: string };
   type AlvoBase =
-    | { tipo: "viagem-base"; viagemBaseId: number; grupoBaseId: number; sentido: Sentido; hora: string }
-    | { tipo: "membro-base"; agendaId: number; viagemBaseId: number; grupoBaseId: number; sentido: Sentido; hora: string }
+    | { tipo: "viagem-base"; viagemBaseId: number; grupoBaseId: number; hora: string }
+    | { tipo: "membro-base"; agendaTrechoId: number; viagemBaseId: number; grupoBaseId: number; hora: string }
     | { tipo: "grupo-base"; grupoBaseId: number };
 
   function handleDragEndBase(activeData: ItemBase, overData: AlvoBase) {
     const estrutura = estruturaBaseQuery.data;
     if (!estrutura) return;
 
-    // sentido/horario SEMPRE vem de quem esta sendo arrastado -- nunca do
-    // alvo do drop. O horario real da pessoa e fixo (vem da agenda semanal
-    // dela), soltar em cima de uma viagem de outro horario nao muda isso;
-    // so decide em qual carro ela entra, criando a viagem certa on-the-fly
-    // se o carro ainda nao tiver uma pro horario dela.
+    // horario SEMPRE vem de quem esta sendo arrastado -- nunca do alvo do
+    // drop. O horario real da pessoa e fixo (vem da agenda semanal dela),
+    // soltar em cima de uma viagem de outro horario nao muda isso; so
+    // decide em qual carro ela entra, criando a viagem certa on-the-fly se
+    // o carro ainda nao tiver uma pro horario dela.
     const grupoBaseId = overData.grupoBaseId;
-    const sentidoAlvo = activeData.sentido;
     const horaAlvo = activeData.hora;
 
     const grupo = estrutura.grupos.find((g) => g.id === grupoBaseId);
-    const viagemAlvo = grupo?.viagens.find((v) => v.sentido === sentidoAlvo && v.hora === horaAlvo);
+    const viagemAlvo = grupo?.viagens.find((v) => v.hora === horaAlvo);
     const membrosAlvo = viagemAlvo?.membros ?? [];
 
     // a posicao dentro da lista (over em cima de um membro especifico) so
-    // faz sentido quando o alvo do drop e de fato a MESMA viagem (sentido e
-    // horario) de quem foi arrastado -- soltar em cima de alguem de outro
-    // horario so importa pra saber o carro, nao a posicao.
-    const overMembroAgendaId =
-      overData.tipo === "membro-base" && overData.viagemBaseId === viagemAlvo?.id ? overData.agendaId : undefined;
+    // faz sentido quando o alvo do drop e de fato a MESMA viagem (horario)
+    // de quem foi arrastado -- soltar em cima de alguem de outro horario so
+    // importa pra saber o carro, nao a posicao.
+    const overMembroAgendaTrechoId =
+      overData.tipo === "membro-base" && overData.viagemBaseId === viagemAlvo?.id ? overData.agendaTrechoId : undefined;
 
-    if (activeData.tipo === "membro-base" && activeData.agendaId === overMembroAgendaId) return; // solto em cima de si mesmo
+    if (activeData.tipo === "membro-base" && activeData.agendaTrechoId === overMembroAgendaTrechoId) return; // solto em cima de si mesmo
 
-    const semAtivo = membrosAlvo.filter((m) => m.agenda_id !== activeData.agendaId);
+    const semAtivo = membrosAlvo.filter((m) => m.agenda_trecho_id !== activeData.agendaTrechoId);
     let ordem = semAtivo.length;
-    if (overMembroAgendaId !== undefined) {
-      const idx = semAtivo.findIndex((m) => m.agenda_id === overMembroAgendaId);
+    if (overMembroAgendaTrechoId !== undefined) {
+      const idx = semAtivo.findIndex((m) => m.agenda_trecho_id === overMembroAgendaTrechoId);
       if (idx >= 0) ordem = idx;
     }
 
     moverMembroBase.mutate(
-      { agendaId: activeData.agendaId, sentido: sentidoAlvo, grupoBaseId, hora: horaAlvo, ordem },
+      { agendaTrechoId: activeData.agendaTrechoId, grupoBaseId, hora: horaAlvo, ordem },
       { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao mover no molde")) },
     );
 
     // Por padrao, move junto quem e do mesmo grupo familiar E tem exatamente
-    // o mesmo sentido/horario/destino nesse dia da semana -- a nao ser que o
-    // usuario tenha "desmembrado" esse grupo explicitamente (ver
-    // ViagemBaseBlock). So mexe em quem ainda nao esta nesse mesmo carro.
-    const irmaos = encontrarIrmaosParaMover(estrutura, activeData.agendaId, sentidoAlvo);
+    // o mesmo horario/destino nesse dia da semana -- a nao ser que o usuario
+    // tenha "desmembrado" esse grupo explicitamente (ver ViagemBaseBlock). So
+    // mexe em quem ainda nao esta nesse mesmo carro.
+    const irmaos = encontrarIrmaosParaMover(estrutura, activeData.agendaTrechoId);
     if (irmaos && !gruposFamiliaresDesvinculados.has(irmaos.grupoFamiliarId)) {
-      const agendaIdsJaNoCarro = new Set(membrosAlvo.map((m) => m.agenda_id));
-      for (const agendaIdIrmao of irmaos.agendaIds) {
-        if (agendaIdsJaNoCarro.has(agendaIdIrmao)) continue;
+      const agendaTrechoIdsJaNoCarro = new Set(membrosAlvo.map((m) => m.agenda_trecho_id));
+      for (const agendaTrechoIdIrmao of irmaos.agendaTrechoIds) {
+        if (agendaTrechoIdsJaNoCarro.has(agendaTrechoIdIrmao)) continue;
         moverMembroBase.mutate(
-          { agendaId: agendaIdIrmao, sentido: sentidoAlvo, grupoBaseId, hora: horaAlvo },
+          { agendaTrechoId: agendaTrechoIdIrmao, grupoBaseId, hora: horaAlvo },
           { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao mover integrante do grupo familiar junto")) },
         );
       }
@@ -869,9 +889,9 @@ export default function AgendamentoDiaPage() {
                       { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao sair do grupo de revezamento")) },
                     );
                   }}
-                  onNovaViagem={(grupoId, sentido, hora) =>
+                  onNovaViagem={(grupoId, hora) =>
                     criarViagemBase.mutate(
-                      { grupoId, sentido, hora: `${hora}:00` },
+                      { grupoId, hora: `${hora}:00` },
                       { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao criar viagem")) },
                     )
                   }
@@ -951,7 +971,7 @@ export default function AgendamentoDiaPage() {
           onFechar={() => setModalAdicionar(null)}
           onConfirmar={(dados) => {
             adicionarPassageiro.mutate(
-              { viagemId: modalAdicionar, body: { ...dados, sentido: dados.sentido as Sentido } },
+              { viagemId: modalAdicionar, usuarioId: dados.usuario_id, trechos: dados.trechos, observacoes: dados.observacoes },
               {
                 onSuccess: () => setModalAdicionar(null),
                 onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao adicionar passageiro")),
@@ -1172,29 +1192,27 @@ export default function AgendamentoDiaPage() {
           diaSemana={diaSemanaFromData(data)}
           usuarioFixo={{ id: modalEditarPassageiro.usuario_id, nome: modalEditarPassageiro.usuario.nome }}
           valoresIniciais={{
-            sentido: modalEditarPassageiro.sentido,
+            ordem_trecho: modalEditarPassageiro.ordem_trecho,
             hora: modalEditarPassageiro.hora.slice(0, 5),
-            origem: modalEditarPassageiro.origem ?? "",
-            regiao_origem_id: modalEditarPassageiro.regiao_origem_id ?? "",
-            destino_id: modalEditarPassageiro.destino_id ?? "",
+            origem_tipo: modalEditarPassageiro.origem_tipo,
+            origem_id: modalEditarPassageiro.origem_id,
+            origem_texto: modalEditarPassageiro.origem_texto,
+            origem_detalhe: modalEditarPassageiro.origem_detalhe,
+            regiao_origem_id: modalEditarPassageiro.regiao_origem_id,
+            destino_tipo: modalEditarPassageiro.destino_tipo,
+            destino_id: modalEditarPassageiro.destino_id,
+            destino_texto: modalEditarPassageiro.destino_texto,
+            destino_detalhe: modalEditarPassageiro.destino_detalhe,
+            regiao_destino_id: modalEditarPassageiro.regiao_destino_id,
             acompanhante: modalEditarPassageiro.acompanhante,
-            observacoes: modalEditarPassageiro.observacoes ?? "",
           }}
+          observacoesIniciais={modalEditarPassageiro.observacoes ?? ""}
           onFechar={() => setModalEditarPassageiro(null)}
           onConfirmar={(dados) =>
             editarPassageiro.mutate(
               {
                 id: modalEditarPassageiro.id,
-                body: {
-                  sentido: dados.sentido,
-                  hora: dados.hora,
-                  origem: dados.origem,
-                  regiao_origem_id: dados.regiao_origem_id,
-                  destino_id: dados.destino_id,
-                  regiao_destino_id: dados.regiao_destino_id,
-                  acompanhante: dados.acompanhante,
-                  observacoes: dados.observacoes,
-                },
+                body: { ...dados.trechos[0], observacoes: dados.observacoes },
               },
               {
                 onSuccess: () => setModalEditarPassageiro(null),

@@ -1,6 +1,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import type { Local, ViagemDia, ViagemDiaPassageiro } from "../../api/types";
+import { rotuloTrecho } from "../../api/types";
 import { periodoDaViagem } from "../../api/periodo";
 import PassageiroCard from "./PassageiroCard";
 
@@ -33,7 +34,7 @@ export default function LegBlock({
 
   const passageirosOrdenados = [...viagem.passageiros].sort((a, b) => a.hora.localeCompare(b.hora) || a.ordem - b.ordem);
   const primeiro = passageirosOrdenados[0];
-  const labelHorario = primeiro ? `${primeiro.sentido} · ${primeiro.hora.slice(0, 5)}` : viagem.horario_saida.slice(0, 5);
+  const labelHorario = primeiro ? `${rotuloTrecho(primeiro.ordem_trecho)} · ${primeiro.hora.slice(0, 5)}` : viagem.horario_saida.slice(0, 5);
 
   const passageirosAtivos = viagem.passageiros.filter((p) => p.status !== "Cancelado");
   const usuariosOcupados = passageirosAtivos.length;
@@ -83,7 +84,8 @@ export default function LegBlock({
             key={p.id}
             viagemId={viagem.id}
             passageiro={p}
-            destinoNome={locais.find((l) => l.id === p.destino_id)?.nome}
+            origemLocalNome={locais.find((l) => l.id === p.origem_id)?.nome}
+            destinoLocalNome={locais.find((l) => l.id === p.destino_id)?.nome}
             onRemover={onRemoverPassageiro}
             onCancelar={onCancelarPassageiro}
             onEditar={onEditarPassageiro}

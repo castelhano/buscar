@@ -82,7 +82,7 @@ def criar_viagem_base(grupo_id: int, payload: schemas.ViagemBaseCreate, db: Sess
     if grupo is None:
         raise HTTPException(status_code=404, detail=f"Grupo {grupo_id} nao encontrado")
     try:
-        criar_viagem(db, grupo_id, payload.sentido, payload.hora)
+        criar_viagem(db, grupo_id, payload.hora)
     except ValueError as erro:
         raise HTTPException(status_code=400, detail=str(erro)) from erro
     return montar_estrutura_base(db, grupo.dia_semana)
@@ -154,11 +154,11 @@ def alterar_hora_viagem_base(viagem_id: int, payload: schemas.ViagemBaseAlterarH
     return montar_estrutura_base(db, dia_semana)
 
 
-@router.patch("/membros/{agenda_id}/mover", response_model=schemas.EstruturaBaseRead)
-def mover_membro_base(agenda_id: int, payload: schemas.MembroBaseMover, db: Session = Depends(get_db)):
+@router.patch("/membros/{agenda_trecho_id}/mover", response_model=schemas.EstruturaBaseRead)
+def mover_membro_base(agenda_trecho_id: int, payload: schemas.MembroBaseMover, db: Session = Depends(get_db)):
     try:
         dia_semana = mover_membro(
-            db, agenda_id, payload.sentido, payload.grupo_base_id, payload.hora, payload.ordem
+            db, agenda_trecho_id, payload.grupo_base_id, payload.hora, payload.ordem
         )
     except ValueError as erro:
         raise HTTPException(status_code=400, detail=str(erro)) from erro

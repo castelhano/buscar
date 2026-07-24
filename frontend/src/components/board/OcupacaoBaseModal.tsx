@@ -3,7 +3,7 @@ import type { MouseEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "../../api/client";
 import { useLockBodyScroll } from "../../hooks/useLockBodyScroll";
-import { DIAS_SEMANA, DIAS_SEMANA_LABEL } from "../../api/types";
+import { DIAS_SEMANA, DIAS_SEMANA_LABEL, rotuloPonto } from "../../api/types";
 import type { DiaSemana, EstruturaBase, Local } from "../../api/types";
 import {
   CAPACIDADE_ACOMPANHANTES_BASE,
@@ -436,7 +436,8 @@ export default function OcupacaoBaseModal({ diaSemanaInicial, locais, onFechar }
                             textDecoration: m.usuario_ativo && m.atendimento_ativo ? "none" : "line-through",
                           }}
                         >
-                          {m.usuario_abbr || m.usuario_nome} · {nomeLocal(m.destino_id)}
+                          {m.usuario_abbr || m.usuario_nome} ·{" "}
+                          {rotuloPonto(m.destino_tipo, nomeLocal(m.destino_id), m.destino_texto, m.usuario_abbr, m.usuario_nome)}
                           {m.acompanhante ? " (+1 acomp.)" : ""}
                         </li>
                       )),

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
-import type { GrupoBase, GrupoRevezamento, Local, Regiao, Sentido, ViagemBase } from "../../api/types";
+import type { GrupoBase, GrupoRevezamento, Local, Regiao, ViagemBase } from "../../api/types";
 import ViagemBaseBlock from "./ViagemBaseBlock";
 import { corRevezamento } from "./coresRevezamento";
 
@@ -15,7 +15,7 @@ interface Props {
   selecionadoPraRevezamento: boolean;
   onToggleSelecaoRevezamento: (grupoId: number, marcado: boolean) => void;
   onSairDoGrupoRevezamento: (grupoRevezamentoId: number) => void;
-  onNovaViagem: (grupoId: number, sentido: Sentido, hora: string) => void;
+  onNovaViagem: (grupoId: number, hora: string) => void;
   onRemoverGrupo: (grupoId: number) => void;
   onRemoverViagem: (viagemId: number) => void;
   onRemoverMembro: (membroId: number) => void;
@@ -44,7 +44,6 @@ export default function CarroBaseCard({
   onToggleDesvincularGrupoFamiliar,
 }: Props) {
   const [novaViagem, setNovaViagem] = useState(false);
-  const [sentido, setSentido] = useState<Sentido>("Ida");
   const [hora, setHora] = useState(periodo === "Tarde" ? "14:00" : "06:00");
 
   const { setNodeRef, isOver } = useDroppable({
@@ -52,9 +51,7 @@ export default function CarroBaseCard({
     data: { tipo: "grupo-base", grupoBaseId: grupo.id },
   });
 
-  const regiaoIds = grupo.viagens.flatMap((v) =>
-    v.membros.map((m) => (v.sentido === "Retorno" && m.regiao_destino_id != null ? m.regiao_destino_id : m.regiao_origem_id)),
-  );
+  const regiaoIds = grupo.viagens.flatMap((v) => v.membros.map((m) => m.regiao_origem_id ?? m.regiao_destino_id));
   const regiaoNomes = [...new Set(regiaoIds)].map((id) => regioes.find((r) => r.id === id)?.nome ?? "?");
   const carroVazio = grupo.viagens.every((v) => v.membros.length === 0);
 
@@ -137,15 +134,11 @@ export default function CarroBaseCard({
 
       {novaViagem ? (
         <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.3rem", alignItems: "center", flexWrap: "wrap" }}>
-          <select value={sentido} onChange={(e) => setSentido(e.target.value as Sentido)}>
-            <option value="Ida">Ida</option>
-            <option value="Retorno">Retorno</option>
-          </select>
           <input type="time" value={hora} onChange={(e) => setHora(e.target.value)} />
           <button
             className="btn btn-sm btn-primario"
             onClick={() => {
-              onNovaViagem(grupo.id, sentido, hora);
+              onNovaViagem(grupo.id, hora);
               setNovaViagem(false);
             }}
           >

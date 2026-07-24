@@ -76,7 +76,8 @@ export default function SemVagaPanel({ passageiros, locais, regioes, onRemover, 
               key={p.id}
               viagemId={-1}
               passageiro={p}
-              destinoNome={locais.find((l) => l.id === p.destino_id)?.nome}
+              origemLocalNome={locais.find((l) => l.id === p.origem_id)?.nome}
+              destinoLocalNome={locais.find((l) => l.id === p.destino_id)?.nome}
               onRemover={onRemover}
               onCancelar={onCancelar}
               onEditar={onEditar}

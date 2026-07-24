@@ -1,18 +1,28 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { ViagemDiaPassageiro } from "../../api/types";
+import { rotuloPonto, rotuloTrecho } from "../../api/types";
 import { rotuloIdade } from "../../utils/data";
 
 interface Props {
   viagemId: number;
   passageiro: ViagemDiaPassageiro;
-  destinoNome?: string;
+  origemLocalNome?: string;
+  destinoLocalNome?: string;
   onRemover?: (id: number) => void;
   onCancelar?: (id: number) => void;
   onEditar?: (passageiro: ViagemDiaPassageiro) => void;
 }
 
-export default function PassageiroCard({ viagemId, passageiro, destinoNome, onRemover, onCancelar, onEditar }: Props) {
+export default function PassageiroCard({
+  viagemId,
+  passageiro,
+  origemLocalNome,
+  destinoLocalNome,
+  onRemover,
+  onCancelar,
+  onEditar,
+}: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: passageiro.id,
     data: { viagemId, passageiroId: passageiro.id },
@@ -52,7 +62,7 @@ export default function PassageiroCard({ viagemId, passageiro, destinoNome, onRe
           <span style={{ color: "var(--cor-texto-suave)" }}>{rotuloIdade(passageiro.usuario.data_nascimento)}</span>
         </span>
         <span>
-          {passageiro.sentido} {passageiro.hora.slice(0, 5)}
+          {rotuloTrecho(passageiro.ordem_trecho)} {passageiro.hora.slice(0, 5)}
         </span>
       </div>
       {passageiro.acompanhante && (
@@ -66,17 +76,24 @@ export default function PassageiroCard({ viagemId, passageiro, destinoNome, onRe
         </div>
       )}
       <div className="linha-2 linha-origem-destino">
-        {passageiro.sentido === "Retorno" ? (
-          <>
-            <span title={destinoNome}>{passageiro.destino_id ? destinoNome ?? "destino cadastrado" : "-"}</span>
-            <span title={passageiro.origem ?? undefined}>{passageiro.origem ?? "-"}</span>
-          </>
-        ) : (
-          <>
-            <span title={passageiro.origem ?? undefined}>{passageiro.origem ?? "-"}</span>
-            <span title={destinoNome}>{passageiro.destino_id ? destinoNome ?? "destino cadastrado" : "-"}</span>
-          </>
-        )}
+        <span>
+          {rotuloPonto(
+            passageiro.origem_tipo,
+            origemLocalNome,
+            passageiro.origem_texto,
+            passageiro.usuario.abbr,
+            passageiro.usuario.nome,
+          )}
+        </span>
+        <span>
+          {rotuloPonto(
+            passageiro.destino_tipo,
+            destinoLocalNome,
+            passageiro.destino_texto,
+            passageiro.usuario.abbr,
+            passageiro.usuario.nome,
+          )}
+        </span>
       </div>
       {passageiro.irregular && (
         <div className="linha-2" title={passageiro.motivo_irregular ?? ""} style={{ color: "var(--cor-alerta-borda)", fontWeight: 600 }}>

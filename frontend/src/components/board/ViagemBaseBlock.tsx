@@ -51,7 +51,6 @@ export default function ViagemBaseBlock({
       tipo: "viagem-base",
       viagemBaseId: viagem.id,
       grupoBaseId: viagem.grupo_base_id,
-      sentido: viagem.sentido,
       hora: viagem.hora,
     },
   });
@@ -94,7 +93,7 @@ export default function ViagemBaseBlock({
           </div>
         ) : (
           <div className="horario-grupo-label" style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-            {viagem.sentido} · {viagem.hora.slice(0, 5)}
+            {viagem.hora.slice(0, 5)}
             <button
               className="btn btn-sm"
               title="Alterar horario da viagem (ajusta a agenda de todos os passageiros)"
@@ -137,10 +136,10 @@ export default function ViagemBaseBlock({
               key={m.id}
               viagemBaseId={viagem.id}
               grupoBaseId={viagem.grupo_base_id}
-              sentido={viagem.sentido}
               hora={viagem.hora}
               membro={m}
-              destinoNome={locais.find((l) => l.id === m.destino_id)?.nome}
+              origemLocalNome={locais.find((l) => l.id === m.origem_id)?.nome}
+              destinoLocalNome={locais.find((l) => l.id === m.destino_id)?.nome}
               onRemover={onRemoverMembro}
             />
           ));

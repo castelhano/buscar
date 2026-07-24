@@ -1,13 +1,22 @@
 import { useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import type { Local, NaoClassificadoBase, Regiao } from "../../api/types";
+import { rotuloPonto, rotuloTrecho } from "../../api/types";
 import { rotuloIdade } from "../../utils/data";
 import { corGrupoFamiliar } from "./coresGrupoFamiliar";
 
-function MembroNaoClassificadoCard({ membro, destinoNome }: { membro: NaoClassificadoBase; destinoNome?: string }) {
+function MembroNaoClassificadoCard({
+  membro,
+  origemLocalNome,
+  destinoLocalNome,
+}: {
+  membro: NaoClassificadoBase;
+  origemLocalNome?: string;
+  destinoLocalNome?: string;
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: `nc-${membro.agenda_id}-${membro.sentido}`,
-    data: { tipo: "nao-classificado", agendaId: membro.agenda_id, sentido: membro.sentido, hora: membro.hora },
+    id: `nc-${membro.agenda_trecho_id}`,
+    data: { tipo: "nao-classificado", agendaTrechoId: membro.agenda_trecho_id, hora: membro.hora },
   });
   const style = {
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
@@ -29,7 +38,7 @@ function MembroNaoClassificadoCard({ membro, destinoNome }: { membro: NaoClassif
           <span style={{ color: "var(--cor-texto-suave)" }}>{rotuloIdade(membro.usuario_data_nascimento)}</span>
         </span>
         <span>
-          {membro.sentido} {membro.hora.slice(0, 5)}
+          {rotuloTrecho(membro.ordem_trecho)} {membro.hora.slice(0, 5)}
         </span>
       </div>
       {membro.acompanhante && (
@@ -38,8 +47,12 @@ function MembroNaoClassificadoCard({ membro, destinoNome }: { membro: NaoClassif
         </div>
       )}
       <div className="linha-2 linha-origem-destino">
-        <span title={membro.origem ?? undefined}>{membro.origem ?? "-"}</span>
-        <span title={destinoNome}>{membro.destino_id ? destinoNome ?? "destino cadastrado" : "-"}</span>
+        <span>
+          {rotuloPonto(membro.origem_tipo, origemLocalNome, membro.origem_texto, membro.usuario_abbr, membro.usuario_nome)}
+        </span>
+        <span>
+          {rotuloPonto(membro.destino_tipo, destinoLocalNome, membro.destino_texto, membro.usuario_abbr, membro.usuario_nome)}
+        </span>
       </div>
     </div>
   );
@@ -75,7 +88,7 @@ export default function NaoClassificadosBasePanel({ membros, locais, regioes }: 
     <div className="painel sem-vaga-painel">
       <h3>Nao classificados ({membros.length})</h3>
       <p style={{ fontSize: "0.8rem", color: "var(--cor-texto-suave)", marginTop: 0 }}>
-        Usuarios sem carro definido na Base pra esse sentido -- arraste pra dentro de um carro.
+        Usuarios sem carro definido na Base pra esse trecho -- arraste pra dentro de um carro.
       </p>
       <div style={{ display: "flex", gap: "0.3rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
         <input
@@ -108,9 +121,10 @@ export default function NaoClassificadosBasePanel({ membros, locais, regioes }: 
       <div className="sem-vaga-lista">
         {filtrados.map((m) => (
           <MembroNaoClassificadoCard
-            key={`${m.agenda_id}-${m.sentido}`}
+            key={m.agenda_trecho_id}
             membro={m}
-            destinoNome={locais.find((l) => l.id === m.destino_id)?.nome}
+            origemLocalNome={locais.find((l) => l.id === m.origem_id)?.nome}
+            destinoLocalNome={locais.find((l) => l.id === m.destino_id)?.nome}
           />
         ))}
       </div>

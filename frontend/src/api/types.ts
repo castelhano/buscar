@@ -6,11 +6,16 @@ export type TipoAtendimento = "Fixo" | "Eventual";
 export type OperacaoExcecao = "Adicao" | "Modificacao" | "Suspensao";
 export type DiaSemana = "SEG" | "TER" | "QUA" | "QUI" | "SEX" | "SAB" | "DOM";
 export type TipoLocal = "Escola" | "Fisioterapia" | "Equoterapia" | "Trabalho" | "Hemodialise" | "Medico" | "Outros";
-export type Sentido = "Ida" | "Retorno";
 export type StatusViagemDia = "Planejada" | "Confirmada" | "Cancelada";
 export type StatusAtendimentoDia = "Agendado" | "Cancelado" | "Em analise";
 export type StatusFrequencia = "Trabalhado" | "Folga" | "Ferias" | "Falta" | "Pendente";
 export type PapelConta = "Admin" | "Operador";
+/** O que a origem ou o destino de um trecho representa: um Local cadastrado
+ * (nome/endereco/regiao vem de la), o endereco principal do proprio usuario
+ * do atendimento (sem precisar redigitar -- deriva de Usuario.abbr/detalhe/
+ * regiao_id), ou um endereco avulso (rotulo + endereco completo digitados na
+ * hora, regiao informada manualmente -- unico caso sem de onde derivar). */
+export type TipoPonto = "Local" | "Usuario" | "Avulso";
 
 export const DIAS_SEMANA: DiaSemana[] = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
 export const DIAS_SEMANA_LABEL: Record<DiaSemana, string> = {
@@ -40,6 +45,32 @@ const DIA_SEMANA_POR_WEEKDAY_JS: DiaSemana[] = ["DOM", "SEG", "TER", "QUA", "QUI
 export function diaSemanaFromData(data: string): DiaSemana {
   const [ano, mes, dia] = data.split("-").map(Number);
   return DIA_SEMANA_POR_WEEKDAY_JS[new Date(ano, mes - 1, dia).getDay()];
+}
+
+/** Rotulo puramente posicional -- sem tentar adivinhar Ida/Retorno (isso
+ * gera confusao em itinerarios com mais de 2 trechos ou retorno pra um
+ * local diferente da origem, ver Trecho). */
+export function rotuloTrecho(ordemTrecho: number): string {
+  return `Trecho ${ordemTrecho + 1}`;
+}
+
+/** Rotulo de exibicao (card/celula) de um ponto (origem OU destino) ja
+ * resolvido, a partir do tipo escolhido (ver TipoPonto): Local usa o nome
+ * cadastrado (resolvido pelo chamador, que ja tem a lista de locais em mao);
+ * Usuario usa o abbr/nome do proprio usuario do atendimento; Avulso usa o
+ * rotulo digitado. `null` (so valido pra origem) significa "herda do trecho
+ * anterior". */
+export function rotuloPonto(
+  tipo: TipoPonto | null,
+  localNome: string | undefined,
+  texto: string | null | undefined,
+  usuarioAbbr: string | undefined,
+  usuarioNome: string | undefined,
+): string {
+  if (tipo === "Local") return localNome ?? "local cadastrado";
+  if (tipo === "Usuario") return usuarioAbbr || usuarioNome || "-";
+  if (tipo === "Avulso") return texto || "-";
+  return "(herda)";
 }
 
 export interface Regiao {
@@ -115,6 +146,7 @@ export interface Usuario {
   detalhe: string | null;
   observacao: string | null;
   grupo_familiar_id: number | null;
+  regiao_id: number | null;
 }
 
 export interface GrupoFamiliar {
@@ -126,19 +158,56 @@ export interface GrupoFamiliarComUsuarios extends GrupoFamiliar {
   usuarios: Usuario[];
 }
 
+/** Uma perna do itinerario do dia (origem/destino/hora/acompanhante), na
+ * posicao `ordem` (0-based). Ida-e-volta convencional e so uma lista de 2
+ * trechos -- nao ha caso especial pra isso.
+ *
+ * Origem e destino sao cada um um "ponto" com tipo (ver TipoPonto): Local
+ * cadastrado (`*_id`), endereco do proprio usuario (sem campo extra) ou
+ * avulso (`*_texto` + `*_detalhe` opcional + `regiao_*_id` obrigatorio,
+ * unico caso sem de onde derivar a regiao sozinho). `origem_tipo` nulo so
+ * vale em trechos que nao sao o primeiro do itinerario -- significa "herda
+ * o destino do trecho anterior". */
+export interface Trecho {
+  id: number;
+  ordem: number;
+  hora: string;
+  origem_tipo: TipoPonto | null;
+  origem_id: number | null;
+  origem_texto: string | null;
+  origem_detalhe: string | null;
+  regiao_origem_id: number | null;
+  destino_tipo: TipoPonto;
+  destino_id: number | null;
+  destino_texto: string | null;
+  destino_detalhe: string | null;
+  regiao_destino_id: number | null;
+  acompanhante: boolean;
+}
+
+export interface TrechoInput {
+  hora: string;
+  origem_tipo: TipoPonto | null;
+  origem_id: number | null;
+  origem_texto: string | null;
+  origem_detalhe: string | null;
+  regiao_origem_id: number | null;
+  destino_tipo: TipoPonto;
+  destino_id: number | null;
+  destino_texto: string | null;
+  destino_detalhe: string | null;
+  regiao_destino_id: number | null;
+  acompanhante: boolean;
+}
+
 export interface UsuarioAgendaSemanal {
   id: number;
   usuario_id: number;
   dia_semana: DiaSemana;
   tipo: TipoAtendimento;
-  acompanhante: boolean;
-  saida: string | null;
-  retorno: string | null;
-  origem: string | null;
-  regiao_origem_id: number | null;
-  destino_id: number | null;
   ativo: boolean;
   detalhe: string | null;
+  trechos: Trecho[];
 }
 
 export interface UsuarioExcecao {
@@ -148,13 +217,8 @@ export interface UsuarioExcecao {
   data_fim: string;
   operacao: OperacaoExcecao;
   tipo: TipoAtendimento | null;
-  saida: string | null;
-  retorno: string | null;
-  origem: string | null;
-  regiao_origem_id: number | null;
-  destino_id: number | null;
-  acompanhante: boolean | null;
   motivo: string | null;
+  trechos: Trecho[];
 }
 
 export interface UsuarioComAgenda extends Usuario {
@@ -167,11 +231,17 @@ export interface ViagemDiaPassageiro {
   viagem_dia_id: number | null;
   usuario_id: number;
   usuario: Usuario;
-  sentido: Sentido;
+  ordem_trecho: number;
   hora: string;
-  origem: string | null;
+  origem_tipo: TipoPonto | null;
+  origem_id: number | null;
+  origem_texto: string | null;
+  origem_detalhe: string | null;
   regiao_origem_id: number | null;
+  destino_tipo: TipoPonto;
   destino_id: number | null;
+  destino_texto: string | null;
+  destino_detalhe: string | null;
   regiao_destino_id: number | null;
   acompanhante: boolean;
   ordem: number;
@@ -210,7 +280,8 @@ export interface ViagemDia {
 
 export interface MembroBase {
   id: number;
-  agenda_id: number;
+  agenda_trecho_id: number;
+  ordem_trecho: number;
   ordem: number;
   usuario_id: number;
   usuario_nome: string;
@@ -220,9 +291,15 @@ export interface MembroBase {
   atendimento_ativo: boolean;
   usuario_grupo_familiar_id: number | null;
   usuario_grupo_familiar_nome: string | null;
-  origem: string | null;
+  origem_tipo: TipoPonto | null;
+  origem_id: number | null;
+  origem_texto: string | null;
+  origem_detalhe: string | null;
   regiao_origem_id: number | null;
+  destino_tipo: TipoPonto;
   destino_id: number | null;
+  destino_texto: string | null;
+  destino_detalhe: string | null;
   regiao_destino_id: number | null;
   acompanhante: boolean;
   hora_agenda: string;
@@ -231,7 +308,6 @@ export interface MembroBase {
 export interface ViagemBase {
   id: number;
   grupo_base_id: number;
-  sentido: Sentido;
   hora: string;
   membros: MembroBase[];
 }
@@ -266,18 +342,24 @@ export interface GrupoRevezamento {
 }
 
 export interface NaoClassificadoBase {
-  agenda_id: number;
+  agenda_trecho_id: number;
+  ordem_trecho: number;
   usuario_id: number;
   usuario_nome: string;
   usuario_abbr: string;
   usuario_data_nascimento: string | null;
-  sentido: Sentido;
   hora: string;
   usuario_grupo_familiar_id: number | null;
   usuario_grupo_familiar_nome: string | null;
-  origem: string | null;
+  origem_tipo: TipoPonto | null;
+  origem_id: number | null;
+  origem_texto: string | null;
+  origem_detalhe: string | null;
   regiao_origem_id: number | null;
+  destino_tipo: TipoPonto;
   destino_id: number | null;
+  destino_texto: string | null;
+  destino_detalhe: string | null;
   regiao_destino_id: number | null;
   acompanhante: boolean;
 }

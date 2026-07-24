@@ -15,12 +15,11 @@ from app.models import (
     GrupoRevezamento,
     GrupoRevezamentoCarro,
     GrupoRevezamentoCondutor,
-    Local,
     MembroViagemBase,
-    Sentido,
     StatusAtivoInativo,
     Usuario,
     UsuarioAgendaSemanal,
+    UsuarioAgendaSemanalTrecho,
     ViagemBase,
 )
 from app.services.geracao import agendas_fixo_da_semana, montar_pernas
@@ -29,21 +28,19 @@ from app.services.geracao import agendas_fixo_da_semana, montar_pernas
 def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
     """Le grupos/viagens/membros do dia da semana + calcula quem ainda nao
     esta classificado em nenhum grupo (agenda elegivel hoje sem
-    `MembroViagemBase` nesse sentido).
+    `MembroViagemBase` nesse trecho).
     """
     agendas = agendas_fixo_da_semana(db, dia_semana)
-    locais_regiao = dict(db.query(Local.id, Local.regiao_id).all())
-    pernas_por_regiao = montar_pernas(agendas, {}, set(), locais_regiao)
-    pernas_por_agenda_sentido = {
-        (p["agenda_id"], p["sentido"]): p for pernas in pernas_por_regiao.values() for p in pernas
-    }
+    pernas_por_regiao = montar_pernas(agendas, {}, set())
+    pernas_por_trecho = {p["trecho_key"]: p for pernas in pernas_por_regiao.values() for p in pernas}
 
     grupos_db = (
         db.query(GrupoBase)
         .options(
             joinedload(GrupoBase.viagens)
             .joinedload(ViagemBase.membros)
-            .joinedload(MembroViagemBase.agenda)
+            .joinedload(MembroViagemBase.agenda_trecho)
+            .joinedload(UsuarioAgendaSemanalTrecho.agenda)
             .joinedload(UsuarioAgendaSemanal.usuario)
             .joinedload(Usuario.grupo_familiar),
         )
@@ -73,58 +70,76 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
             "atendimento_ativo": atendimento_ativo,
             "usuario_grupo_familiar_id": perna["usuario"].grupo_familiar_id,
             "usuario_grupo_familiar_nome": perna["usuario"].grupo_familiar.nome if perna["usuario"].grupo_familiar else None,
-            "origem": perna["origem"],
+            "origem_tipo": perna["origem_tipo"],
+            "origem_id": perna["origem_id"],
+            "origem_texto": perna["origem_texto"],
+            "origem_detalhe": perna["origem_detalhe"],
             "regiao_origem_id": perna["regiao_origem_id"],
+            "destino_tipo": perna["destino_tipo"],
             "destino_id": perna["destino_id"],
+            "destino_texto": perna["destino_texto"],
+            "destino_detalhe": perna["destino_detalhe"],
             "regiao_destino_id": perna["regiao_destino_id"],
             "acompanhante": perna["acompanhante"],
             "hora_agenda": perna["hora"],
         }
 
-    def _perna_reconstruida_da_agenda(agenda: UsuarioAgendaSemanal, sentido: Sentido) -> dict:
-        """Reconstroi os dados de exibicao direto da agenda (sem excecao/
+    def _perna_reconstruida_do_trecho(trecho: UsuarioAgendaSemanalTrecho) -> dict:
+        """Reconstroi os dados de exibicao direto do trecho (sem excecao/
         recesso, que nao existem no modo Base) pra usuario Inativo ou
         atendimento (`UsuarioAgendaSemanal.ativo`) desligado -- mantem o card
         visivel (com destaque) em vez de sumir, ja que o vinculo
         (MembroViagemBase) continua no banco ate alguem decidir remover.
         """
-        destino_id = agenda.destino_id
         return {
-            "usuario_id": agenda.usuario_id,
-            "usuario": agenda.usuario,
-            "origem": agenda.origem,
-            "regiao_origem_id": agenda.regiao_origem_id,
-            "destino_id": destino_id,
-            "regiao_destino_id": locais_regiao.get(destino_id) if destino_id else None,
-            "acompanhante": agenda.acompanhante,
-            "hora": agenda.saida if sentido == Sentido.IDA else agenda.retorno,
+            "usuario_id": trecho.agenda.usuario_id,
+            "usuario": trecho.agenda.usuario,
+            "origem_tipo": trecho.origem_tipo,
+            "origem_id": trecho.origem_id,
+            "origem_texto": trecho.origem_texto,
+            "origem_detalhe": trecho.origem_detalhe,
+            "regiao_origem_id": trecho.regiao_origem_id,
+            "destino_tipo": trecho.destino_tipo,
+            "destino_id": trecho.destino_id,
+            "destino_texto": trecho.destino_texto,
+            "destino_detalhe": trecho.destino_detalhe,
+            "regiao_destino_id": trecho.regiao_destino_id,
+            "acompanhante": trecho.acompanhante,
+            "hora": trecho.hora,
         }
 
-    classificados: set[tuple[int, Sentido]] = set()
+    classificados: set[int] = set()
     grupos_saida = []
     for grupo in grupos_db:
         viagens_saida = []
         for viagem in sorted(grupo.viagens, key=lambda v: v.hora):
             membros_saida = []
             for membro in sorted(viagem.membros, key=lambda m: m.ordem):
-                perna = pernas_por_agenda_sentido.get((membro.agenda_id, viagem.sentido))
+                trecho = membro.agenda_trecho
+                agenda = trecho.agenda
+                perna = pernas_por_trecho.get(membro.agenda_trecho_id)
                 if perna is not None:
-                    classificados.add((membro.agenda_id, viagem.sentido))
+                    classificados.add(membro.agenda_trecho_id)
                     perna_serializada = _serializar_perna(perna, atendimento_ativo=True)
-                elif membro.agenda.usuario.status == StatusAtivoInativo.ATIVO and membro.agenda.ativo:
+                elif agenda.usuario.status == StatusAtivoInativo.ATIVO and agenda.ativo:
                     continue  # agenda nao elegivel por outro motivo (removida/suspensa/sem regiao) -- nao aparece
                 else:
                     perna_serializada = _serializar_perna(
-                        _perna_reconstruida_da_agenda(membro.agenda, viagem.sentido), atendimento_ativo=membro.agenda.ativo
+                        _perna_reconstruida_do_trecho(trecho), atendimento_ativo=agenda.ativo
                     )
                 membros_saida.append(
-                    {"id": membro.id, "agenda_id": membro.agenda_id, "ordem": membro.ordem, **perna_serializada}
+                    {
+                        "id": membro.id,
+                        "agenda_trecho_id": membro.agenda_trecho_id,
+                        "ordem_trecho": trecho.ordem,
+                        "ordem": membro.ordem,
+                        **perna_serializada,
+                    }
                 )
             viagens_saida.append(
                 {
                     "id": viagem.id,
                     "grupo_base_id": grupo.id,
-                    "sentido": viagem.sentido,
                     "hora": viagem.hora,
                     "membros": membros_saida,
                 }
@@ -140,8 +155,13 @@ def montar_estrutura_base(db: Session, dia_semana: DiaSemana) -> dict:
         )
 
     nao_classificados = [
-        {"agenda_id": perna["agenda_id"], "sentido": perna["sentido"], "hora": perna["hora"], **_serializar_perna(perna)}
-        for chave, perna in pernas_por_agenda_sentido.items()
+        {
+            "agenda_trecho_id": perna["trecho_key"],
+            "ordem_trecho": perna["ordem_trecho"],
+            "hora": perna["hora"],
+            **_serializar_perna(perna),
+        }
+        for chave, perna in pernas_por_trecho.items()
         if chave not in classificados
     ]
     nao_classificados.sort(key=lambda p: (p["hora"], p["usuario_nome"]))
@@ -183,18 +203,18 @@ def remover_grupo(db: Session, grupo_id: int) -> None:
     db.commit()
 
 
-def criar_viagem(db: Session, grupo_id: int, sentido: Sentido, hora: dt.time) -> ViagemBase:
+def criar_viagem(db: Session, grupo_id: int, hora: dt.time) -> ViagemBase:
     grupo = db.get(GrupoBase, grupo_id)
     if grupo is None:
         raise ValueError("Grupo nao encontrado")
     existente = (
         db.query(ViagemBase)
-        .filter(ViagemBase.grupo_base_id == grupo_id, ViagemBase.sentido == sentido, ViagemBase.hora == hora)
+        .filter(ViagemBase.grupo_base_id == grupo_id, ViagemBase.hora == hora)
         .first()
     )
     if existente is not None:
-        raise ValueError("Ja existe uma viagem nesse sentido/horario nesse carro")
-    viagem = ViagemBase(grupo_base_id=grupo_id, sentido=sentido, hora=hora)
+        raise ValueError("Ja existe uma viagem nesse horario nesse carro")
+    viagem = ViagemBase(grupo_base_id=grupo_id, hora=hora)
     db.add(viagem)
     db.commit()
     db.refresh(viagem)
@@ -291,14 +311,13 @@ def remover_viagem(db: Session, viagem_id: int) -> None:
 
 
 def alterar_hora_viagem(db: Session, viagem_id: int, nova_hora: dt.time) -> DiaSemana:
-    """Muda o horario de uma `ViagemBase` e propaga pra agenda semanal de
-    cada membro (saida/retorno conforme o sentido) -- ao contrario de
-    `mover_membro`, aqui e o horario que muda pra bater com o carro, nao o
-    contrario.
+    """Muda o horario de uma `ViagemBase` e propaga pro trecho de cada membro
+    -- ao contrario de `mover_membro`, aqui e o horario que muda pra bater com
+    o carro, nao o contrario.
 
-    Se ja existir uma viagem no mesmo carro/sentido/horario de destino, os
-    membros sao fundidos nela (a viagem original, que ficaria orfa, e
-    removida) em vez de bloquear a alteracao.
+    Se ja existir uma viagem no mesmo carro/horario de destino, os membros
+    sao fundidos nela (a viagem original, que ficaria orfa, e removida) em vez
+    de bloquear a alteracao.
     """
     viagem = db.get(ViagemBase, viagem_id)
     if viagem is None:
@@ -311,7 +330,6 @@ def alterar_hora_viagem(db: Session, viagem_id: int, nova_hora: dt.time) -> DiaS
         db.query(ViagemBase)
         .filter(
             ViagemBase.grupo_base_id == viagem.grupo_base_id,
-            ViagemBase.sentido == viagem.sentido,
             ViagemBase.hora == nova_hora,
             ViagemBase.id != viagem_id,
         )
@@ -319,10 +337,7 @@ def alterar_hora_viagem(db: Session, viagem_id: int, nova_hora: dt.time) -> DiaS
     )
 
     for membro in viagem.membros:
-        if viagem.sentido == Sentido.IDA:
-            membro.agenda.saida = nova_hora
-        else:
-            membro.agenda.retorno = nova_hora
+        membro.agenda_trecho.hora = nova_hora
 
     if conflito is not None:
         maior_ordem = db.query(func.max(MembroViagemBase.ordem)).filter(
@@ -364,36 +379,32 @@ def remover_membro(db: Session, membro_id: int) -> None:
 
 def mover_membro(
     db: Session,
-    agenda_id: int,
-    sentido: Sentido,
+    agenda_trecho_id: int,
     grupo_base_id: int,
     hora: dt.time,
     ordem: int | None,
 ) -> DiaSemana:
-    """Move (ou classifica pela primeira vez) a perna `sentido` da agenda pra
-    dentro do carro `grupo_base_id`, no horario `hora` -- cria a viagem_base
-    on-the-fly se ainda nao existir nesse carro. Sem nenhuma checagem de
-    regiao/capacidade: e livre por construcao, so a geracao real decide se da
-    pra materializar como carro de verdade. Devolve o `dia_semana` da agenda,
-    pro chamador recarregar a estrutura certa.
+    """Move (ou classifica pela primeira vez) o trecho pra dentro do carro
+    `grupo_base_id`, no horario `hora` -- cria a viagem_base on-the-fly se
+    ainda nao existir nesse carro. Sem nenhuma checagem de regiao/capacidade:
+    e livre por construcao, so a geracao real decide se da pra materializar
+    como carro de verdade. Devolve o `dia_semana` da agenda, pro chamador
+    recarregar a estrutura certa.
     """
-    agenda = db.get(UsuarioAgendaSemanal, agenda_id)
-    if agenda is None:
-        raise ValueError("Agenda nao encontrada")
-    hora_agenda = agenda.saida if sentido == Sentido.IDA else agenda.retorno
-    if hora_agenda is None:
-        raise ValueError("Usuario nao tem esse sentido nesse dia da semana")
-    if hora_agenda != hora:
-        # o horario de um membro tem que bater com o horario real da agenda
+    trecho = db.get(UsuarioAgendaSemanalTrecho, agenda_trecho_id)
+    if trecho is None:
+        raise ValueError("Trecho nao encontrado")
+    if trecho.hora != hora:
+        # o horario de um membro tem que bater com o horario real do trecho
         # dele -- Base so agrupa em carros, nao muda quando a pessoa e
         # atendida. Sem essa checagem, um drop solto em cima de uma viagem
         # de outro horario corromperia silenciosamente o horario "efetivo"
         # dessa pessoa na geracao (ela ficaria com hora real X dentro de uma
         # viagem_base rotulada com hora Y).
         raise ValueError(
-            f"Horario informado ({hora}) nao bate com o horario real do usuario nesse sentido ({hora_agenda})"
+            f"Horario informado ({hora}) nao bate com o horario real do trecho ({trecho.hora})"
         )
-    dia_semana = agenda.dia_semana
+    dia_semana = trecho.agenda.dia_semana
 
     grupo = db.get(GrupoBase, grupo_base_id)
     if grupo is None or grupo.dia_semana != dia_semana:
@@ -401,18 +412,17 @@ def mover_membro(
 
     viagem_destino = (
         db.query(ViagemBase)
-        .filter(ViagemBase.grupo_base_id == grupo_base_id, ViagemBase.sentido == sentido, ViagemBase.hora == hora)
+        .filter(ViagemBase.grupo_base_id == grupo_base_id, ViagemBase.hora == hora)
         .first()
     )
     if viagem_destino is None:
-        viagem_destino = ViagemBase(grupo_base_id=grupo_base_id, sentido=sentido, hora=hora)
+        viagem_destino = ViagemBase(grupo_base_id=grupo_base_id, hora=hora)
         db.add(viagem_destino)
         db.flush()
 
     antigos = (
         db.query(MembroViagemBase)
-        .join(ViagemBase, MembroViagemBase.viagem_base_id == ViagemBase.id)
-        .filter(MembroViagemBase.agenda_id == agenda_id, ViagemBase.sentido == sentido)
+        .filter(MembroViagemBase.agenda_trecho_id == agenda_trecho_id)
         .all()
     )
     viagens_origem = {m.viagem_base_id for m in antigos if m.viagem_base_id != viagem_destino.id}
@@ -422,7 +432,7 @@ def mover_membro(
     for viagem_origem_id in viagens_origem:
         _reindexar_viagem(db, viagem_origem_id)
 
-    membro = MembroViagemBase(viagem_base_id=viagem_destino.id, agenda_id=agenda_id, ordem=0)
+    membro = MembroViagemBase(viagem_base_id=viagem_destino.id, agenda_trecho_id=agenda_trecho_id, ordem=0)
     db.add(membro)
     db.flush()
 

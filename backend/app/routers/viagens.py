@@ -27,6 +27,7 @@ from app.services.geracao import (
     listar_desconsiderados_dia,
     reverter_giro_revezamento,
 )
+from app.services.pontos import PontoInvalido, resolver_trecho
 from app.services.recursos import fim_viagem, inicio_viagem, janelas_sobrepoem
 
 router = APIRouter(prefix="/viagens", tags=["viagens"], dependencies=[Depends(obter_conta_atual)])
@@ -67,20 +68,74 @@ def _verificar_passageiro_destravado(db: Session, passageiro: models.ViagemDiaPa
 
 
 def _verificar_conflito(
-    db: Session, viagem_dia_id: int, usuario_id: int, sentido: models.Sentido, excluir_passageiro_id: int | None = None
+    db: Session, viagem_dia_id: int, usuario_id: int, ordem_trecho: int, excluir_passageiro_id: int | None = None
 ) -> None:
     query = db.query(models.ViagemDiaPassageiro).filter(
         models.ViagemDiaPassageiro.viagem_dia_id == viagem_dia_id,
         models.ViagemDiaPassageiro.usuario_id == usuario_id,
-        models.ViagemDiaPassageiro.sentido == sentido,
+        models.ViagemDiaPassageiro.ordem_trecho == ordem_trecho,
     )
     if excluir_passageiro_id is not None:
         query = query.filter(models.ViagemDiaPassageiro.id != excluir_passageiro_id)
     if query.first() is not None:
         raise HTTPException(
             status_code=409,
-            detail=f"Usuario ja possui um atendimento de {sentido.value} nesse carro",
+            detail=f"Usuario ja possui um atendimento do Trecho {ordem_trecho + 1} nesse carro",
         )
+
+
+_CAMPOS_PONTO = (
+    "origem_tipo",
+    "origem_id",
+    "origem_texto",
+    "origem_detalhe",
+    "regiao_origem_id",
+    "destino_tipo",
+    "destino_id",
+    "destino_texto",
+    "destino_detalhe",
+    "regiao_destino_id",
+)
+
+
+def _preparar_pontos_passageiro(
+    db: Session, passageiro: models.ViagemDiaPassageiro | None, usuario: models.Usuario, dados: dict
+) -> None:
+    """Resolve origem/destino de um `ViagemDiaPassageiro` a partir do tipo
+    escolhido (ver `app.services.pontos.resolver_trecho`), atualizando
+    `dados` in-place. Na criacao (`passageiro=None`) sempre resolve; num
+    patch parcial, so reprocessa se o payload de fato tocou em algum campo
+    de origem/destino -- campos que faltarem no payload caem pro valor atual
+    do passageiro.
+    """
+    if passageiro is not None and not any(campo in dados for campo in _CAMPOS_PONTO):
+        return
+
+    def valor(campo: str, default=None):
+        if campo in dados:
+            return dados[campo]
+        return getattr(passageiro, campo) if passageiro is not None else default
+
+    ordem_trecho = dados.get("ordem_trecho", passageiro.ordem_trecho if passageiro is not None else 0)
+    try:
+        resolvido = resolver_trecho(
+            db,
+            usuario,
+            origem_tipo=valor("origem_tipo"),
+            origem_id=valor("origem_id"),
+            origem_texto=valor("origem_texto"),
+            origem_detalhe=valor("origem_detalhe"),
+            regiao_origem_id=valor("regiao_origem_id"),
+            destino_tipo=valor("destino_tipo", models.TipoPonto.LOCAL),
+            destino_id=valor("destino_id"),
+            destino_texto=valor("destino_texto"),
+            destino_detalhe=valor("destino_detalhe"),
+            regiao_destino_id=valor("regiao_destino_id"),
+            primeiro=ordem_trecho == 0,
+        )
+    except PontoInvalido as erro:
+        raise HTTPException(status_code=400, detail=str(erro)) from erro
+    dados.update(resolvido)
 
 
 @dataclass
@@ -436,11 +491,17 @@ def copiar_dia(payload: schemas.ViagemDiaCopiar, db: Session = Depends(get_db)):
                     models.ViagemDiaPassageiro(
                         viagem_dia_id=viagem_destino.id,
                         usuario_id=passageiro.usuario_id,
-                        sentido=passageiro.sentido,
+                        ordem_trecho=passageiro.ordem_trecho,
                         hora=passageiro.hora,
-                        origem=passageiro.origem,
+                        origem_tipo=passageiro.origem_tipo,
+                        origem_id=passageiro.origem_id,
+                        origem_texto=passageiro.origem_texto,
+                        origem_detalhe=passageiro.origem_detalhe,
                         regiao_origem_id=passageiro.regiao_origem_id,
+                        destino_tipo=passageiro.destino_tipo,
                         destino_id=passageiro.destino_id,
+                        destino_texto=passageiro.destino_texto,
+                        destino_detalhe=passageiro.destino_detalhe,
                         regiao_destino_id=passageiro.regiao_destino_id,
                         acompanhante=passageiro.acompanhante,
                         ordem=passageiro.ordem,
@@ -627,13 +688,14 @@ def remover_viagem(viagem_id: int, db: Session = Depends(get_db)):
 def adicionar_passageiro(viagem_id: int, payload: schemas.ViagemDiaPassageiroCreate, db: Session = Depends(get_db)):
     viagem = _get_viagem_ou_404(db, viagem_id)
     _verificar_viagem_destravada(db, viagem)
-    if db.get(models.Usuario, payload.usuario_id) is None:
+    usuario = db.get(models.Usuario, payload.usuario_id)
+    if usuario is None:
         raise HTTPException(status_code=404, detail=f"Usuario {payload.usuario_id} nao encontrado")
-    _verificar_conflito(db, viagem_id, payload.usuario_id, payload.sentido)
+    _verificar_conflito(db, viagem_id, payload.usuario_id, payload.ordem_trecho)
+    dados = payload.model_dump()
+    _preparar_pontos_passageiro(db, None, usuario, dados)
     maior_ordem = max((p.ordem for p in viagem.passageiros), default=-1)
-    passageiro = models.ViagemDiaPassageiro(
-        viagem_dia_id=viagem_id, ordem=maior_ordem + 1, fixo=False, **payload.model_dump()
-    )
+    passageiro = models.ViagemDiaPassageiro(viagem_dia_id=viagem_id, ordem=maior_ordem + 1, fixo=False, **dados)
     db.add(passageiro)
     db.commit()
     db.refresh(viagem)
@@ -645,8 +707,9 @@ def atualizar_passageiro(passageiro_id: int, payload: schemas.ViagemDiaPassageir
     passageiro = _get_passageiro_ou_404(db, passageiro_id)
     _verificar_passageiro_destravado(db, passageiro)
     dados = payload.model_dump(exclude_unset=True)
-    if "sentido" in dados and passageiro.viagem_dia_id is not None:
-        _verificar_conflito(db, passageiro.viagem_dia_id, passageiro.usuario_id, dados["sentido"], passageiro.id)
+    if "ordem_trecho" in dados and passageiro.viagem_dia_id is not None:
+        _verificar_conflito(db, passageiro.viagem_dia_id, passageiro.usuario_id, dados["ordem_trecho"], passageiro.id)
+    _preparar_pontos_passageiro(db, passageiro, passageiro.usuario, dados)
     for campo, valor in dados.items():
         setattr(passageiro, campo, valor)
     db.commit()
@@ -661,7 +724,7 @@ def mover_passageiro(passageiro_id: int, payload: schemas.ViagemDiaPassageiroMov
     """Move um passageiro pra outra viagem (ou reordena dentro da mesma).
 
     O grupo de horario (a viagem/leg de destino) e quem manda: se o destino ja
-    tem gente, o passageiro movido adota a hora/sentido de quem ja esta la
+    tem gente, o passageiro movido adota a hora/trecho de quem ja esta la
     (nao o contrario -- arrastar alguem de 06h00 pro grupo das 07h00 deve
     deixar esse alguem as 07h00, sem alterar o rotulo do grupo). Tambem
     reindexa o `ordem` de todo mundo no destino na posicao alvo, pra
@@ -682,13 +745,13 @@ def mover_passageiro(passageiro_id: int, payload: schemas.ViagemDiaPassageiroMov
         .all()
     )
     referencia = irmaos[0] if irmaos else None
-    sentido_destino = referencia.sentido if referencia else passageiro.sentido
+    ordem_trecho_destino = referencia.ordem_trecho if referencia else passageiro.ordem_trecho
 
-    _verificar_conflito(db, payload.viagem_dia_destino_id, passageiro.usuario_id, sentido_destino, passageiro.id)
+    _verificar_conflito(db, payload.viagem_dia_destino_id, passageiro.usuario_id, ordem_trecho_destino, passageiro.id)
 
     if referencia is not None:
         passageiro.hora = referencia.hora
-        passageiro.sentido = referencia.sentido
+        passageiro.ordem_trecho = referencia.ordem_trecho
     passageiro.viagem_dia_id = payload.viagem_dia_destino_id
     passageiro.data = None  # saiu do container "Sem vaga" (se estava la)
 
@@ -707,7 +770,7 @@ def mover_passageiro_para_bloco(
     passageiro_id: int, payload: schemas.ViagemDiaPassageiroMoverBloco, db: Session = Depends(get_db)
 ):
     """Move um passageiro pro bloco (carro) inteiro, soltado fora de uma leg
-    especifica -- igual ao modo Base: quem manda e o proprio sentido/hora do
+    especifica -- igual ao modo Base: quem manda e o proprio trecho/hora do
     passageiro, que decide em qual leg do bloco ele entra, criando a leg
     on-the-fly se o carro ainda nao tiver uma pro horario dele.
     """
@@ -730,7 +793,7 @@ def mover_passageiro_para_bloco(
         db.query(models.ViagemDiaPassageiro)
         .filter(
             models.ViagemDiaPassageiro.viagem_dia_id.in_(ids_bloco),
-            models.ViagemDiaPassageiro.sentido == passageiro.sentido,
+            models.ViagemDiaPassageiro.ordem_trecho == passageiro.ordem_trecho,
             models.ViagemDiaPassageiro.hora == passageiro.hora,
             models.ViagemDiaPassageiro.id != passageiro_id,
         )
@@ -761,7 +824,7 @@ def mover_passageiro_para_bloco(
         db.flush()
         viagem_destino_id = nova_viagem.id
 
-    _verificar_conflito(db, viagem_destino_id, passageiro.usuario_id, passageiro.sentido, passageiro.id)
+    _verificar_conflito(db, viagem_destino_id, passageiro.usuario_id, passageiro.ordem_trecho, passageiro.id)
 
     irmaos = (
         db.query(models.ViagemDiaPassageiro)

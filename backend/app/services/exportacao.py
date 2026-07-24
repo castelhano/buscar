@@ -14,7 +14,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
@@ -23,9 +23,11 @@ from app.models import (
     Frequencia,
     GrupoRevezamento,
     GrupoRevezamentoCondutor,
-    Sentido,
+    Local,
     StatusAtendimentoDia,
     StatusCondutor,
+    TipoPonto,
+    Usuario,
     ViagemDia,
     ViagemDiaPassageiro,
 )
@@ -88,18 +90,68 @@ def _com_detalhe(texto: str, detalhe: str | None) -> Paragraph:
     return Paragraph(html, _ESTILO_CELULA)
 
 
-def _dados_origem(passageiro: ViagemDiaPassageiro) -> tuple[str, str | None]:
-    if passageiro.sentido == Sentido.RETORNO:
-        destino = passageiro.destino
-        return (destino.nome if destino else "-", destino.observacao if destino else None)
-    return (passageiro.origem or "-", passageiro.usuario.detalhe)
+def _rotulo_detalhe_ponto(
+    tipo: TipoPonto | None, local: Local | None, usuario: Usuario, texto: str | None, detalhe: str | None
+) -> tuple[str, str | None]:
+    """Rotulo (texto principal da celula) + detalhe opcional (endereco
+    completo, exibido como subtexto -- ver `_com_detalhe`) de um ponto
+    (origem OU destino) ja resolvido, a partir do tipo escolhido (ver
+    `TipoPonto`): Local cadastrado usa nome/observacao do Local; endereco do
+    usuario usa abbr/detalhe do proprio usuario do atendimento; avulso usa o
+    rotulo/endereco digitados na hora.
+    """
+    if tipo == TipoPonto.LOCAL:
+        return (local.nome if local else "-", local.observacao if local else None)
+    if tipo == TipoPonto.USUARIO:
+        return (usuario.abbr or usuario.nome, usuario.detalhe)
+    if tipo == TipoPonto.AVULSO:
+        return (texto or "-", detalhe)
+    return ("-", None)
+
+
+def _mapa_destinos_por_usuario_ordem(db: Session, data: dt.date) -> dict[tuple[int, int], tuple[str, str | None]]:
+    """(usuario_id, ordem_trecho) -> (rotulo, detalhe) do destino de TODO o
+    dia (qualquer carro/condutor) -- usado por `_dados_origem` pra resolver a
+    origem de um trecho que a deixou em branco (herda do destino do trecho
+    ANTERIOR do mesmo usuario, que pode estar num carro/condutor diferente).
+    """
+    linhas = (
+        db.query(ViagemDiaPassageiro)
+        .outerjoin(ViagemDia, ViagemDiaPassageiro.viagem_dia_id == ViagemDia.id)
+        .options(joinedload(ViagemDiaPassageiro.destino), joinedload(ViagemDiaPassageiro.usuario))
+        .filter(
+            or_(
+                ViagemDia.data == data,
+                and_(ViagemDiaPassageiro.viagem_dia_id.is_(None), ViagemDiaPassageiro.data == data),
+            )
+        )
+        .all()
+    )
+    mapa: dict[tuple[int, int], tuple[str, str | None]] = {}
+    for p in linhas:
+        if p.status == StatusAtendimentoDia.CANCELADO:
+            continue
+        mapa[(p.usuario_id, p.ordem_trecho)] = _rotulo_detalhe_ponto(
+            p.destino_tipo, p.destino, p.usuario, p.destino_texto, p.destino_detalhe
+        )
+    return mapa
+
+
+def _dados_origem(
+    passageiro: ViagemDiaPassageiro, mapa_destinos: dict[tuple[int, int], tuple[str, str | None]]
+) -> tuple[str, str | None]:
+    if passageiro.origem_tipo is None:
+        anterior = mapa_destinos.get((passageiro.usuario_id, passageiro.ordem_trecho - 1))
+        return anterior if anterior is not None else ("-", None)
+    return _rotulo_detalhe_ponto(
+        passageiro.origem_tipo, passageiro.origem_local, passageiro.usuario, passageiro.origem_texto, passageiro.origem_detalhe
+    )
 
 
 def _dados_destino(passageiro: ViagemDiaPassageiro) -> tuple[str, str | None]:
-    if passageiro.sentido == Sentido.RETORNO:
-        return (passageiro.origem or "-", passageiro.usuario.detalhe)
-    destino = passageiro.destino
-    return (destino.nome if destino else "-", destino.observacao if destino else None)
+    return _rotulo_detalhe_ponto(
+        passageiro.destino_tipo, passageiro.destino, passageiro.usuario, passageiro.destino_texto, passageiro.destino_detalhe
+    )
 
 
 def _hora_referencia(viagem: ViagemDia) -> dt.time:
@@ -123,7 +175,9 @@ class _DadosCondutorDia:
 
 
 def _montar_dados_condutor_dia(
-    viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.time] | None = None
+    viagens: list[ViagemDia],
+    intervalo: tuple[dt.time, dt.time] | None = None,
+    mapa_destinos: dict[tuple[int, int], tuple[str, str | None]] | None = None,
 ) -> _DadosCondutorDia:
     """Monta o conteudo da tabela de agendamento (cabecalhos + linhas) de um
     condutor/dia, com todas as viagens (legs) dele numa unica tabela continua,
@@ -154,8 +208,9 @@ def _montar_dados_condutor_dia(
 
     empresa_garagem = veiculo.empresa.nome if veiculo and veiculo.empresa else (primeira.empresa.nome if primeira.empresa else "-")
 
+    mapa_destinos = mapa_destinos or {}
     linhas: list[list[_Celula]] = [
-        [("Hora", None), ("Usuario", None), ("Sentido", None), ("Origem", None), ("Destino", None), ("Observacoes", None)]
+        [("Hora", None), ("Usuario", None), ("Trecho", None), ("Origem", None), ("Destino", None), ("Observacoes", None)]
     ]
     linhas.append([(hora_inicio, None), ("--", None), ("Acesso", None), (empresa_garagem, None), ("-", None), ("", None)])
 
@@ -182,8 +237,8 @@ def _montar_dados_condutor_dia(
                 [
                     (passageiro.hora.strftime("%H:%M"), None),
                     (nome, None),
-                    (passageiro.sentido.value, None),
-                    _dados_origem(passageiro),
+                    (f"Trecho {passageiro.ordem_trecho + 1}", None),
+                    _dados_origem(passageiro, mapa_destinos),
                     _dados_destino(passageiro),
                     (observacoes, None),
                 ]
@@ -213,9 +268,13 @@ def _montar_dados_condutor_dia(
     )
 
 
-def _pdf_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.time] | None = None) -> bytes:
+def _pdf_condutor_dia(
+    viagens: list[ViagemDia],
+    intervalo: tuple[dt.time, dt.time] | None = None,
+    mapa_destinos: dict[tuple[int, int], tuple[str, str | None]] | None = None,
+) -> bytes:
     """Renderiza os dados de `_montar_dados_condutor_dia` como PDF (reportlab)."""
-    dados = _montar_dados_condutor_dia(viagens, intervalo)
+    dados = _montar_dados_condutor_dia(viagens, intervalo, mapa_destinos)
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -312,10 +371,14 @@ def _quebrar_texto(texto: str, fonte: ImageFont.FreeTypeFont, largura_max: float
     return linhas or [""]
 
 
-def _png_condutor_dia(viagens: list[ViagemDia], intervalo: tuple[dt.time, dt.time] | None = None) -> bytes:
+def _png_condutor_dia(
+    viagens: list[ViagemDia],
+    intervalo: tuple[dt.time, dt.time] | None = None,
+    mapa_destinos: dict[tuple[int, int], tuple[str, str | None]] | None = None,
+) -> bytes:
     """Renderiza os dados de `_montar_dados_condutor_dia` como PNG, recortado
     so na area da tabela (sem margem de pagina A4 como no PDF)."""
-    dados = _montar_dados_condutor_dia(viagens, intervalo)
+    dados = _montar_dados_condutor_dia(viagens, intervalo, mapa_destinos)
 
     fonte_titulo_dia = _fonte_png(True, 24)
     fonte_titulo_condutor = _fonte_png(True, 20)
@@ -453,6 +516,7 @@ def _viagens_do_dia(
             joinedload(ViagemDia.regiao),
             joinedload(ViagemDia.passageiros).joinedload(ViagemDiaPassageiro.usuario),
             joinedload(ViagemDia.passageiros).joinedload(ViagemDiaPassageiro.destino),
+            joinedload(ViagemDia.passageiros).joinedload(ViagemDiaPassageiro.origem_local),
         )
         .filter(ViagemDia.data == data)
     )
@@ -493,6 +557,7 @@ def gerar_zip_agendamentos(db: Session, data: dt.date) -> bytes | None:
     viagens = _viagens_do_dia(db, data)
     if not viagens:
         return None
+    mapa_destinos = _mapa_destinos_por_usuario_ordem(db, data)
 
     buffer = io.BytesIO()
     indefinido_seq = 0
@@ -506,7 +571,7 @@ def gerar_zip_agendamentos(db: Session, data: dt.date) -> bytes | None:
                 intervalo = None
                 indefinido_seq += 1
                 nome_arquivo = f"Indefinido_{indefinido_seq}"
-            zip_file.writestr(f"{nome_arquivo}.pdf", _pdf_condutor_dia(pernas, intervalo))
+            zip_file.writestr(f"{nome_arquivo}.pdf", _pdf_condutor_dia(pernas, intervalo, mapa_destinos))
     return buffer.getvalue()
 
 
@@ -515,7 +580,8 @@ def gerar_pdf_agendamento_condutor(db: Session, data: dt.date, condutor_id: int)
     if not viagens:
         return None
     intervalo = intervalo_do_condutor(db, condutor_id, data)
-    return _pdf_condutor_dia(viagens, intervalo)
+    mapa_destinos = _mapa_destinos_por_usuario_ordem(db, data)
+    return _pdf_condutor_dia(viagens, intervalo, mapa_destinos)
 
 
 def gerar_pdf_agendamento_bloco(db: Session, data: dt.date, bloco_id: int) -> bytes | None:
@@ -525,13 +591,15 @@ def gerar_pdf_agendamento_bloco(db: Session, data: dt.date, bloco_id: int) -> by
     viagens = _viagens_do_dia(db, data, bloco_id=bloco_id)
     if not viagens:
         return None
-    return _pdf_condutor_dia(viagens, None)
+    mapa_destinos = _mapa_destinos_por_usuario_ordem(db, data)
+    return _pdf_condutor_dia(viagens, None, mapa_destinos)
 
 
 def gerar_zip_agendamentos_png(db: Session, data: dt.date) -> bytes | None:
     viagens = _viagens_do_dia(db, data)
     if not viagens:
         return None
+    mapa_destinos = _mapa_destinos_por_usuario_ordem(db, data)
 
     buffer = io.BytesIO()
     indefinido_seq = 0
@@ -545,7 +613,7 @@ def gerar_zip_agendamentos_png(db: Session, data: dt.date) -> bytes | None:
                 intervalo = None
                 indefinido_seq += 1
                 nome_arquivo = f"Indefinido_{indefinido_seq}"
-            zip_file.writestr(f"{nome_arquivo}.png", _png_condutor_dia(pernas, intervalo))
+            zip_file.writestr(f"{nome_arquivo}.png", _png_condutor_dia(pernas, intervalo, mapa_destinos))
     return buffer.getvalue()
 
 
@@ -554,7 +622,8 @@ def gerar_png_agendamento_condutor(db: Session, data: dt.date, condutor_id: int)
     if not viagens:
         return None
     intervalo = intervalo_do_condutor(db, condutor_id, data)
-    return _png_condutor_dia(viagens, intervalo)
+    mapa_destinos = _mapa_destinos_por_usuario_ordem(db, data)
+    return _png_condutor_dia(viagens, intervalo, mapa_destinos)
 
 
 def gerar_png_agendamento_bloco(db: Session, data: dt.date, bloco_id: int) -> bytes | None:
@@ -562,7 +631,8 @@ def gerar_png_agendamento_bloco(db: Session, data: dt.date, bloco_id: int) -> by
     viagens = _viagens_do_dia(db, data, bloco_id=bloco_id)
     if not viagens:
         return None
-    return _png_condutor_dia(viagens, None)
+    mapa_destinos = _mapa_destinos_por_usuario_ordem(db, data)
+    return _png_condutor_dia(viagens, None, mapa_destinos)
 
 
 # --------------------------------------------------------------------------
@@ -638,13 +708,17 @@ def _primeiro_atendimento_por_usuario(grupo: list[ViagemDia]) -> dict[int, Viage
     return primeiro
 
 
-def _linha_origem_destino(passageiro: ViagemDiaPassageiro, largura_pt: float) -> Table:
+def _linha_origem_destino(
+    passageiro: ViagemDiaPassageiro,
+    largura_pt: float,
+    mapa_destinos: dict[tuple[int, int], tuple[str, str | None]],
+) -> Table:
     """Sub-tabela de uma linha com origem (esquerda) e destino (direita),
-    lado a lado dentro da mesma celula do nome. Sentido RETORNO ja vem
-    invertido (destino -> origem) por _dados_origem/_dados_destino.
+    lado a lado dentro da mesma celula do nome. Cada trecho ja carrega seu
+    proprio par origem/destino (sem inversao condicional por sentido).
     """
     largura_col_pt = largura_pt / 2
-    origem, _ = _dados_origem(passageiro)
+    origem, _ = _dados_origem(passageiro, mapa_destinos)
     destino, _ = _dados_destino(passageiro)
     origem = _truncar_texto(origem, largura_col_pt, tamanho=_TAMANHO_FONTE_RESUMO_ORIGEM_DESTINO)
     destino = _truncar_texto(destino, largura_col_pt, tamanho=_TAMANHO_FONTE_RESUMO_ORIGEM_DESTINO)
@@ -667,7 +741,9 @@ def _linha_origem_destino(passageiro: ViagemDiaPassageiro, largura_pt: float) ->
     return tabela
 
 
-def _card_grupo_resumo(grupo: list[ViagemDia]) -> Table:
+def _card_grupo_resumo(
+    grupo: list[ViagemDia], mapa_destinos: dict[tuple[int, int], tuple[str, str | None]]
+) -> Table:
     # largura util de cada celula = largura da coluna menos padding dos dois lados
     largura_nome_pt = _RESUMO_COL_NOME_CM * cm - 2 * _RESUMO_CARD_PADDING_PT
     largura_cabecalho_pt = (_RESUMO_COL_NOME_CM + _RESUMO_COL_HORA_CM) * cm - 2 * _RESUMO_CARD_PADDING_PT
@@ -686,7 +762,10 @@ def _card_grupo_resumo(grupo: list[ViagemDia]) -> Table:
         idade = _idade(passageiro.usuario.data_nascimento)
         nome_base = passageiro.usuario.abbr or passageiro.usuario.nome
         nome = _truncar_texto(f"{nome_base} ({idade if idade is not None else '--'})", largura_nome_pt)
-        celula_nome = [Paragraph(escape(nome), _ESTILO_RESUMO_NOME), _linha_origem_destino(passageiro, largura_nome_pt)]
+        celula_nome = [
+            Paragraph(escape(nome), _ESTILO_RESUMO_NOME),
+            _linha_origem_destino(passageiro, largura_nome_pt, mapa_destinos),
+        ]
         linhas.append([celula_nome, passageiro.hora.strftime("%H:%M")])
 
     tabela = Table(linhas, colWidths=[_RESUMO_COL_NOME_CM * cm, _RESUMO_COL_HORA_CM * cm])
@@ -711,7 +790,12 @@ def _card_grupo_resumo(grupo: list[ViagemDia]) -> Table:
     return tabela
 
 
-def _secao_periodo(elementos: list, titulo: str, grupos: list[list[ViagemDia]]) -> None:
+def _secao_periodo(
+    elementos: list,
+    titulo: str,
+    grupos: list[list[ViagemDia]],
+    mapa_destinos: dict[tuple[int, int], tuple[str, str | None]],
+) -> None:
     elementos.append(Paragraph(f"{titulo} ({len(grupos)} carro{'s' if len(grupos) != 1 else ''})", _ESTILOS["Heading3"]))
     if not grupos:
         elementos.append(Paragraph("Nenhum carro nesse periodo.", _ESTILOS["Normal"]))
@@ -719,7 +803,7 @@ def _secao_periodo(elementos: list, titulo: str, grupos: list[list[ViagemDia]]) 
         return
 
     colunas = 4
-    cards = [_card_grupo_resumo(grupo) for grupo in grupos]
+    cards = [_card_grupo_resumo(grupo, mapa_destinos) for grupo in grupos]
     linhas_grid = [cards[i : i + colunas] for i in range(0, len(cards), colunas)]
     for linha in linhas_grid:
         while len(linha) < colunas:
@@ -756,12 +840,15 @@ def gerar_pdf_resumo_dia(db: Session, data: dt.date) -> bytes | None:
             joinedload(ViagemDia.condutor),
             joinedload(ViagemDia.veiculo),
             joinedload(ViagemDia.passageiros).joinedload(ViagemDiaPassageiro.usuario),
+            joinedload(ViagemDia.passageiros).joinedload(ViagemDiaPassageiro.destino),
+            joinedload(ViagemDia.passageiros).joinedload(ViagemDiaPassageiro.origem_local),
         )
         .filter(ViagemDia.data == data)
         .all()
     )
     if not viagens:
         return None
+    mapa_destinos = _mapa_destinos_por_usuario_ordem(db, data)
 
     grupos = _agrupar_por_condutor(viagens)
     grupos_manha = [g for g in grupos if _periodo_da_leg(g[0]) == "Manha"]
@@ -780,9 +867,9 @@ def gerar_pdf_resumo_dia(db: Session, data: dt.date) -> bytes | None:
         Spacer(1, 0.3 * cm),
     ]
 
-    _secao_periodo(elementos, "Manha", grupos_manha)
+    _secao_periodo(elementos, "Manha", grupos_manha, mapa_destinos)
     elementos.append(Spacer(1, 0.4 * cm))
-    _secao_periodo(elementos, "Tarde", grupos_tarde)
+    _secao_periodo(elementos, "Tarde", grupos_tarde, mapa_destinos)
     elementos.append(Spacer(1, 0.5 * cm))
 
     elementos.append(Paragraph("Resumo", _ESTILOS["Heading3"]))

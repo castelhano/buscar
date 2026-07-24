@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
-import type { Local, OperacaoExcecao, Regiao, UsuarioExcecao } from "../../api/types";
+import { diaSemanaFromData, rotuloPonto, rotuloTrecho } from "../../api/types";
+import type { Local, OperacaoExcecao, Regiao, TrechoInput, UsuarioAgendaSemanal, UsuarioExcecao } from "../../api/types";
 import ConfirmarModal from "../../components/board/ConfirmarModal";
+import TrechoListEditor, { trechoParaInput, trechoVazio } from "../../components/usuarios/TrechoListEditor";
 import { formatarData } from "../../utils/data";
 
 interface Props {
   usuarioId: number;
   excecoes: UsuarioExcecao[];
+  agendaSemanal: UsuarioAgendaSemanal[];
   regioes: Regiao[];
   locais: Local[];
   somenteLeitura?: boolean;
@@ -17,12 +20,7 @@ interface FormState {
   data_inicio: string;
   data_fim: string;
   operacao: OperacaoExcecao;
-  saida: string;
-  retorno: string;
-  origem: string;
-  regiao_origem_id: number | "";
-  destino_id: number | "";
-  acompanhante: boolean;
+  trechos: TrechoInput[];
   motivo: string;
 }
 
@@ -32,22 +30,17 @@ const rotulosOperacao: Record<OperacaoExcecao, string> = {
   Suspensao: "Suspender",
 };
 
-const vazio: FormState = {
+const vazio = (): FormState => ({
   data_inicio: "",
   data_fim: "",
   operacao: "Modificacao",
-  saida: "",
-  retorno: "",
-  origem: "",
-  regiao_origem_id: "",
-  destino_id: "",
-  acompanhante: false,
+  trechos: [trechoVazio(true)],
   motivo: "",
-};
+});
 
-export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, somenteLeitura = false }: Props) {
+export default function ExcecoesEditor({ usuarioId, excecoes, agendaSemanal, regioes, locais, somenteLeitura = false }: Props) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState<FormState>(vazio);
+  const [form, setForm] = useState<FormState>(vazio());
   const [erro, setErro] = useState<string | null>(null);
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [removendo, setRemovendo] = useState<UsuarioExcecao | null>(null);
@@ -64,13 +57,8 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
       data_fim: form.data_fim || form.data_inicio,
       operacao: form.operacao,
       tipo: "Eventual",
-      saida: suspenso ? null : form.saida || null,
-      retorno: suspenso ? null : form.retorno || null,
-      origem: suspenso ? null : form.origem || null,
-      regiao_origem_id: suspenso || form.regiao_origem_id === "" ? null : form.regiao_origem_id,
-      destino_id: suspenso || form.destino_id === "" ? null : form.destino_id,
-      acompanhante: suspenso ? null : form.acompanhante,
       motivo: form.motivo || null,
+      trechos: suspenso ? [] : form.trechos,
     };
   }
 
@@ -81,7 +69,7 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
         : api.post(`/usuarios/${usuarioId}/excecoes`, payload()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: chaveDetalhe });
-      setForm(vazio);
+      setForm(vazio());
       setEditandoId(null);
       setErro(null);
     },
@@ -99,19 +87,25 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
       data_inicio: e.data_inicio,
       data_fim: e.data_fim,
       operacao: e.operacao,
-      saida: e.saida ?? "",
-      retorno: e.retorno ?? "",
-      origem: e.origem ?? "",
-      regiao_origem_id: e.regiao_origem_id ?? "",
-      destino_id: e.destino_id ?? "",
-      acompanhante: e.acompanhante ?? false,
+      trechos: e.trechos.length ? e.trechos.map(trechoParaInput) : [trechoVazio(true)],
       motivo: e.motivo ?? "",
     });
   }
 
   function cancelarEdicao() {
     setEditandoId(null);
-    setForm(vazio);
+    setForm(vazio());
+  }
+
+  function clonarDoFixo() {
+    if (!form.data_inicio) return;
+    const dia = diaSemanaFromData(form.data_inicio);
+    const fixo = agendaSemanal.find((a) => a.dia_semana === dia);
+    if (!fixo || fixo.trechos.length === 0) {
+      setErro("Nao ha atendimento Fixo cadastrado para o dia da semana dessa data");
+      return;
+    }
+    setForm({ ...form, trechos: fixo.trechos.map(trechoParaInput) });
   }
 
   const removerMutation = useMutation({
@@ -124,110 +118,86 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
     onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao remover excecao")),
   });
 
+  function nomeLocal(id: number | null): string | undefined {
+    return id ? locais.find((l) => l.id === id)?.nome : undefined;
+  }
+
   return (
     <div>
       <h4>Exceções</h4>
       <p style={{ fontSize: "0.8rem", color: "var(--cor-texto-suave)", marginTop: 0 }}>
-        Para um intervalo de datas (data fim vazia = mesma data do inicio): suspender o atendimento, alterar
-        horario/local do atendimento atual, ou incluir um atendimento extra mantendo o Fixo original. Tambem serve
-        pra um atendimento avulso (usuario sem agenda fixa nesse dia da semana): preenchendo horario/local aqui, a
-        excecao sozinha ja garante a geracao nessas datas, sem precisar cadastrar agenda semanal pra isso.
+        Para um intervalo de datas (data fim vazia = mesma data do inicio): suspender o atendimento, substituir o
+        itinerario do dia (MODIFICACAO substitui a lista de trechos inteira -- use "Clonar do Fixo" pra partir do
+        itinerario recorrente e editar so o que muda), ou incluir um atendimento extra mantendo o Fixo original.
+        Tambem serve pra um atendimento avulso (usuario sem agenda fixa nesse dia da semana): preenchendo os
+        trechos aqui, a excecao sozinha ja garante a geracao nessas datas.
       </p>
       {!somenteLeitura && (
-        <div className="linha-toolbar" style={{ alignItems: "flex-end" }}>
-          <div className="campo">
-            <label>Data inicio</label>
-            <input
-              type="date"
-              value={form.data_inicio}
-              onChange={(e) => setForm({ ...form, data_inicio: e.target.value })}
-            />
-          </div>
-          <div className="campo">
-            <label>Data fim</label>
-            <input
-              type="date"
-              value={form.data_fim}
-              placeholder={form.data_inicio}
-              onChange={(e) => setForm({ ...form, data_fim: e.target.value })}
-            />
-          </div>
-          <div className="campo">
-            <label>Operacao</label>
-            <select
-              value={form.operacao}
-              onChange={(e) => setForm({ ...form, operacao: e.target.value as OperacaoExcecao })}
-            >
-              {(Object.keys(rotulosOperacao) as OperacaoExcecao[]).map((op) => (
-                <option key={op} value={op}>
-                  {rotulosOperacao[op]}
-                </option>
-              ))}
-            </select>
+        <div className="painel" style={{ marginBottom: "1rem" }}>
+          <div className="linha-toolbar" style={{ alignItems: "flex-end" }}>
+            <div className="campo">
+              <label>Data inicio</label>
+              <input
+                type="date"
+                value={form.data_inicio}
+                onChange={(e) => setForm({ ...form, data_inicio: e.target.value })}
+              />
+            </div>
+            <div className="campo">
+              <label>Data fim</label>
+              <input
+                type="date"
+                value={form.data_fim}
+                placeholder={form.data_inicio}
+                onChange={(e) => setForm({ ...form, data_fim: e.target.value })}
+              />
+            </div>
+            <div className="campo">
+              <label>Operacao</label>
+              <select
+                value={form.operacao}
+                onChange={(e) => setForm({ ...form, operacao: e.target.value as OperacaoExcecao })}
+              >
+                {(Object.keys(rotulosOperacao) as OperacaoExcecao[]).map((op) => (
+                  <option key={op} value={op}>
+                    {rotulosOperacao[op]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="campo">
+              <label>Motivo</label>
+              <input placeholder="Motivo" value={form.motivo} onChange={(e) => setForm({ ...form, motivo: e.target.value })} />
+            </div>
+            <button className="btn btn-primario" onClick={adicionar} disabled={salvarMutation.isPending}>
+              {editandoId !== null ? "Salvar" : "Adicionar"}
+            </button>
+            {editandoId !== null && (
+              <button className="btn" onClick={cancelarEdicao} disabled={salvarMutation.isPending}>
+                Cancelar
+              </button>
+            )}
           </div>
           {form.operacao !== "Suspensao" && (
-            <>
-              <div className="campo">
-                <label>Saida</label>
-                <input type="time" value={form.saida} onChange={(e) => setForm({ ...form, saida: e.target.value })} />
-              </div>
-              <div className="campo">
-                <label>Retorno</label>
-                <input type="time" value={form.retorno} onChange={(e) => setForm({ ...form, retorno: e.target.value })} />
-              </div>
-              <div className="campo">
-                <label>Origem</label>
-                <input placeholder="Origem" value={form.origem} onChange={(e) => setForm({ ...form, origem: e.target.value })} />
-              </div>
-              <div className="campo">
-                <label>Regiao origem</label>
-                <select
-                  value={form.regiao_origem_id}
-                  onChange={(e) => setForm({ ...form, regiao_origem_id: e.target.value ? Number(e.target.value) : "" })}
+            <div style={{ marginTop: "0.7rem" }}>
+              <div style={{ marginBottom: "0.5rem" }}>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={clonarDoFixo}
+                  disabled={!form.data_inicio}
+                  title="Pre-popula com os trechos do Fixo do dia da semana dessa data"
                 >
-                  <option value="">Regiao origem</option>
-                  {regioes.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.nome}
-                    </option>
-                  ))}
-                </select>
+                  ⧉ Clonar do Fixo
+                </button>
               </div>
-              <div className="campo">
-                <label>Destino</label>
-                <select value={form.destino_id} onChange={(e) => setForm({ ...form, destino_id: e.target.value ? Number(e.target.value) : "" })}>
-                  <option value="">Destino</option>
-                  {locais.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.nome}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="campo">
-                <label>Acomp</label>
-                <label style={{ display: "flex", gap: "0.25rem", alignItems: "center", height: "1.85rem" }}>
-                  <input
-                    type="checkbox"
-                    checked={form.acompanhante}
-                    onChange={(e) => setForm({ ...form, acompanhante: e.target.checked })}
-                  />
-                  Acomp
-                </label>
-              </div>
-            </>
-          )}
-          <div className="campo">
-            <label>Motivo</label>
-            <input placeholder="Motivo" value={form.motivo} onChange={(e) => setForm({ ...form, motivo: e.target.value })} />
-          </div>
-          <button className="btn btn-primario" onClick={adicionar} disabled={salvarMutation.isPending}>
-            {editandoId !== null ? "Salvar" : "Adicionar"}
-          </button>
-          {editandoId !== null && (
-            <button className="btn" onClick={cancelarEdicao} disabled={salvarMutation.isPending}>
-              Cancelar
-            </button>
+              <TrechoListEditor
+                trechos={form.trechos}
+                onChange={(trechos) => setForm({ ...form, trechos })}
+                regioes={regioes}
+                locais={locais}
+              />
+            </div>
           )}
         </div>
       )}
@@ -241,8 +211,7 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
           <tr>
             <th>Data</th>
             <th>Operacao</th>
-            <th>Situacao</th>
-            <th>Destino</th>
+            <th>Itinerario</th>
             <th>Motivo</th>
             <th></th>
           </tr>
@@ -255,8 +224,21 @@ export default function ExcecoesEditor({ usuarioId, excecoes, regioes, locais, s
                 {e.data_fim !== e.data_inicio ? ` a ${formatarData(e.data_fim)}` : ""}
               </td>
               <td>{rotulosOperacao[e.operacao]}</td>
-              <td>{e.operacao === "Suspensao" ? <span className="tag tag-inativo">Suspenso</span> : `${e.saida ?? "-"} / ${e.retorno ?? "-"}`}</td>
-              <td>{e.destino_id ? locais.find((l) => l.id === e.destino_id)?.nome ?? "-" : "-"}</td>
+              <td>
+                {e.operacao === "Suspensao" ? (
+                  <span className="tag tag-inativo">Suspenso</span>
+                ) : (
+                  e.trechos.map((t) => (
+                    <div key={t.id} style={{ fontSize: "0.82rem" }}>
+                      <span className="badge-rotulo" style={{ marginRight: "0.4rem" }}>
+                        {rotuloTrecho(t.ordem)}
+                      </span>
+                      {t.hora} · {rotuloPonto(t.origem_tipo, nomeLocal(t.origem_id), t.origem_texto, undefined, "endereco do usuario")} →{" "}
+                      {rotuloPonto(t.destino_tipo, nomeLocal(t.destino_id), t.destino_texto, undefined, "endereco do usuario")}
+                    </div>
+                  ))
+                )}
+              </td>
               <td>{e.motivo ?? "-"}</td>
               <td>
                 {!somenteLeitura && (

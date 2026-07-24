@@ -1,4 +1,4 @@
-import type { DiaSemana, GrupoBase, MembroBase, NaoClassificadoBase, Sentido, ViagemBase } from "../api/types";
+import type { DiaSemana, GrupoBase, MembroBase, NaoClassificadoBase, ViagemBase } from "../api/types";
 import { CORTE_TARDE_MINUTOS, minutosDaHora } from "../api/periodo";
 
 /** Assuncao fixa (sem campo de capacidade no modo Base -- ver GrupoBase): todo
@@ -17,7 +17,6 @@ export type StatusOcupacao = "livre" | "atencao" | "lotado" | "acima";
 
 export interface ViagemResumo {
   viagemId: number;
-  sentido: Sentido;
   membros: MembroBase[];
 }
 
@@ -140,7 +139,7 @@ export function montarMatrizDiaSimples(
         ocupados,
         statusUsuarios: statusOcupacao(ocupados.usuarios, CAPACIDADE_USUARIOS_BASE),
         statusAcompanhantes: statusOcupacao(ocupados.acompanhantes, CAPACIDADE_ACOMPANHANTES_BASE),
-        viagens: viagensNaHora.map((v) => ({ viagemId: v.id, sentido: v.sentido, membros: v.membros })),
+        viagens: viagensNaHora.map((v) => ({ viagemId: v.id, membros: v.membros })),
       });
     }
 
@@ -224,7 +223,7 @@ export function montarMatrizSemana(diasComGrupos: DiaComGrupos[]): MatrizSemana 
       for (const grupo of grupos) {
         const viagensNaHora = grupo.viagens.filter((v) => v.hora === hora);
         if (viagensNaHora.length === 0) continue;
-        porCarro.push({ grupoId: grupo.id, viagens: viagensNaHora.map((v) => ({ viagemId: v.id, sentido: v.sentido, membros: v.membros })) });
+        porCarro.push({ grupoId: grupo.id, viagens: viagensNaHora.map((v) => ({ viagemId: v.id, membros: v.membros })) });
         ocupados = viagensNaHora.reduce((soma, v) => somaPar(soma, ocupadosDaViagem(v)), ocupados);
       }
       if (porCarro.length === 0) return null;

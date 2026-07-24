@@ -1,4 +1,5 @@
-import type { ViagemDia, ViagemDiaPassageiro } from "../../api/types";
+import type { ViagemDiaPassageiro, ViagemDia } from "../../api/types";
+import { rotuloTrecho } from "../../api/types";
 
 interface Props {
   viagens: ViagemDia[];
@@ -8,8 +9,7 @@ interface Props {
 interface CancelamentoUsuario {
   usuarioId: number;
   usuarioNome: string;
-  ida: boolean;
-  retorno: boolean;
+  trechosCancelados: Set<number>;
 }
 
 function agruparCancelamentos(passageiros: ViagemDiaPassageiro[]): CancelamentoUsuario[] {
@@ -21,11 +21,9 @@ function agruparCancelamentos(passageiros: ViagemDiaPassageiro[]): CancelamentoU
     const atual = porUsuario.get(passageiro.usuario_id) ?? {
       usuarioId: passageiro.usuario_id,
       usuarioNome: passageiro.usuario.nome,
-      ida: false,
-      retorno: false,
+      trechosCancelados: new Set<number>(),
     };
-    if (passageiro.sentido === "Ida") atual.ida = true;
-    else atual.retorno = true;
+    atual.trechosCancelados.add(passageiro.ordem_trecho);
     porUsuario.set(passageiro.usuario_id, atual);
   }
 
@@ -45,8 +43,12 @@ export default function CancelamentosPanel({ viagens, passageirosSemVaga = [] }:
       <ol>
         {cancelamentos.map((c) => (
           <li key={c.usuarioId}>
-            {c.usuarioNome}
-            {c.ida && c.retorno ? " (Ida e Retorno)" : c.ida ? " (Ida)" : " (Retorno)"}
+            {c.usuarioNome} (
+            {[...c.trechosCancelados]
+              .sort((a, b) => a - b)
+              .map((ordem) => rotuloTrecho(ordem))
+              .join(", ")}
+            )
           </li>
         ))}
       </ol>
