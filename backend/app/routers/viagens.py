@@ -27,7 +27,7 @@ from app.services.geracao import (
     listar_desconsiderados_dia,
     reverter_giro_revezamento,
 )
-from app.services.pontos import PontoInvalido, resolver_trecho
+from app.services.pontos import PontoInvalido, mapa_destinos_do_dia, resolver_origem_herdada, resolver_trecho
 from app.services.recursos import fim_viagem, inicio_viagem, janelas_sobrepoem
 
 router = APIRouter(prefix="/viagens", tags=["viagens"], dependencies=[Depends(obter_conta_atual)])
@@ -150,6 +150,7 @@ class _ContextoDia:
     intervalos_condutor: dict[int, tuple[dt.time, dt.time] | None]
     conflitos_condutor: dict[int, models.ViagemDia]
     conflitos_veiculo: dict[int, models.ViagemDia]
+    mapa_destinos: dict[tuple[int, int], dict]
 
 
 def _ancora_bloco(viagem: models.ViagemDia) -> int:
@@ -244,6 +245,7 @@ def _construir_contexto_dia(
         intervalos_condutor=_intervalos_dos_condutores(db, condutor_ids, data),
         conflitos_condutor=_mapa_conflitos(viagens_do_dia, "condutor_id"),
         conflitos_veiculo=_mapa_conflitos(viagens_do_dia, "veiculo_id"),
+        mapa_destinos=mapa_destinos_do_dia(db, data),
     )
 
 
@@ -261,7 +263,11 @@ def _serializar_viagem(viagem: models.ViagemDia, contexto: _ContextoDia) -> sche
     passageiros = []
     for passageiro, passageiro_read in zip(viagem.passageiros, base.passageiros):
         irregular, motivo = _calcular_irregularidade(viagem.empresa_id, passageiro.regiao_origem_id, contexto)
-        passageiros.append(passageiro_read.model_copy(update={"irregular": irregular, "motivo_irregular": motivo}))
+        atualizacoes = {"irregular": irregular, "motivo_irregular": motivo}
+        origem_herdada = resolver_origem_herdada(passageiro, contexto.mapa_destinos)
+        if origem_herdada is not None:
+            atualizacoes.update(origem_herdada)
+        passageiros.append(passageiro_read.model_copy(update=atualizacoes))
     condutor_em_ferias = viagem.condutor_id is not None and viagem.condutor_id in contexto.condutores_em_ferias
 
     conflito_condutor = contexto.conflitos_condutor.get(viagem.id)
@@ -286,14 +292,16 @@ def _serializar_viagem(viagem: models.ViagemDia, contexto: _ContextoDia) -> sche
     )
 
 
-def _serializar_passageiro_orfao(passageiro: models.ViagemDiaPassageiro) -> schemas.ViagemDiaPassageiroRead:
+def _serializar_passageiro_orfao(db: Session, passageiro: models.ViagemDiaPassageiro) -> schemas.ViagemDiaPassageiroRead:
     """Serializa um passageiro sem viagem_dia_id (orfao/sem vaga), mesmo formato
     usado em /sem-vaga, em vez de devolver null (200 com corpo vazio confundia
     o cliente, que esperava sempre o mesmo formato de objeto).
     """
-    return schemas.ViagemDiaPassageiroRead.model_validate(passageiro).model_copy(
-        update={"irregular": False, "motivo_irregular": None}
-    )
+    atualizacoes = {"irregular": False, "motivo_irregular": None}
+    origem_herdada = resolver_origem_herdada(passageiro, mapa_destinos_do_dia(db, passageiro.data))
+    if origem_herdada is not None:
+        atualizacoes.update(origem_herdada)
+    return schemas.ViagemDiaPassageiroRead.model_validate(passageiro).model_copy(update=atualizacoes)
 
 
 def _query_viagens(db: Session, data: dt.date):
@@ -714,7 +722,7 @@ def atualizar_passageiro(passageiro_id: int, payload: schemas.ViagemDiaPassageir
         setattr(passageiro, campo, valor)
     db.commit()
     if passageiro.viagem_dia_id is None:
-        return _serializar_passageiro_orfao(passageiro)  # orfao (sem vaga) -- nao ha viagem pra serializar
+        return _serializar_passageiro_orfao(db, passageiro)  # orfao (sem vaga) -- nao ha viagem pra serializar
     viagem = _get_viagem_ou_404(db, passageiro.viagem_dia_id)
     return _serializar_viagem(viagem, _construir_contexto_dia(db, viagem.data))
 
@@ -861,7 +869,7 @@ def tirar_passageiro_do_carro(passageiro_id: int, db: Session = Depends(get_db))
     passageiro.viagem_dia_id = None
     passageiro.ordem = 0
     db.commit()
-    return _serializar_passageiro_orfao(passageiro)
+    return _serializar_passageiro_orfao(db, passageiro)
 
 
 @router.patch("/passageiros/{passageiro_id}/status", response_model=schemas.ViagemDiaRead | schemas.ViagemDiaPassageiroRead)
@@ -878,7 +886,7 @@ def alterar_status_passageiro(
         passageiro.observacoes = observacoes
     db.commit()
     if passageiro.viagem_dia_id is None:
-        return _serializar_passageiro_orfao(passageiro)  # orfao (sem vaga) -- nao ha viagem pra serializar
+        return _serializar_passageiro_orfao(db, passageiro)  # orfao (sem vaga) -- nao ha viagem pra serializar
     viagem = _get_viagem_ou_404(db, passageiro.viagem_dia_id)
     return _serializar_viagem(viagem, _construir_contexto_dia(db, viagem.data))
 
@@ -888,7 +896,7 @@ def remover_passageiro(passageiro_id: int, db: Session = Depends(get_db)):
     passageiro = _get_passageiro_ou_404(db, passageiro_id)
     _verificar_passageiro_destravado(db, passageiro)
     viagem_id = passageiro.viagem_dia_id
-    dados_orfao = _serializar_passageiro_orfao(passageiro) if viagem_id is None else None
+    dados_orfao = _serializar_passageiro_orfao(db, passageiro) if viagem_id is None else None
     db.delete(passageiro)
     db.commit()
     if viagem_id is None:
@@ -974,10 +982,15 @@ def listar_sem_vaga(data: dt.date, db: Session = Depends(get_db)):
         .order_by(models.ViagemDiaPassageiro.hora)
         .all()
     )
-    return [
-        schemas.ViagemDiaPassageiroRead.model_validate(p).model_copy(update={"irregular": False, "motivo_irregular": None})
-        for p in passageiros
-    ]
+    mapa_destinos = mapa_destinos_do_dia(db, data)
+    resultado = []
+    for p in passageiros:
+        atualizacoes = {"irregular": False, "motivo_irregular": None}
+        origem_herdada = resolver_origem_herdada(p, mapa_destinos)
+        if origem_herdada is not None:
+            atualizacoes.update(origem_herdada)
+        resultado.append(schemas.ViagemDiaPassageiroRead.model_validate(p).model_copy(update=atualizacoes))
+    return resultado
 
 
 @router.get("/agendamentos/zip")

@@ -8,9 +8,12 @@ sempre que possivel (so o tipo Avulso exige informar a regiao na mao, ja que
 nao ha Local nem Usuario de onde deriva-la).
 """
 
+import datetime as dt
+
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
-from app.models import Local, TipoPonto, Usuario
+from app.models import Local, TipoPonto, Usuario, ViagemDia, ViagemDiaPassageiro
 
 
 class PontoInvalido(ValueError):
@@ -110,3 +113,46 @@ def resolver_trecho(
         }
     )
     return dados
+
+
+def mapa_destinos_do_dia(db: Session, data: dt.date) -> dict[tuple[int, int], dict]:
+    """(usuario_id, ordem_trecho) -> campos brutos do destino de TODO
+    passageiro do dia (qualquer carro, ou orfao sem vaga) -- usado por
+    `resolver_origem_herdada` pra achar o destino do trecho ANTERIOR do mesmo
+    usuario, que pode estar num carro/condutor diferente do trecho que esta
+    herdando. Inclui cancelados: o registro nao foi apagado, so teve o status
+    mudado, e o dado de destino continua valido pra exibir de onde o
+    passageiro estava vindo.
+    """
+    linhas = (
+        db.query(ViagemDiaPassageiro)
+        .outerjoin(ViagemDia, ViagemDiaPassageiro.viagem_dia_id == ViagemDia.id)
+        .filter(
+            or_(
+                ViagemDia.data == data,
+                and_(ViagemDiaPassageiro.viagem_dia_id.is_(None), ViagemDiaPassageiro.data == data),
+            )
+        )
+        .all()
+    )
+    mapa: dict[tuple[int, int], dict] = {}
+    for p in linhas:
+        mapa[(p.usuario_id, p.ordem_trecho)] = {
+            "origem_tipo": p.destino_tipo,
+            "origem_id": p.destino_id,
+            "origem_texto": p.destino_texto,
+            "origem_detalhe": p.destino_detalhe,
+            "regiao_origem_id": p.regiao_destino_id,
+        }
+    return mapa
+
+
+def resolver_origem_herdada(passageiro: ViagemDiaPassageiro, mapa_destinos: dict[tuple[int, int], dict]) -> dict | None:
+    """Se `origem_tipo` for None ("herda o destino do trecho anterior", ver
+    `resolver_trecho`), devolve os campos de origem ja resolvidos a partir do
+    destino do trecho anterior do mesmo usuario nesse dia; None quando nao ha
+    origem propria (`origem_tipo` preenchido) ou nao ha o que herdar.
+    """
+    if passageiro.origem_tipo is not None:
+        return None
+    return mapa_destinos.get((passageiro.usuario_id, passageiro.ordem_trecho - 1))
