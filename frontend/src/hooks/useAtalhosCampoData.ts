@@ -24,12 +24,13 @@ export function useAtalhosCampoData() {
     function aoTeclar(e: KeyboardEvent) {
       const alvo = e.target;
       if (!(alvo instanceof HTMLInputElement) || alvo.type !== "date") return;
-      if (!["t", "+", "-"].includes(e.key)) return;
+      const tecla = e.key.toLowerCase();
+      if (!["t", "+", "-"].includes(tecla)) return;
 
       e.preventDefault();
-      const base = e.key !== "t" && alvo.value ? new Date(`${alvo.value}T00:00:00`) : new Date();
-      if (e.key === "+") base.setDate(base.getDate() + 1);
-      else if (e.key === "-") base.setDate(base.getDate() - 1);
+      const base = tecla !== "t" && alvo.value ? new Date(`${alvo.value}T00:00:00`) : new Date();
+      if (tecla === "+") base.setDate(base.getDate() + 1);
+      else if (tecla === "-") base.setDate(base.getDate() - 1);
 
       dispararMudanca(alvo, paraIso(base));
     }
