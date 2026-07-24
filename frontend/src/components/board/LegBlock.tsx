@@ -13,6 +13,7 @@ interface Props {
   onAdicionarPassageiro?: (viagemId: number) => void;
   onRemoverPassageiro?: (id: number) => void;
   onCancelarPassageiro?: (id: number) => void;
+  onRetomarPassageiro?: (id: number) => void;
   onEditarPassageiro?: (passageiro: ViagemDiaPassageiro) => void;
   onRemoverViagem?: (viagemId: number) => void;
 }
@@ -25,6 +26,7 @@ export default function LegBlock({
   onAdicionarPassageiro,
   onRemoverPassageiro,
   onCancelarPassageiro,
+  onRetomarPassageiro,
   onEditarPassageiro,
   onRemoverViagem,
 }: Props) {
@@ -88,6 +90,7 @@ export default function LegBlock({
             destinoLocalNome={locais.find((l) => l.id === p.destino_id)?.nome}
             onRemover={onRemoverPassageiro}
             onCancelar={onCancelarPassageiro}
+            onRetomar={onRetomarPassageiro}
             onEditar={onEditarPassageiro}
           />
         ))}

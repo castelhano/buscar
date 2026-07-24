@@ -19,6 +19,7 @@ interface Props {
   onAdicionarPassageiro?: (viagemId: number) => void;
   onRemoverPassageiro?: (id: number) => void;
   onCancelarPassageiro?: (id: number) => void;
+  onRetomarPassageiro?: (id: number) => void;
   onEditarPassageiro?: (passageiro: ViagemDiaPassageiro) => void;
   onAtribuir?: (dados: { viagemIds: number[]; condutorAtualId: number | null; veiculoAtualId: number | null }) => void;
   onLimparCondutorVeiculo?: (viagemIds: number[]) => void;
@@ -45,6 +46,7 @@ export default function CarroCard({
   onAdicionarPassageiro,
   onRemoverPassageiro,
   onCancelarPassageiro,
+  onRetomarPassageiro,
   onEditarPassageiro,
   onAtribuir,
   onLimparCondutorVeiculo,
@@ -169,6 +171,7 @@ export default function CarroCard({
           onAdicionarPassageiro={onAdicionarPassageiro}
           onRemoverPassageiro={onRemoverPassageiro}
           onCancelarPassageiro={onCancelarPassageiro}
+          onRetomarPassageiro={onRetomarPassageiro}
           onEditarPassageiro={onEditarPassageiro}
           onRemoverViagem={onRemoverViagem}
         />

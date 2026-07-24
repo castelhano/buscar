@@ -549,6 +549,9 @@ th {
 
 .passageiro-card.cancelado {
   opacity: 0.5;
+}
+
+.passageiro-card.cancelado .passageiro-card-conteudo {
   text-decoration: line-through;
 }
 

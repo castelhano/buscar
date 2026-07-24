@@ -9,10 +9,11 @@ interface Props {
   regioes: Regiao[];
   onRemover?: (id: number) => void;
   onCancelar?: (id: number) => void;
+  onRetomar?: (id: number) => void;
   onEditar: (passageiro: ViagemDiaPassageiro) => void;
 }
 
-export default function SemVagaPanel({ passageiros, locais, regioes, onRemover, onCancelar, onEditar }: Props) {
+export default function SemVagaPanel({ passageiros, locais, regioes, onRemover, onCancelar, onRetomar, onEditar }: Props) {
   const [filtroNome, setFiltroNome] = useState("");
   const [filtroRegiao, setFiltroRegiao] = useState<number | "">("");
   const [filtroDestino, setFiltroDestino] = useState<number | "">("");
@@ -80,6 +81,7 @@ export default function SemVagaPanel({ passageiros, locais, regioes, onRemover, 
               destinoLocalNome={locais.find((l) => l.id === p.destino_id)?.nome}
               onRemover={onRemover}
               onCancelar={onCancelar}
+              onRetomar={onRetomar}
               onEditar={onEditar}
             />
           ))}

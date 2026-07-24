@@ -169,6 +169,10 @@ export default function AgendamentoDiaPage() {
       api.patch(`/viagens/passageiros/${id}/status`, undefined, { status: "Cancelado", observacoes: motivo || undefined }),
     onSuccess: invalidarDia,
   });
+  const retomarPassageiro = useMutation({
+    mutationFn: (id: number) => api.patch(`/viagens/passageiros/${id}/status`, undefined, { status: "Agendado" }),
+    onSuccess: invalidarDia,
+  });
   const editarPassageiro = useMutation({
     mutationFn: ({ id, body }: { id: number; body: unknown }) => api.patch(`/viagens/passageiros/${id}`, body),
     onSuccess: invalidarDia,
@@ -350,6 +354,7 @@ export default function AgendamentoDiaPage() {
   const [modalAgendamentos, setModalAgendamentos] = useState(false);
   const [modalOcupacao, setModalOcupacao] = useState(false);
   const [modalCancelar, setModalCancelar] = useState<number | null>(null);
+  const [modalRetomar, setModalRetomar] = useState<number | null>(null);
   const [modalRemoverPassageiro, setModalRemoverPassageiro] = useState<number | null>(null);
   const [modalEditarPassageiro, setModalEditarPassageiro] = useState<ViagemDiaPassageiro | null>(null);
   const [modalCopiarDia, setModalCopiarDia] = useState(false);
@@ -786,6 +791,7 @@ export default function AgendamentoDiaPage() {
                           })
                   }
                   onCancelarPassageiro={setModalCancelar}
+                  onRetomarPassageiro={travado ? undefined : setModalRetomar}
                   onEditarPassageiro={setModalEditarPassageiro}
                   onAtribuir={travado ? undefined : abrirModalAtribuir}
                   onLimparCondutorVeiculo={
@@ -816,6 +822,7 @@ export default function AgendamentoDiaPage() {
                 regioes={regioes ?? []}
                 onRemover={travado ? undefined : setModalRemoverPassageiro}
                 onCancelar={setModalCancelar}
+                onRetomar={travado ? undefined : setModalRetomar}
                 onEditar={setModalEditarPassageiro}
               />
             )}
@@ -1065,6 +1072,20 @@ export default function AgendamentoDiaPage() {
               },
             );
           }}
+        />
+      )}
+
+      {modalRetomar !== null && (
+        <ConfirmarModal
+          titulo="Retomar atendimento"
+          mensagem="Retomar esse atendimento, voltando o status pra Agendado?"
+          onFechar={() => setModalRetomar(null)}
+          onConfirmar={() =>
+            retomarPassageiro.mutate(modalRetomar, {
+              onSuccess: () => setModalRetomar(null),
+              onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao retomar passageiro")),
+            })
+          }
         />
       )}
 
