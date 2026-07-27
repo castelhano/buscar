@@ -165,8 +165,12 @@ export default function AgendamentoDiaPage() {
     onSuccess: invalidarDia,
   });
   const cancelarPassageiro = useMutation({
-    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
-      api.patch(`/viagens/passageiros/${id}/status`, undefined, { status: "Cancelado", observacoes: motivo || undefined }),
+    mutationFn: ({ id, motivo, viagemPerdida }: { id: number; motivo: string; viagemPerdida: boolean }) =>
+      api.patch(`/viagens/passageiros/${id}/status`, undefined, {
+        status: "Cancelado",
+        observacoes: motivo || undefined,
+        viagem_perdida: viagemPerdida,
+      }),
     onSuccess: invalidarDia,
   });
   const retomarPassageiro = useMutation({
@@ -1054,16 +1058,16 @@ export default function AgendamentoDiaPage() {
         <CancelarPassageiroModal
           onFechar={() => setModalCancelar(null)}
           temOutrosAtendimentos={outrosAtendimentosDoDia(modalCancelar).length > 0}
-          onConfirmar={(motivo, cancelarTodos) => {
+          onConfirmar={(motivo, cancelarTodos, viagemPerdida) => {
             const outros = cancelarTodos ? outrosAtendimentosDoDia(modalCancelar) : [];
             cancelarPassageiro.mutate(
-              { id: modalCancelar, motivo },
+              { id: modalCancelar, motivo, viagemPerdida },
               {
                 onSuccess: () => {
                   setModalCancelar(null);
                   for (const p of outros) {
                     cancelarPassageiro.mutate(
-                      { id: p.id, motivo },
+                      { id: p.id, motivo, viagemPerdida },
                       { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao cancelar outros atendimentos do passageiro")) },
                     );
                   }

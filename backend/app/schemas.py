@@ -305,6 +305,7 @@ class ViagemDiaPassageiroRead(ORMModel):
     status: StatusAtendimentoDia
     observacoes: str | None
     fixo: bool
+    viagem_perdida: bool = False
     irregular: bool = False
     motivo_irregular: str | None = None
 

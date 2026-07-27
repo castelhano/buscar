@@ -254,6 +254,7 @@ export interface ViagemDiaPassageiro {
   status: StatusAtendimentoDia;
   observacoes: string | null;
   fixo: boolean;
+  viagem_perdida: boolean;
   irregular: boolean;
   motivo_irregular: string | null;
 }

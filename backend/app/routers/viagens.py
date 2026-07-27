@@ -874,7 +874,11 @@ def tirar_passageiro_do_carro(passageiro_id: int, db: Session = Depends(get_db))
 
 @router.patch("/passageiros/{passageiro_id}/status", response_model=schemas.ViagemDiaRead | schemas.ViagemDiaPassageiroRead)
 def alterar_status_passageiro(
-    passageiro_id: int, status: models.StatusAtendimentoDia, observacoes: str | None = None, db: Session = Depends(get_db)
+    passageiro_id: int,
+    status: models.StatusAtendimentoDia,
+    observacoes: str | None = None,
+    viagem_perdida: bool = False,
+    db: Session = Depends(get_db),
 ):
     passageiro = _get_passageiro_ou_404(db, passageiro_id)
     if status != models.StatusAtendimentoDia.CANCELADO:
@@ -884,6 +888,7 @@ def alterar_status_passageiro(
     passageiro.status = status
     if observacoes is not None:
         passageiro.observacoes = observacoes
+    passageiro.viagem_perdida = viagem_perdida if status == models.StatusAtendimentoDia.CANCELADO else False
     db.commit()
     if passageiro.viagem_dia_id is None:
         return _serializar_passageiro_orfao(db, passageiro)  # orfao (sem vaga) -- nao ha viagem pra serializar

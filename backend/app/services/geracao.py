@@ -85,14 +85,16 @@ def _agendas_do_dia(db: Session, data: dt.date):
     dia_semana = dia_semana_from_date(data)
     agendas = agendas_fixo_da_semana(db, dia_semana)
     excecoes: dict[int, UsuarioExcecao] = {}
+    # Excecao e a fonte de verdade e vale independente do status do usuario
+    # (mesmo Inativo): lancar atendimento avulso na excecao deve constar na
+    # geracao do dia -- diferente do Fixo, que so pega usuario Ativo (ver
+    # `agendas_fixo_da_semana`).
     for e in (
         db.query(UsuarioExcecao)
-        .join(Usuario, UsuarioExcecao.usuario_id == Usuario.id)
         .options(joinedload(UsuarioExcecao.usuario), joinedload(UsuarioExcecao.trechos))
         .filter(
             UsuarioExcecao.data_inicio <= data,
             UsuarioExcecao.data_fim >= data,
-            Usuario.status == StatusAtivoInativo.ATIVO,
         )
         .order_by(UsuarioExcecao.id.desc())
     ):
