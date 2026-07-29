@@ -1230,6 +1230,7 @@ export default function AgendamentoDiaPage() {
             destino_detalhe: modalEditarPassageiro.destino_detalhe,
             regiao_destino_id: modalEditarPassageiro.regiao_destino_id,
             acompanhante: modalEditarPassageiro.acompanhante,
+            observacoes: modalEditarPassageiro.observacoes,
           }}
           observacoesIniciais={modalEditarPassageiro.observacoes ?? ""}
           onFechar={() => setModalEditarPassageiro(null)}
