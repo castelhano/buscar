@@ -42,6 +42,7 @@ def _preparar_trecho_dados(db: Session, usuario: models.Usuario, trecho: schemas
         raise HTTPException(status_code=400, detail=str(erro)) from erro
     dados["hora"] = trecho.hora
     dados["acompanhante"] = trecho.acompanhante
+    dados["observacoes"] = trecho.observacoes
     return dados
 
 

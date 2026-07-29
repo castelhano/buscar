@@ -1178,6 +1178,14 @@ th {
   height: 15px;
 }
 
+.campo-observacoes {
+  flex: 1 1 100%;
+}
+
+.campo-observacoes input {
+  width: 100%;
+}
+
 .trecho-row-actions {
   display: flex;
   flex-direction: column;

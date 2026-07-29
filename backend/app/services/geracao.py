@@ -223,6 +223,7 @@ def _adicionar_pernas(
                 "regiao_destino_id": trecho.regiao_destino_id,
                 "regiao_alocacao_id": regiao_alocacao_id,
                 "acompanhante": trecho.acompanhante,
+                "observacoes": trecho.observacoes,
                 "fixo": fixo,
             }
         )
@@ -506,6 +507,7 @@ def _gerar_carro_do_grupo_base(
                     destino_detalhe=perna["destino_detalhe"],
                     regiao_destino_id=perna["regiao_destino_id"],
                     acompanhante=perna["acompanhante"],
+                    observacoes=perna["observacoes"],
                     fixo=perna["fixo"],
                     ordem=indice,
                 )
@@ -542,6 +544,7 @@ def _deixar_para_alocacao_manual(db: Session, pernas: list[dict], data: dt.date)
                 destino_detalhe=perna["destino_detalhe"],
                 regiao_destino_id=perna["regiao_destino_id"],
                 acompanhante=perna["acompanhante"],
+                observacoes=perna["observacoes"],
                 fixo=perna["fixo"],
             )
         )

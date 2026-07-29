@@ -172,6 +172,7 @@ class TrechoCreate(BaseModel):
     destino_detalhe: str | None = None
     regiao_destino_id: int | None = None
     acompanhante: bool = False
+    observacoes: str | None = None
 
 
 class TrechoRead(ORMModel):
@@ -189,6 +190,7 @@ class TrechoRead(ORMModel):
     destino_detalhe: str | None
     regiao_destino_id: int | None
     acompanhante: bool
+    observacoes: str | None
 
 
 # --------------------------------------------------------------------------

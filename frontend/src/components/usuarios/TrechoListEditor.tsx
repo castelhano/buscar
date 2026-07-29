@@ -10,6 +10,11 @@ interface Props {
   /** false trava a lista no tamanho atual (usado ao editar um unico trecho
    * ja lancado, onde adicionar/remover mudaria outro registro). */
   permitirAdicionarRemover?: boolean;
+  /** false esconde o campo de observacoes por trecho -- usado no
+   * AdicionarPassageiroModal, que ja tem seu proprio campo Observacoes por
+   * cima (ligado a ViagemDiaPassageiro.observacoes) e sempre sobrescreve o
+   * que estiver aqui no submit. */
+  mostrarObservacoes?: boolean;
 }
 
 /** Trecho vazio pronto pra inserir na lista. `primeiro=true` (index 0, nao
@@ -30,6 +35,7 @@ export function trechoVazio(primeiro: boolean): TrechoInput {
     destino_detalhe: null,
     regiao_destino_id: null,
     acompanhante: false,
+    observacoes: null,
   };
 }
 
@@ -47,6 +53,7 @@ export function trechoParaInput(t: Trecho): TrechoInput {
     destino_detalhe: t.destino_detalhe,
     regiao_destino_id: t.regiao_destino_id,
     acompanhante: t.acompanhante,
+    observacoes: t.observacoes,
   };
 }
 
@@ -221,6 +228,7 @@ export default function TrechoListEditor({
   locais,
   somenteLeitura = false,
   permitirAdicionarRemover = true,
+  mostrarObservacoes = true,
 }: Props) {
   function atualizar(indice: number, patch: Partial<TrechoInput>) {
     onChange(trechos.map((t, i) => (i === indice ? { ...t, ...patch } : t)));
@@ -287,6 +295,16 @@ export default function TrechoListEditor({
               />
               <span>Acompanhante</span>
             </label>
+            {mostrarObservacoes && (
+              <div className="campo campo-observacoes">
+                <input
+                  placeholder="Observações"
+                  value={trecho.observacoes ?? ""}
+                  disabled={somenteLeitura}
+                  onChange={(e) => atualizar(indice, { observacoes: e.target.value || null })}
+                />
+              </div>
+            )}
           </div>
           {!somenteLeitura && permitirAdicionarRemover && (
             <div className="trecho-row-actions">

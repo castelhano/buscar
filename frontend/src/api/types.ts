@@ -189,6 +189,7 @@ export interface Trecho {
   destino_detalhe: string | null;
   regiao_destino_id: number | null;
   acompanhante: boolean;
+  observacoes: string | null;
 }
 
 export interface TrechoInput {
@@ -204,6 +205,7 @@ export interface TrechoInput {
   destino_detalhe: string | null;
   regiao_destino_id: number | null;
   acompanhante: boolean;
+  observacoes: string | null;
 }
 
 export interface UsuarioAgendaSemanal {

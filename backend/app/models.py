@@ -349,6 +349,7 @@ class UsuarioAgendaSemanalTrecho(Base):
     destino_detalhe: Mapped[str | None] = mapped_column(Text, nullable=True)
     regiao_destino_id: Mapped[int | None] = mapped_column(ForeignKey("regiao.id"), nullable=True)
     acompanhante: Mapped[bool] = mapped_column(default=False)
+    observacoes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     agenda: Mapped["UsuarioAgendaSemanal"] = relationship(back_populates="trechos")
     origem_local: Mapped["Local | None"] = relationship(foreign_keys=[origem_id])
@@ -428,6 +429,7 @@ class UsuarioExcecaoTrecho(Base):
     destino_detalhe: Mapped[str | None] = mapped_column(Text, nullable=True)
     regiao_destino_id: Mapped[int | None] = mapped_column(ForeignKey("regiao.id"), nullable=True)
     acompanhante: Mapped[bool] = mapped_column(default=False)
+    observacoes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     excecao: Mapped["UsuarioExcecao"] = relationship(back_populates="trechos")
     origem_local: Mapped["Local | None"] = relationship(foreign_keys=[origem_id])

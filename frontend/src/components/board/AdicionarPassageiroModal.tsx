@@ -78,6 +78,7 @@ export default function AdicionarPassageiroModal({
         destino_detalhe: t.destino_detalhe,
         regiao_destino_id: t.regiao_destino_id,
         acompanhante: t.acompanhante,
+        observacoes: t.observacoes,
       })),
     );
   }
@@ -149,6 +150,7 @@ export default function AdicionarPassageiroModal({
             locais={locais ?? []}
             somenteLeitura={somenteLeitura}
             permitirAdicionarRemover={!modoEdicao}
+            mostrarObservacoes={false}
           />
 
           <div className="campo">
