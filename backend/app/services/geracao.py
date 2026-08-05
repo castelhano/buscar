@@ -14,6 +14,7 @@ from app.models import (
     OperacaoExcecao,
     PeriodoCondutor,
     RodizioCondutorFimDeSemana,
+    RodizioCondutorFimDeSemanaSnapshot,
     StatusAtendimentoDia,
     StatusAtivoInativo,
     StatusCondutor,
@@ -579,19 +580,23 @@ def _veiculo_disponivel(db: Session, veiculo_id: int, pernas: list[ViagemDia], v
     return veiculo
 
 
-def _condutor_livre(condutor_id: int, viagem: ViagemDia, viagens: list[ViagemDia]) -> bool:
+def _condutor_livre(condutor_id: int, pernas: list[ViagemDia], viagens: list[ViagemDia]) -> bool:
     """So usado no rodizio alfabetico de fim de semana (`_proximo_condutor_alfabetico`),
     onde ha de fato uma escolha entre varios condutores candidatos. Janela
     calculada pelo atendimento real (`inicio_viagem`/`fim_viagem`), nunca
-    `horario_saida`.
+    `horario_saida`. `pernas` sao todas as viagens de um mesmo carro num mesmo
+    periodo (ver `_atribuir_condutores`) -- nunca conflitam entre si (mesmo
+    carro), so contra outros carros (`viagens`).
     """
-    inicio = inicio_viagem(viagem)
-    fim = fim_viagem(viagem)
-    for outra in viagens:
-        if outra.id == viagem.id or outra.condutor_id != condutor_id:
-            continue
-        if janelas_sobrepoem(inicio, fim, inicio_viagem(outra), fim_viagem(outra)):
-            return False
+    ids_do_grupo = {p.id for p in pernas}
+    for perna in pernas:
+        inicio = inicio_viagem(perna)
+        fim = fim_viagem(perna)
+        for outra in viagens:
+            if outra.id in ids_do_grupo or outra.condutor_id != condutor_id:
+                continue
+            if janelas_sobrepoem(inicio, fim, inicio_viagem(outra), fim_viagem(outra)):
+                return False
     return True
 
 
@@ -618,10 +623,15 @@ def _atribuir_condutores(
       proprio condutor/veiculo (essa auto-colisao, calculada em cima de
       `horario_saida`, era o que deixava pernas como o retorno do meio-dia
       sem condutor mesmo o carro tendo condutor definido o dia todo).
-    - Sabado/domingo: rodizio alfabetico continuo por periodo, independente de
-      grupo (`RodizioCondutorFimDeSemana`) -- ver `_proximo_condutor_alfabetico`.
-      Aqui sim ha escolha entre varios condutores candidatos, entao a
-      checagem de sobreposicao (`_condutor_livre`) se aplica, calculada pelo
+    - Sabado/domingo: as pernas tambem sao agrupadas por (`GrupoBase`, periodo)
+      -- uma unica decisao por carro/periodo, gravada em todas as pernas do
+      grupo de uma vez (senao um carro com N viagens no periodo receberia ate
+      N condutores diferentes, e o rodizio giraria N vezes por causa de um so
+      carro). O condutor e escolhido por rodizio alfabetico continuo
+      (`RodizioCondutorFimDeSemana`), independente de `GrupoRevezamento` --
+      ver `_proximo_condutor_alfabetico`. Aqui sim ha escolha entre varios
+      condutores candidatos, entao a checagem de sobreposicao (`_condutor_livre`)
+      se aplica contra as demais viagens (de outros carros), calculada pelo
       atendimento real (`inicio_viagem`/`fim_viagem`), nunca por
       `horario_saida`.
 
@@ -665,19 +675,32 @@ def _atribuir_condutores(
         }
 
     if eh_fim_de_semana:
+        pernas_por_grupo_periodo: dict[tuple[int, PeriodoCondutor], list[ViagemDia]] = defaultdict(list)
         for viagem in viagens:
-            empresa_ids = empresas_por_regiao.get(viagem.regiao_id, [])
-            condutor = _proximo_condutor_alfabetico(db, viagem, viagens, em_ferias, empresa_ids, pendentes_periodo)
+            grupo_id = grupo_por_viagem_id.get(viagem.id)
+            if grupo_id is None:
+                continue  # nao veio de nenhum GrupoBase (nao deveria acontecer aqui)
+            pernas_por_grupo_periodo[(grupo_id, _periodo_da_viagem(viagem))].append(viagem)
+
+        _snapshot_rodizio_fim_de_semana(db, data, {periodo for _grupo_id, periodo in pernas_por_grupo_periodo})
+
+        for (_grupo_id, periodo), pernas in pernas_por_grupo_periodo.items():
+            empresa_ids = empresas_por_regiao.get(pernas[0].regiao_id, [])
+            condutor = _proximo_condutor_alfabetico(
+                db, pernas, periodo, viagens, em_ferias, empresa_ids, pendentes_periodo
+            )
             if condutor is None:
                 continue
-            viagem.condutor_id = condutor.id
+            for perna in pernas:
+                perna.condutor_id = condutor.id
             if condutor.veiculo_preferencial_id is not None:
-                veiculo = _veiculo_disponivel(db, condutor.veiculo_preferencial_id, [viagem], viagens)
+                veiculo = _veiculo_disponivel(db, condutor.veiculo_preferencial_id, pernas, viagens)
                 if veiculo is not None:
-                    viagem.veiculo_id = veiculo.id
-                    viagem.empresa_id = veiculo.empresa_id
-                    viagem.capacidade_usuarios = veiculo.capacidade_usuarios
-                    viagem.capacidade_acompanhantes = veiculo.capacidade_acompanhantes
+                    for perna in pernas:
+                        perna.veiculo_id = veiculo.id
+                        perna.empresa_id = veiculo.empresa_id
+                        perna.capacidade_usuarios = veiculo.capacidade_usuarios
+                        perna.capacidade_acompanhantes = veiculo.capacidade_acompanhantes
     else:
         pernas_por_grupo_periodo: dict[tuple[int, PeriodoCondutor], list[ViagemDia]] = defaultdict(list)
         for viagem in viagens:
@@ -719,6 +742,66 @@ def _atribuir_condutores(
             revezamento.deslocamento = (revezamento.deslocamento + 1) % len(revezamento.condutores)
 
 
+def _snapshot_rodizio_fim_de_semana(db: Session, data: dt.date, periodos: set[PeriodoCondutor]) -> None:
+    """Guarda o `RodizioCondutorFimDeSemana.ultimo_condutor_id` de cada
+    periodo tocado nessa geracao ANTES dela avancar o rodizio (ver
+    `RodizioCondutorFimDeSemanaSnapshot`), pra `reverter_rodizio_fim_de_semana`
+    poder desfazer se essa data for limpa. So grava na primeira vez pra essa
+    (data, periodo) -- geracao e idempotente (`gerar_agendamento_dia` nunca
+    roda duas vezes pra mesma data), entao nao deveria haver snapshot previo,
+    mas o guard evita sobrescrever um valor "anterior" que ja seria o de uma
+    geracao anterior de verdade caso isso mude.
+    """
+    for periodo in periodos:
+        if db.get(RodizioCondutorFimDeSemanaSnapshot, (data, periodo)) is not None:
+            continue
+        registro = db.get(RodizioCondutorFimDeSemana, periodo)
+        db.add(
+            RodizioCondutorFimDeSemanaSnapshot(
+                data=data,
+                periodo=periodo,
+                condutor_id_anterior=registro.ultimo_condutor_id if registro else None,
+            )
+        )
+
+
+def reverter_rodizio_fim_de_semana(db: Session, data: dt.date) -> None:
+    """Desfaz o avanco de `RodizioCondutorFimDeSemana.ultimo_condutor_id` que
+    `_atribuir_condutores` aplica a cada geracao completa de uma data de fim
+    de semana -- chamado por `routers.viagens.limpar_dia` quando a geracao
+    apagada tinha de fato rodado, simetrico a `reverter_giro_revezamento` pro
+    dia util. Sem efeito numa data de dia util ou numa data de fim de semana
+    que nunca gerou nada (nenhum snapshot pra ela).
+
+    Restaura o valor exato de antes dessa geracao (`RodizioCondutorFimDeSemanaSnapshot`)
+    em vez de decrementar um contador mod N como o dia util: pro fim de
+    semana isso nao seria equivalente, porque o "proximo" candidato depende
+    da regiao/empresa de cada carro, entao nao ha um N unico valido pro
+    periodo inteiro. Se outra data de fim de semana gerou e avancou o mesmo
+    periodo DEPOIS dessa (ex: gera sabado, gera domingo, limpa so sabado),
+    restaurar aqui desfaz junto o avanco do domingo -- limitacao aceita, na
+    mesma familia de suposicao de ordem que o dia util ja faz (giro por
+    calendario, nao por geracao individual).
+    """
+    snapshots = (
+        db.query(RodizioCondutorFimDeSemanaSnapshot)
+        .filter(RodizioCondutorFimDeSemanaSnapshot.data == data)
+        .all()
+    )
+    for snapshot in snapshots:
+        registro = db.get(RodizioCondutorFimDeSemana, snapshot.periodo)
+        if registro is None:
+            if snapshot.condutor_id_anterior is not None:
+                db.add(
+                    RodizioCondutorFimDeSemana(
+                        periodo=snapshot.periodo, ultimo_condutor_id=snapshot.condutor_id_anterior
+                    )
+                )
+        else:
+            registro.ultimo_condutor_id = snapshot.condutor_id_anterior
+        db.delete(snapshot)
+
+
 def reverter_giro_revezamento(db: Session, dia_semana: DiaSemana) -> None:
     """Desfaz o giro de `GrupoRevezamento.deslocamento` que `_atribuir_condutores`
     aplica a cada geracao completa de um dia util -- chamado por
@@ -726,8 +809,8 @@ def reverter_giro_revezamento(db: Session, dia_semana: DiaSemana) -> None:
     (existia `ViagemDia`/orfao pra data), pra manter o rodizio consistente num
     ciclo gerar/limpar/gerar (sem isso, o giro avanca de novo na proxima
     geracao e fica duplicado pra sempre nas ocorrencias seguintes desse dia da
-    semana). Fim de semana nao usa `deslocamento` (ve `_proximo_condutor_alfabetico`),
-    entao nao ha o que reverter.
+    semana). Fim de semana usa `RodizioCondutorFimDeSemana` em vez de
+    `deslocamento` -- ver `reverter_rodizio_fim_de_semana`.
     """
     if dia_semana in _FIM_DE_SEMANA:
         return
@@ -784,20 +867,23 @@ def _condutor_do_slot(
 
 def _proximo_condutor_alfabetico(
     db: Session,
-    viagem: ViagemDia,
+    pernas: list[ViagemDia],
+    periodo: PeriodoCondutor,
     viagens: list[ViagemDia],
     em_ferias: set[int],
     empresa_ids: list[int],
     pendentes_periodo: dict[PeriodoCondutor, int],
 ) -> Condutor | None:
-    """Escolhe o condutor da viagem no rodizio alfabetico de fim de semana:
-    ordena por nome os condutores ATIVOS do periodo/empresas elegiveis, e
-    continua a partir de `RodizioCondutorFimDeSemana.ultimo_condutor_id`
+    """Escolhe o condutor de todas as `pernas` de um mesmo carro num mesmo
+    periodo (ver `_atribuir_condutores`) no rodizio alfabetico de fim de
+    semana: ordena por nome os condutores ATIVOS do periodo/empresas
+    elegiveis, e continua a partir de `RodizioCondutorFimDeSemana.ultimo_condutor_id`
     daquele periodo (ou do que ja avancou nesse mesmo laco, via
     `pendentes_periodo`), ciclando -- pula quem estiver de ferias/indisponivel
-    sem travar.
+    sem travar. Uma unica chamada decide o condutor de todas as pernas
+    (nunca uma escolha por perna, senao um carro com N viagens no dia
+    receberia ate N condutores diferentes).
     """
-    periodo = _periodo_da_viagem(viagem)
     if not empresa_ids:
         return None
 
@@ -812,16 +898,17 @@ def _proximo_condutor_alfabetico(
         .all()
     )
     candidatos = [c for c in candidatos if c.id not in em_ferias]
+    ids_pernas = [p.id for p in pernas]
     if not candidatos:
-        print(f"[geracao] viagem_id={viagem.id} periodo={periodo.value}: sem condutor {periodo.value} disponivel")
+        print(f"[geracao] viagem_ids={ids_pernas} periodo={periodo.value}: sem condutor {periodo.value} disponivel")
         return None
 
     por_id = {c.id: c for c in candidatos}
     ordem_ids = [c.id for c in candidatos]
-    elegiveis = {c.id for c in candidatos if _condutor_livre(c.id, viagem, viagens)}
+    elegiveis = {c.id for c in candidatos if _condutor_livre(c.id, pernas, viagens)}
     if not elegiveis:
         print(
-            f"[geracao] viagem_id={viagem.id}: nenhum condutor livre nesse horario (rodizio fim de semana)"
+            f"[geracao] viagem_ids={ids_pernas}: nenhum condutor livre nesse horario (rodizio fim de semana)"
         )
         return None
 

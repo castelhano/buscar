@@ -26,6 +26,7 @@ from app.services.geracao import (
     gerar_agendamento_dia,
     listar_desconsiderados_dia,
     reverter_giro_revezamento,
+    reverter_rodizio_fim_de_semana,
 )
 from app.services.pontos import PontoInvalido, mapa_destinos_do_dia, resolver_origem_herdada, resolver_trecho
 from app.services.recursos import fim_viagem, inicio_viagem, janelas_sobrepoem
@@ -383,10 +384,12 @@ def limpar_dia(data: dt.date, db: Session = Depends(get_db)):
     tentativas anteriores no painel de Sem Vaga.
 
     Se a geracao apagada tinha de fato rodado (havia `ViagemDia` ou orfao pra
-    essa data), desfaz tambem o giro do rodizio de condutor de dia util
-    (`GrupoRevezamento.deslocamento`, ver `reverter_giro_revezamento`) --
-    senao um ciclo gerar/limpar/gerar avanca o rodizio duas vezes pra uma
-    unica ocorrencia real do dia da semana.
+    essa data), desfaz tambem o avanco do rodizio de condutor -- dia util
+    (`GrupoRevezamento.deslocamento`, ver `reverter_giro_revezamento`) ou fim
+    de semana (`RodizioCondutorFimDeSemana.ultimo_condutor_id`, ver
+    `reverter_rodizio_fim_de_semana`), cada funcao so mexe no que e do seu
+    tipo de dia -- senao um ciclo gerar/limpar/gerar avanca o rodizio duas
+    vezes pra uma unica ocorrencia real do dia.
     """
     _verificar_dia_destravado(db, data)
     viagem_ids = [
@@ -408,6 +411,7 @@ def limpar_dia(data: dt.date, db: Session = Depends(get_db)):
     ).delete(synchronize_session=False)
     if viagem_ids or havia_orfao:
         reverter_giro_revezamento(db, dia_semana_from_date(data))
+        reverter_rodizio_fim_de_semana(db, data)
     db.commit()
 
 

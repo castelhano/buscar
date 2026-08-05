@@ -553,6 +553,26 @@ class RodizioCondutorFimDeSemana(Base):
     ultimo_condutor: Mapped["Condutor | None"] = relationship()
 
 
+class RodizioCondutorFimDeSemanaSnapshot(Base):
+    """Valor de `RodizioCondutorFimDeSemana.ultimo_condutor_id` imediatamente
+    antes de uma geracao de fim de semana avancar o rodizio, guardado por
+    (data, periodo) -- permite `services.geracao.reverter_rodizio_fim_de_semana`
+    desfazer o avanco quando essa data e limpa (`routers.viagens.limpar_dia`),
+    do mesmo jeito que `GrupoRevezamento.deslocamento` e desfeito pro dia util
+    (ver `services.geracao.reverter_giro_revezamento`). So existe entre a
+    geracao e o limpar (ou pra sempre, se a data nunca for limpa) -- a propria
+    reversao apaga a linha depois de usar.
+    """
+
+    __tablename__ = "rodizio_condutor_fim_de_semana_snapshot"
+
+    data: Mapped[dt.date] = mapped_column(Date, primary_key=True)
+    periodo: Mapped[PeriodoCondutor] = mapped_column(_enum(PeriodoCondutor), primary_key=True)
+    condutor_id_anterior: Mapped[int | None] = mapped_column(
+        ForeignKey("condutor.id", ondelete="SET NULL"), nullable=True
+    )
+
+
 class ViagemBase(Base):
     """Um horario dentro de um `GrupoBase` -- vira uma `ViagemDia` na geracao
     real, tentando reaproveitar o mesmo veiculo das outras viagens do mesmo
