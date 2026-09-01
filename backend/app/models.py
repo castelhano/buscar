@@ -5,6 +5,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     Enum as SAEnum,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -172,6 +173,7 @@ class Empresa(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     nome: Mapped[str] = mapped_column(String(150), unique=True)
+    percentual_contrato: Mapped[float] = mapped_column(Float, default=0.0)
 
     regioes: Mapped[list["Regiao"]] = relationship(secondary="empresa_regiao")
     veiculos: Mapped[list["Veiculo"]] = relationship(back_populates="empresa")
@@ -206,6 +208,30 @@ class Veiculo(Base):
     __table_args__ = (
         CheckConstraint("capacidade_usuarios > 0", name="ck_veiculo_capacidade_usuarios"),
         CheckConstraint("capacidade_acompanhantes >= 0", name="ck_veiculo_capacidade_acompanhantes"),
+    )
+
+
+class RegistroKm(Base):
+    """Lancamento manual de odometro por veiculo, cobrindo um periodo
+    (hoje sempre mensal, mas o modelo permite periodos menores no futuro).
+    """
+
+    __tablename__ = "registro_km"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    veiculo_id: Mapped[int] = mapped_column(ForeignKey("veiculo.id"))
+    data_inicio: Mapped[dt.date] = mapped_column(Date)
+    data_fim: Mapped[dt.date] = mapped_column(Date)
+    km_inicial: Mapped[int] = mapped_column(Integer)
+    km_final: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    observacoes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    veiculo: Mapped["Veiculo"] = relationship()
+
+    __table_args__ = (
+        CheckConstraint("data_fim >= data_inicio", name="ck_registro_km_periodo"),
+        CheckConstraint("km_final IS NULL OR km_final >= km_inicial", name="ck_registro_km_valores"),
+        Index("ix_registro_km_veiculo_periodo", "veiculo_id", "data_inicio", "data_fim"),
     )
 
 

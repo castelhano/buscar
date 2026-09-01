@@ -12,6 +12,19 @@ export function amanhaIso(): string {
   return `${ano}-${mes}-${dia}`;
 }
 
+export function mesAtualIso(): string {
+  const hoje = new Date();
+  return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`;
+}
+
+export function limitesDoMes(mesIso: string): { inicio: string; fim: string } {
+  const [anoStr, mesStr] = mesIso.split("-");
+  const ano = Number(anoStr);
+  const mes = Number(mesStr);
+  const ultimoDia = new Date(ano, mes, 0).getDate();
+  return { inicio: `${anoStr}-${mesStr}-01`, fim: `${anoStr}-${mesStr}-${String(ultimoDia).padStart(2, "0")}` };
+}
+
 export function calcularIdade(dataNascimento: string | null | undefined): number | null {
   if (!dataNascimento) return null;
   const [ano, mes, dia] = dataNascimento.split("-").map(Number);

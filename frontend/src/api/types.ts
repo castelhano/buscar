@@ -108,6 +108,7 @@ export interface LocalRecesso {
 export interface Empresa {
   id: number;
   nome: string;
+  percentual_contrato: number;
   regioes: Regiao[];
 }
 
@@ -119,6 +120,16 @@ export interface Veiculo {
   status: StatusVeiculo;
   capacidade_usuarios: number;
   capacidade_acompanhantes: number;
+}
+
+export interface RegistroKm {
+  id: number;
+  veiculo_id: number;
+  data_inicio: string;
+  data_fim: string;
+  km_inicial: number;
+  km_final: number | null;
+  observacoes: string | null;
 }
 
 export interface Condutor {
@@ -418,4 +429,89 @@ export interface LoginResponse {
   access_token: string;
   token_type: string;
   conta: Conta;
+}
+
+// --------------------------------------------------------------------------
+// Resumos (dashboards agregados)
+// --------------------------------------------------------------------------
+
+export interface KmPorVeiculo {
+  veiculo_id: number;
+  placa: string;
+  prefixo: string;
+  empresa_id: number;
+  empresa_nome: string;
+  km_total: number;
+}
+
+export interface KmPorEmpresa {
+  empresa_id: number;
+  empresa_nome: string;
+  km_total: number;
+  percentual_contrato: number;
+  percentual_km_periodo: number;
+}
+
+export interface EvolucaoKmMes {
+  ano: number;
+  mes: number;
+  empresa_id: number;
+  empresa_nome: string;
+  km_total: number;
+}
+
+export interface UsoFrotaDia {
+  data: string;
+  dia_semana: string;
+  por_empresa: Record<string, number>;
+}
+
+export interface ResumoRodagem {
+  km_por_veiculo: KmPorVeiculo[];
+  km_por_empresa: KmPorEmpresa[];
+  evolucao_km_empresa: EvolucaoKmMes[];
+  uso_frota_diario: UsoFrotaDia[];
+}
+
+export interface CelulaAtendimento {
+  data: string;
+  hora: string;
+  quantidade: number;
+}
+
+export interface CancelamentoUsuario {
+  usuario_id: number;
+  usuario_nome: string;
+  cancelamentos: number;
+  viagens_perdidas: number;
+}
+
+export interface ResumoAtendimentos {
+  grade: CelulaAtendimento[];
+  cancelamento_por_usuario: CancelamentoUsuario[];
+}
+
+export interface OciosidadeFrota {
+  veiculos_ativos: number;
+  veiculos_utilizados: number;
+  percentual_ocioso: number;
+}
+
+export interface TaxaOcupacao {
+  passageiros: number;
+  capacidade_total: number;
+  percentual: number;
+}
+
+export interface RankingCancelamentoRegiao {
+  regiao_id: number;
+  regiao_nome: string;
+  cancelamentos: number;
+}
+
+export interface ResumoOutros {
+  ociosidade_frota: OciosidadeFrota;
+  taxa_ocupacao: TaxaOcupacao;
+  km_por_atendimento: number | null;
+  ranking_cancelamento_regiao: RankingCancelamentoRegiao[];
 }

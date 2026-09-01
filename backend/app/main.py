@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import IntegrityError
 
-from app.routers import auth, backup, base, contas, frequencia, usuarios, viagens
+from app.routers import auth, backup, base, contas, frequencia, km, resumos, usuarios, viagens
 from app.routers.cadastros import (
     router_condutores,
     router_empresas,
@@ -70,6 +70,8 @@ app.include_router(viagens.router)
 app.include_router(base.router)
 app.include_router(frequencia.router)
 app.include_router(backup.router)
+app.include_router(km.router)
+app.include_router(resumos.router)
 
 
 @app.get("/health")

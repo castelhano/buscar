@@ -16,6 +16,14 @@ export function useItem<T>(chave: string, caminho: string, habilitado = true) {
   });
 }
 
+export function useQueryObj<T>(chave: string, caminho: string, params?: Record<string, string | number | boolean | undefined>, habilitado = true) {
+  return useQuery({
+    queryKey: [chave, params],
+    queryFn: () => api.get<T>(caminho, params),
+    enabled: habilitado,
+  });
+}
+
 export function useCreate<T, C = Partial<T>>(chave: string, caminho: string) {
   const queryClient = useQueryClient();
   return useMutation({

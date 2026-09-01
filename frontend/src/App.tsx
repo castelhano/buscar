@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
 import CadastrosPage from "./pages/CadastrosPage";
 import UsuariosPage from "./pages/UsuariosPage";
+import ResumosPage from "./pages/ResumosPage";
 import AgendamentoDiaPage from "./pages/AgendamentoDiaPage";
 import LoginPage from "./pages/LoginPage";
 import { useAuth } from "./auth/AuthContext";
@@ -12,6 +13,7 @@ const CHAVE_NAV_COLAPSADA = "buscar_nav_colapsada";
 const ITENS_MENU = [
   { to: "/", fim: true, label: "Agendamento do dia", Icone: IconeAgenda },
   { to: "/usuarios", fim: false, label: "Usuarios", Icone: IconeUsuarios },
+  { to: "/resumos", fim: false, label: "Resumos", Icone: IconeResumos },
   { to: "/cadastros", fim: false, label: "Cadastros", Icone: IconeCadastros },
 ];
 
@@ -88,6 +90,7 @@ function App() {
         <Routes>
           <Route path="/" element={<AgendamentoDiaPage />} />
           <Route path="/usuarios" element={<UsuariosPage />} />
+          <Route path="/resumos" element={<ResumosPage />} />
           <Route path="/cadastros" element={<CadastrosPage />} />
         </Routes>
       </main>
@@ -112,6 +115,15 @@ function IconeUsuarios() {
       <path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6" />
       <circle cx="17.5" cy="8.5" r="2.6" />
       <path d="M15.7 14.3c2.9.4 4.8 2.5 4.8 5.7" />
+    </svg>
+  );
+}
+
+function IconeResumos() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3.5" y="3.5" width="17" height="17" rx="2" />
+      <path d="M8 16.5v-4M12.5 16.5v-7M17 16.5v-2.5" />
     </svg>
   );
 }

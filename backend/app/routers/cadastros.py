@@ -185,7 +185,7 @@ def listar_empresas(db: Session = Depends(get_db)):
 @router_empresas.post("", response_model=schemas.EmpresaRead, status_code=201)
 def criar_empresa(payload: schemas.EmpresaCreate, db: Session = Depends(get_db)):
     regioes = _regioes_por_id(db, payload.regiao_ids)
-    empresa = models.Empresa(nome=payload.nome, regioes=regioes)
+    empresa = models.Empresa(nome=payload.nome, percentual_contrato=payload.percentual_contrato, regioes=regioes)
     db.add(empresa)
     db.commit()
     db.refresh(empresa)
@@ -196,6 +196,7 @@ def criar_empresa(payload: schemas.EmpresaCreate, db: Session = Depends(get_db))
 def atualizar_empresa(empresa_id: int, payload: schemas.EmpresaCreate, db: Session = Depends(get_db)):
     empresa = _get_or_404(db, models.Empresa, empresa_id)
     empresa.nome = payload.nome
+    empresa.percentual_contrato = payload.percentual_contrato
     empresa.regioes = _regioes_por_id(db, payload.regiao_ids)
     db.commit()
     db.refresh(empresa)

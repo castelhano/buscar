@@ -5,10 +5,11 @@ import ConfirmarModal from "../../components/board/ConfirmarModal";
 
 interface FormState {
   nome: string;
+  percentual_contrato: number;
   regiao_ids: number[];
 }
 
-const vazio: FormState = { nome: "", regiao_ids: [] };
+const vazio: FormState = { nome: "", percentual_contrato: 0, regiao_ids: [] };
 
 export default function EmpresasSection() {
   const { data: empresas, error } = useList<Empresa>("empresas", "/empresas");
@@ -40,7 +41,7 @@ export default function EmpresasSection() {
 
   function editar(empresa: Empresa) {
     setEditandoId(empresa.id);
-    setForm({ nome: empresa.nome, regiao_ids: empresa.regioes.map((r) => r.id) });
+    setForm({ nome: empresa.nome, percentual_contrato: empresa.percentual_contrato, regiao_ids: empresa.regioes.map((r) => r.id) });
   }
 
   function cancelarEdicao() {
@@ -60,6 +61,18 @@ export default function EmpresasSection() {
         <div className="campo">
           <label>Nome</label>
           <input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Transportes ABC" />
+        </div>
+        <div className="campo">
+          <label>% contrato</label>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step="0.1"
+            value={form.percentual_contrato}
+            onChange={(e) => setForm({ ...form, percentual_contrato: Number(e.target.value) })}
+            style={{ width: "6rem" }}
+          />
         </div>
         <div className="campo">
           <label>Regioes atendidas</label>
@@ -85,6 +98,7 @@ export default function EmpresasSection() {
         <thead>
           <tr>
             <th>Nome</th>
+            <th>% contrato</th>
             <th>Regioes</th>
             <th></th>
           </tr>
@@ -93,6 +107,7 @@ export default function EmpresasSection() {
           {(empresas ?? []).map((e) => (
             <tr key={e.id}>
               <td>{e.nome}</td>
+              <td>{e.percentual_contrato}%</td>
               <td>{e.regioes.map((r) => r.nome).join(", ") || "-"}</td>
               <td>
                 <button className="btn btn-sm" onClick={() => editar(e)}>

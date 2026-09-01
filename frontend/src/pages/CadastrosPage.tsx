@@ -4,6 +4,7 @@ import LocaisSection from "./cadastros/LocaisSection";
 import LocalRecessoSection from "./cadastros/LocalRecessoSection";
 import EmpresasSection from "./cadastros/EmpresasSection";
 import VeiculosSection from "./cadastros/VeiculosSection";
+import RegistrosKmSection from "./cadastros/RegistrosKmSection";
 import CondutoresSection from "./cadastros/CondutoresSection";
 import GruposFamiliaresSection from "./cadastros/GruposFamiliaresSection";
 import FeriasSection from "./cadastros/FeriasSection";
@@ -17,6 +18,7 @@ const ABAS = [
   { chave: "recesso", label: "Recesso", Componente: LocalRecessoSection },
   { chave: "empresas", label: "Empresas", Componente: EmpresasSection },
   { chave: "veiculos", label: "Frota", Componente: VeiculosSection },
+  { chave: "registros-km", label: "Km", Componente: RegistrosKmSection },
   { chave: "condutores", label: "Condutores", Componente: CondutoresSection },
   { chave: "grupos-familiares", label: "Grupos familiares", Componente: GruposFamiliaresSection },
   { chave: "ferias", label: "Ferias", Componente: FeriasSection },

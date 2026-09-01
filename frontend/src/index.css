@@ -283,6 +283,38 @@ button {
   font-size: 0.9rem;
 }
 
+.resumo-stats {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.resumo-stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: var(--cor-fundo);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  padding: 0.75rem 1rem;
+  min-width: 12rem;
+}
+
+.resumo-stat-label {
+  font-size: 0.8rem;
+  color: var(--cor-texto-suave);
+}
+
+.resumo-stat-valor {
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+
+.resumo-stat-detalhe {
+  font-size: 0.75rem;
+  color: var(--cor-texto-suave);
+}
+
 .btn {
   border: 1px solid var(--cor-borda);
   background: var(--cor-superficie);

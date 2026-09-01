@@ -74,12 +74,14 @@ class LocalRecessoRead(ORMModel):
 
 class EmpresaCreate(BaseModel):
     nome: str
+    percentual_contrato: float = 0.0
     regiao_ids: list[int] = []
 
 
 class EmpresaRead(ORMModel):
     id: int
     nome: str
+    percentual_contrato: float
     regioes: list[RegiaoRead] = []
 
 
@@ -104,6 +106,25 @@ class VeiculoRead(ORMModel):
     status: StatusVeiculo
     capacidade_usuarios: int
     capacidade_acompanhantes: int
+
+
+class RegistroKmCreate(BaseModel):
+    veiculo_id: int
+    data_inicio: dt.date
+    data_fim: dt.date
+    km_inicial: int
+    km_final: int | None = None
+    observacoes: str | None = None
+
+
+class RegistroKmRead(ORMModel):
+    id: int
+    veiculo_id: int
+    data_inicio: dt.date
+    data_fim: dt.date
+    km_inicial: int
+    km_final: int | None
+    observacoes: str | None
 
 
 class CondutorCreate(BaseModel):
@@ -626,3 +647,88 @@ class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     conta: ContaRead
+
+
+# --------------------------------------------------------------------------
+# Resumos (dashboards agregados)
+# --------------------------------------------------------------------------
+
+class KmPorVeiculo(BaseModel):
+    veiculo_id: int
+    placa: str
+    prefixo: str
+    empresa_id: int
+    empresa_nome: str
+    km_total: int
+
+
+class KmPorEmpresa(BaseModel):
+    empresa_id: int
+    empresa_nome: str
+    km_total: int
+    percentual_contrato: float
+    percentual_km_periodo: float
+
+
+class EvolucaoKmMes(BaseModel):
+    ano: int
+    mes: int
+    empresa_id: int
+    empresa_nome: str
+    km_total: int
+
+
+class UsoFrotaDia(BaseModel):
+    data: dt.date
+    dia_semana: str
+    por_empresa: dict[str, int]
+
+
+class ResumoRodagem(BaseModel):
+    km_por_veiculo: list[KmPorVeiculo]
+    km_por_empresa: list[KmPorEmpresa]
+    evolucao_km_empresa: list[EvolucaoKmMes]
+    uso_frota_diario: list[UsoFrotaDia]
+
+
+class CelulaAtendimento(BaseModel):
+    data: dt.date
+    hora: dt.time
+    quantidade: int
+
+
+class CancelamentoUsuario(BaseModel):
+    usuario_id: int
+    usuario_nome: str
+    cancelamentos: int
+    viagens_perdidas: int
+
+
+class ResumoAtendimentos(BaseModel):
+    grade: list[CelulaAtendimento]
+    cancelamento_por_usuario: list[CancelamentoUsuario]
+
+
+class OciosidadeFrota(BaseModel):
+    veiculos_ativos: int
+    veiculos_utilizados: int
+    percentual_ocioso: float
+
+
+class TaxaOcupacao(BaseModel):
+    passageiros: int
+    capacidade_total: int
+    percentual: float
+
+
+class RankingCancelamentoRegiao(BaseModel):
+    regiao_id: int
+    regiao_nome: str
+    cancelamentos: int
+
+
+class ResumoOutros(BaseModel):
+    ociosidade_frota: OciosidadeFrota
+    taxa_ocupacao: TaxaOcupacao
+    km_por_atendimento: float | None
+    ranking_cancelamento_regiao: list[RankingCancelamentoRegiao]
