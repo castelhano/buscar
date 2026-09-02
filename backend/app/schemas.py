@@ -700,7 +700,9 @@ class CelulaAtendimento(BaseModel):
 class CancelamentoUsuario(BaseModel):
     usuario_id: int
     usuario_nome: str
+    planejados: int
     cancelamentos: int
+    percentual_cancelamento: float
     viagens_perdidas: int
 
 
@@ -727,8 +729,16 @@ class RankingCancelamentoRegiao(BaseModel):
     cancelamentos: int
 
 
+class AtendimentosPorLocal(BaseModel):
+    local_id: int
+    local_nome: str
+    atendimentos: int
+    percentual: float
+
+
 class ResumoOutros(BaseModel):
     ociosidade_frota: OciosidadeFrota
     taxa_ocupacao: TaxaOcupacao
     km_por_atendimento: float | None
     ranking_cancelamento_regiao: list[RankingCancelamentoRegiao]
+    atendimentos_por_local: list[AtendimentosPorLocal]

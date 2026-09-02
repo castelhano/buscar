@@ -56,6 +56,10 @@ export default function RodagemView({ ano, mes, empresaId }: Props) {
 
   const variacoes = data.km_por_empresa.map((e) => e.percentual_km_periodo - e.percentual_contrato);
   const escalaMaxVariacao = Math.max(5, ...variacoes.map((v) => Math.abs(v)));
+  const totalKmEmpresas = data.km_por_empresa.reduce((s, e) => s + e.km_total, 0);
+  const totalPercentualKm = data.km_por_empresa.reduce((s, e) => s + e.percentual_km_periodo, 0);
+  const totalPercentualContrato = data.km_por_empresa.reduce((s, e) => s + e.percentual_contrato, 0);
+  const totalVariacao = variacoes.reduce((s, v) => s + v, 0);
 
   const totalPorEmpresa: Record<number, number> = {};
   let totalGeralFrota = 0;
@@ -75,7 +79,7 @@ export default function RodagemView({ ano, mes, empresaId }: Props) {
           <p>Nenhum km lancado no periodo.</p>
         ) : (
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={data.km_por_veiculo}>
+            <BarChart data={[...data.km_por_veiculo].sort((a, b) => b.km_total - a.km_total)}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="prefixo" />
               <YAxis />
@@ -111,6 +115,28 @@ export default function RodagemView({ ano, mes, empresaId }: Props) {
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr>
+              <td>
+                <strong>Total</strong>
+              </td>
+              <td>
+                <strong>{totalKmEmpresas}</strong>
+              </td>
+              <td>
+                <strong>{totalPercentualKm.toFixed(1)}%</strong>
+              </td>
+              <td>
+                <strong>{totalPercentualContrato.toFixed(1)}%</strong>
+              </td>
+              <td>
+                <strong style={{ color: totalVariacao > 0 ? "var(--cor-perigo)" : "var(--cor-sucesso)" }}>
+                  {totalVariacao > 0 ? "+" : ""}
+                  {totalVariacao.toFixed(1)} p.p.
+                </strong>
+              </td>
+            </tr>
+          </tfoot>
         </table>
       </section>
 

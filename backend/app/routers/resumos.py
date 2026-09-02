@@ -134,6 +134,8 @@ def _passageiros_periodo(db: Session, inicio: dt.date, fim: dt.date, empresa_id:
             joinedload(models.ViagemDiaPassageiro.viagem_dia),
             joinedload(models.ViagemDiaPassageiro.usuario),
             joinedload(models.ViagemDiaPassageiro.regiao_origem),
+            joinedload(models.ViagemDiaPassageiro.origem_local),
+            joinedload(models.ViagemDiaPassageiro.destino),
         )
         .filter(
             sa.or_(
@@ -157,10 +159,12 @@ def resumo_atendimentos(ano: int, mes: int, empresa_id: int | None = None, db: S
     passageiros = _passageiros_periodo(db, inicio, fim, empresa_id)
 
     grade_contagem: dict[tuple[dt.date, dt.time], int] = {}
+    planejados_por_usuario: dict[int, int] = {}
     cancelamento_por_usuario: dict[int, dict] = {}
     for p in passageiros:
         chave = (_data_efetiva(p), p.hora)
         grade_contagem[chave] = grade_contagem.get(chave, 0) + 1
+        planejados_por_usuario[p.usuario_id] = planejados_por_usuario.get(p.usuario_id, 0) + 1
 
         if p.status == models.StatusAtendimentoDia.CANCELADO or p.viagem_perdida:
             entrada = cancelamento_por_usuario.setdefault(
@@ -177,10 +181,17 @@ def resumo_atendimentos(ano: int, mes: int, empresa_id: int | None = None, db: S
     ]
     cancelamentos = sorted(
         (
-            schemas.CancelamentoUsuario(usuario_id=uid, usuario_nome=v["nome"], cancelamentos=v["cancelamentos"], viagens_perdidas=v["viagens_perdidas"])
+            schemas.CancelamentoUsuario(
+                usuario_id=uid,
+                usuario_nome=v["nome"],
+                planejados=planejados_por_usuario.get(uid, 0),
+                cancelamentos=v["cancelamentos"],
+                percentual_cancelamento=round(v["cancelamentos"] / planejados_por_usuario[uid] * 100, 2) if planejados_por_usuario.get(uid) else 0.0,
+                viagens_perdidas=v["viagens_perdidas"],
+            )
             for uid, v in cancelamento_por_usuario.items()
         ),
-        key=lambda c: (-(c.cancelamentos + c.viagens_perdidas), c.usuario_nome),
+        key=lambda c: (-c.cancelamentos, c.usuario_nome),
     )
 
     return schemas.ResumoAtendimentos(grade=grade, cancelamento_por_usuario=cancelamentos)
@@ -234,6 +245,38 @@ def resumo_outros(ano: int, mes: int, empresa_id: int | None = None, db: Session
         key=lambda r: -r.cancelamentos,
     )
 
+    # Cada trecho (perna) do dia referencia um Local na origem e/ou no destino;
+    # uma ida-e-volta convencional e 2 trechos apontando pro mesmo Local (uma
+    # vez como destino, outra como origem). Pra nao contar isso como 2
+    # atendimentos, agrupamos por (usuario, data) dentro de cada Local antes
+    # de contar -- ida+volta no mesmo dia vira 1 unico atendimento naquele Local.
+    visitas_por_local: dict[int, set[tuple[int, dt.date]]] = {}
+    nome_do_local: dict[int, str] = {}
+    for p in passageiros:
+        data_ref = _data_efetiva(p)
+        if p.origem_tipo == models.TipoPonto.LOCAL and p.origem_id is not None:
+            visitas_por_local.setdefault(p.origem_id, set()).add((p.usuario_id, data_ref))
+            if p.origem_local is not None:
+                nome_do_local[p.origem_id] = p.origem_local.nome
+        if p.destino_tipo == models.TipoPonto.LOCAL and p.destino_id is not None:
+            visitas_por_local.setdefault(p.destino_id, set()).add((p.usuario_id, data_ref))
+            if p.destino is not None:
+                nome_do_local[p.destino_id] = p.destino.nome
+
+    total_atendimentos_local = sum(len(visitas) for visitas in visitas_por_local.values())
+    atendimentos_por_local = sorted(
+        (
+            schemas.AtendimentosPorLocal(
+                local_id=lid,
+                local_nome=nome_do_local.get(lid, "-"),
+                atendimentos=len(visitas),
+                percentual=round(len(visitas) / total_atendimentos_local * 100, 2) if total_atendimentos_local else 0.0,
+            )
+            for lid, visitas in visitas_por_local.items()
+        ),
+        key=lambda a: -a.atendimentos,
+    )
+
     return schemas.ResumoOutros(
         ociosidade_frota=schemas.OciosidadeFrota(
             veiculos_ativos=veiculos_ativos, veiculos_utilizados=veiculos_utilizados, percentual_ocioso=percentual_ocioso
@@ -243,4 +286,5 @@ def resumo_outros(ano: int, mes: int, empresa_id: int | None = None, db: Session
         ),
         km_por_atendimento=km_por_atendimento,
         ranking_cancelamento_regiao=ranking_lista,
+        atendimentos_por_local=atendimentos_por_local,
     )

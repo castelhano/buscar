@@ -1,5 +1,6 @@
 import { useQueryObj } from "../../api/hooks";
 import type { ResumoOutros } from "../../api/types";
+import { formatarMilhar } from "../../utils/numero";
 
 interface Props {
   ano: number;
@@ -45,17 +46,69 @@ export default function OutrosView({ ano, mes, empresaId }: Props) {
             <thead>
               <tr>
                 <th>Regiao</th>
-                <th>Cancelamentos</th>
+                <th className="col-num">Cancelamentos</th>
               </tr>
             </thead>
             <tbody>
               {data.ranking_cancelamento_regiao.map((r) => (
                 <tr key={r.regiao_id}>
                   <td>{r.regiao_nome}</td>
-                  <td>{r.cancelamentos}</td>
+                  <td className="col-num">{formatarMilhar(r.cancelamentos)}</td>
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr>
+                <td>
+                  <strong>Total</strong>
+                </td>
+                <td className="col-num">
+                  <strong>{formatarMilhar(data.ranking_cancelamento_regiao.reduce((s, r) => s + r.cancelamentos, 0))}</strong>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
+      </section>
+
+      <section>
+        <h3>Atendimentos por local</h3>
+        <p style={{ fontSize: "0.85rem", color: "var(--cor-texto-suave)", marginTop: "-0.5rem" }}>
+          Ida e volta no mesmo dia pro mesmo local conta como um unico atendimento.
+        </p>
+        {data.atendimentos_por_local.length === 0 ? (
+          <p>Nenhum atendimento em local no periodo.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Local</th>
+                <th className="col-num">Atendimentos</th>
+                <th className="col-num">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.atendimentos_por_local.map((a) => (
+                <tr key={a.local_id}>
+                  <td>{a.local_nome}</td>
+                  <td className="col-num">{formatarMilhar(a.atendimentos)}</td>
+                  <td className="col-num">{a.percentual.toFixed(1)}%</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td>
+                  <strong>Total</strong>
+                </td>
+                <td className="col-num">
+                  <strong>{formatarMilhar(data.atendimentos_por_local.reduce((s, a) => s + a.atendimentos, 0))}</strong>
+                </td>
+                <td className="col-num">
+                  <strong>{data.atendimentos_por_local.reduce((s, a) => s + a.percentual, 0).toFixed(1)}%</strong>
+                </td>
+              </tr>
+            </tfoot>
           </table>
         )}
       </section>

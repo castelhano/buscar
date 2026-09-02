@@ -393,6 +393,11 @@ th {
   text-transform: uppercase;
 }
 
+th.col-num,
+td.col-num {
+  text-align: right;
+}
+
 .tag {
   display: inline-block;
   padding: 0.1rem 0.5rem;

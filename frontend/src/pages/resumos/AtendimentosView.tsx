@@ -1,6 +1,7 @@
 import { useQueryObj } from "../../api/hooks";
 import type { ResumoAtendimentos } from "../../api/types";
-import { formatarData } from "../../utils/data";
+import { diaSemanaAbrev } from "../../utils/data";
+import { formatarMilhar } from "../../utils/numero";
 
 interface Props {
   ano: number;
@@ -17,11 +18,21 @@ export default function AtendimentosView({ ano, mes, empresaId }: Props) {
   const datas = Array.from(new Set(data.grade.map((c) => c.data))).sort();
   const horas = Array.from(new Set(data.grade.map((c) => c.hora))).sort();
   const porCelula = new Map<string, number>();
+  const totalPorData = new Map<string, number>();
+  const totalPorHora = new Map<string, number>();
   let maxQuantidade = 0;
+  let totalGeral = 0;
   for (const c of data.grade) {
     porCelula.set(`${c.data}|${c.hora}`, c.quantidade);
+    totalPorData.set(c.data, (totalPorData.get(c.data) ?? 0) + c.quantidade);
+    totalPorHora.set(c.hora, (totalPorHora.get(c.hora) ?? 0) + c.quantidade);
+    totalGeral += c.quantidade;
     maxQuantidade = Math.max(maxQuantidade, c.quantidade);
   }
+
+  const totalPlanejadosCancelamento = data.cancelamento_por_usuario.reduce((s, c) => s + c.planejados, 0);
+  const totalCancelamentos = data.cancelamento_por_usuario.reduce((s, c) => s + c.cancelamentos, 0);
+  const totalViagensPerdidas = data.cancelamento_por_usuario.reduce((s, c) => s + c.viagens_perdidas, 0);
 
   function corCelula(qtd: number) {
     if (qtd === 0) return undefined;
@@ -41,26 +52,49 @@ export default function AtendimentosView({ ano, mes, empresaId }: Props) {
               <thead>
                 <tr>
                   <th>Dia</th>
+                  <th>DDD</th>
                   {horas.map((h) => (
-                    <th key={h}>{h.slice(0, 5)}</th>
+                    <th key={h} className="col-num">
+                      {h.slice(0, 5)}
+                    </th>
                   ))}
+                  <th className="col-num">Total</th>
                 </tr>
               </thead>
               <tbody>
                 {datas.map((data) => (
                   <tr key={data}>
-                    <td>{formatarData(data)}</td>
+                    <td>{data.slice(-2)}</td>
+                    <td>{diaSemanaAbrev(data)}</td>
                     {horas.map((h) => {
                       const qtd = porCelula.get(`${data}|${h}`) ?? 0;
                       return (
-                        <td key={h} style={{ background: corCelula(qtd), textAlign: "center" }}>
+                        <td key={h} className="col-num" style={{ background: corCelula(qtd) }}>
                           {qtd || ""}
                         </td>
                       );
                     })}
+                    <td className="col-num">
+                      <strong>{totalPorData.get(data) ?? 0}</strong>
+                    </td>
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={2}>
+                    <strong>Total</strong>
+                  </td>
+                  {horas.map((h) => (
+                    <td key={h} className="col-num">
+                      <strong>{totalPorHora.get(h) ?? 0}</strong>
+                    </td>
+                  ))}
+                  <td className="col-num">
+                    <strong>{totalGeral}</strong>
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}
@@ -68,24 +102,51 @@ export default function AtendimentosView({ ano, mes, empresaId }: Props) {
 
       <section>
         <h3>Cancelamentos e viagens perdidas por usuario</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Usuario</th>
-              <th>Cancelamentos</th>
-              <th>Viagens perdidas</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.cancelamento_por_usuario.map((c) => (
-              <tr key={c.usuario_id}>
-                <td>{c.usuario_nome}</td>
-                <td>{c.cancelamentos}</td>
-                <td>{c.viagens_perdidas}</td>
+        {data.cancelamento_por_usuario.length === 0 ? (
+          <p>Nenhum cancelamento no periodo.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Usuario</th>
+                <th className="col-num">Planejados</th>
+                <th className="col-num">Cancelamentos</th>
+                <th className="col-num">%</th>
+                <th className="col-num">Viagens perdidas</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.cancelamento_por_usuario.map((c) => (
+                <tr key={c.usuario_id}>
+                  <td>{c.usuario_nome}</td>
+                  <td className="col-num">{formatarMilhar(c.planejados)}</td>
+                  <td className="col-num">{formatarMilhar(c.cancelamentos)}</td>
+                  <td className="col-num">{c.percentual_cancelamento.toFixed(1)}%</td>
+                  <td className="col-num">{formatarMilhar(c.viagens_perdidas)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td>
+                  <strong>Total</strong>
+                </td>
+                <td className="col-num">
+                  <strong>{formatarMilhar(totalPlanejadosCancelamento)}</strong>
+                </td>
+                <td className="col-num">
+                  <strong>{formatarMilhar(totalCancelamentos)}</strong>
+                </td>
+                <td className="col-num">
+                  <strong>{(totalPlanejadosCancelamento ? (totalCancelamentos / totalPlanejadosCancelamento) * 100 : 0).toFixed(1)}%</strong>
+                </td>
+                <td className="col-num">
+                  <strong>{formatarMilhar(totalViagensPerdidas)}</strong>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
       </section>
     </div>
   );

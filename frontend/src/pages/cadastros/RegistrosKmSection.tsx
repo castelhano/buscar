@@ -1,8 +1,10 @@
 import { useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { useCreate, useList, useRemove, useUpdate } from "../../api/hooks";
 import type { RegistroKm, Veiculo } from "../../api/types";
 import ConfirmarModal from "../../components/board/ConfirmarModal";
 import { formatarData, limitesDoMes, mesAtualIso } from "../../utils/data";
+import { formatarMilhar } from "../../utils/numero";
 
 interface FormState {
   veiculo_id: number | "";
@@ -31,6 +33,8 @@ export default function RegistrosKmSection() {
   const [removendoId, setRemovendoId] = useState<number | null>(null);
   const [erroSalvar, setErroSalvar] = useState<string | null>(null);
   const kmInicialRef = useRef<HTMLInputElement>(null);
+  const kmFinalRef = useRef<HTMLInputElement>(null);
+  const botaoSalvarRef = useRef<HTMLButtonElement>(null);
 
   const registrosFiltrados = (registros ?? []).filter((r) => r.data_inicio.slice(0, 7) === mesFiltro);
 
@@ -110,6 +114,14 @@ export default function RegistrosKmSection() {
     return v ? `${v.prefixo} - ${v.placa}` : "-";
   }
 
+  function aoPressionarEnter(e: KeyboardEvent<HTMLInputElement>, proximo: () => void) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    proximo();
+  }
+
+  const kmRodadoPreview = form.km_inicial !== "" && form.km_final !== "" ? form.km_final - form.km_inicial : null;
+
   return (
     <div>
       {error && <div className="erro-box">Erro ao carregar registros de km.</div>}
@@ -152,24 +164,41 @@ export default function RegistrosKmSection() {
             min={0}
             value={form.km_inicial}
             onChange={(e) => setForm({ ...form, km_inicial: e.target.value ? Number(e.target.value) : "" })}
-            style={{ width: "6rem" }}
+            onKeyDown={(e) => aoPressionarEnter(e, () => kmFinalRef.current?.focus())}
+            style={{ width: "6rem", textAlign: "right" }}
           />
         </div>
         <div className="campo">
           <label>Km final</label>
           <input
+            ref={kmFinalRef}
             type="number"
             min={0}
             value={form.km_final}
             onChange={(e) => setForm({ ...form, km_final: e.target.value ? Number(e.target.value) : "" })}
-            style={{ width: "6rem" }}
+            onKeyDown={(e) => aoPressionarEnter(e, () => botaoSalvarRef.current?.focus())}
+            style={{ width: "6rem", textAlign: "right" }}
+          />
+        </div>
+        <div className="campo">
+          <label>Km rodado</label>
+          <input
+            readOnly
+            tabIndex={-1}
+            value={kmRodadoPreview === null ? "" : formatarMilhar(kmRodadoPreview)}
+            style={{
+              width: "6rem",
+              textAlign: "right",
+              background: "var(--cor-fundo)",
+              color: kmRodadoPreview !== null && kmRodadoPreview < 0 ? "var(--cor-perigo)" : undefined,
+            }}
           />
         </div>
         <div className="campo">
           <label>Observacoes</label>
           <input value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} />
         </div>
-        <button className="btn btn-primario" onClick={salvar} disabled={criar.isPending || atualizar.isPending}>
+        <button ref={botaoSalvarRef} className="btn btn-primario" onClick={salvar} disabled={criar.isPending || atualizar.isPending}>
           {editandoId !== null ? "Salvar edicao" : "Adicionar"}
         </button>
         {editandoId !== null && (
@@ -184,9 +213,9 @@ export default function RegistrosKmSection() {
             <th>Veiculo</th>
             <th>Inicio</th>
             <th>Fim</th>
-            <th>Km inicial</th>
-            <th>Km final</th>
-            <th>Km rodado</th>
+            <th className="col-num">Km inicial</th>
+            <th className="col-num">Km final</th>
+            <th className="col-num">Km rodado</th>
             <th>Observacoes</th>
             <th></th>
           </tr>
@@ -197,9 +226,9 @@ export default function RegistrosKmSection() {
               <td>{veiculoLabel(r.veiculo_id)}</td>
               <td>{formatarData(r.data_inicio)}</td>
               <td>{formatarData(r.data_fim)}</td>
-              <td>{r.km_inicial}</td>
-              <td>{r.km_final ?? "-"}</td>
-              <td>{r.km_final !== null ? r.km_final - r.km_inicial : "-"}</td>
+              <td className="col-num">{formatarMilhar(r.km_inicial)}</td>
+              <td className="col-num">{r.km_final !== null ? formatarMilhar(r.km_final) : "-"}</td>
+              <td className="col-num">{r.km_final !== null ? formatarMilhar(r.km_final - r.km_inicial) : "-"}</td>
               <td>{r.observacoes ?? "-"}</td>
               <td>
                 <button className="btn btn-sm" onClick={() => editar(r)}>
@@ -212,6 +241,20 @@ export default function RegistrosKmSection() {
             </tr>
           ))}
         </tbody>
+        <tfoot>
+          <tr>
+            <td colSpan={3}>
+              <strong>Total</strong>
+            </td>
+            <td className="col-num"></td>
+            <td className="col-num"></td>
+            <td className="col-num">
+              <strong>{formatarMilhar(registrosFiltrados.reduce((s, r) => s + (r.km_final !== null ? r.km_final - r.km_inicial : 0), 0))}</strong>
+            </td>
+            <td></td>
+            <td></td>
+          </tr>
+        </tfoot>
       </table>
       {removendoId !== null && (
         <ConfirmarModal

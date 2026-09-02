@@ -25,6 +25,13 @@ export function limitesDoMes(mesIso: string): { inicio: string; fim: string } {
   return { inicio: `${anoStr}-${mesStr}-01`, fim: `${anoStr}-${mesStr}-${String(ultimoDia).padStart(2, "0")}` };
 }
 
+const DIAS_SEMANA_ABREV = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SAB"];
+
+export function diaSemanaAbrev(dataIso: string): string {
+  const [ano, mes, dia] = dataIso.split("-").map(Number);
+  return DIAS_SEMANA_ABREV[new Date(ano, mes - 1, dia).getDay()];
+}
+
 export function calcularIdade(dataNascimento: string | null | undefined): number | null {
   if (!dataNascimento) return null;
   const [ano, mes, dia] = dataNascimento.split("-").map(Number);

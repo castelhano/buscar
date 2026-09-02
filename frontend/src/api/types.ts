@@ -482,7 +482,9 @@ export interface CelulaAtendimento {
 export interface CancelamentoUsuario {
   usuario_id: number;
   usuario_nome: string;
+  planejados: number;
   cancelamentos: number;
+  percentual_cancelamento: number;
   viagens_perdidas: number;
 }
 
@@ -509,9 +511,17 @@ export interface RankingCancelamentoRegiao {
   cancelamentos: number;
 }
 
+export interface AtendimentosPorLocal {
+  local_id: number;
+  local_nome: string;
+  atendimentos: number;
+  percentual: number;
+}
+
 export interface ResumoOutros {
   ociosidade_frota: OciosidadeFrota;
   taxa_ocupacao: TaxaOcupacao;
   km_por_atendimento: number | null;
   ranking_cancelamento_regiao: RankingCancelamentoRegiao[];
+  atendimentos_por_local: AtendimentosPorLocal[];
 }

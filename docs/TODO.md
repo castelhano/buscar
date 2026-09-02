@@ -19,9 +19,3 @@
 
 
 Aqui eh uma prévia, quero sugestão de outros indicadores interessantes que podem ser inferidos
-
-
-alguns pontos:
-> o cadastro de km, essa lista vai crescer rapidamente, seria interessante adicionar um filtro (por mes/ano provavelmente) e so listar quando selecionado o filtro
-> no lostfocus da data de inicio, podia popular a data de im com o ultimo dia do mes selecionado
-> 
