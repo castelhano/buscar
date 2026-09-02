@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { api, ApiError } from "../api/client";
 import { useList } from "../api/hooks";
 import type { Empresa } from "../api/types";
 import { mesAtualIso } from "../utils/data";
@@ -16,6 +17,8 @@ export default function ResumosPage() {
   const [mesAno, setMesAno] = useState(mesAtualIso());
   const [empresaId, setEmpresaId] = useState<number | "">("");
   const [abaAtiva, setAbaAtiva] = useState<(typeof ABAS)[number]["chave"]>("rodagem");
+  const [gerandoRelatorio, setGerandoRelatorio] = useState(false);
+  const [erroRelatorio, setErroRelatorio] = useState<string | null>(null);
 
   const { data: empresas } = useList<Empresa>("empresas", "/empresas");
 
@@ -25,9 +28,23 @@ export default function ResumosPage() {
 
   const Ativa = (ABAS.find((a) => a.chave === abaAtiva) ?? ABAS[0]).Componente;
 
+  function gerarRelatorio() {
+    setErroRelatorio(null);
+    setGerandoRelatorio(true);
+    api
+      .download("/resumos/relatorio", { ano, mes, empresa_id: empresaId === "" ? undefined : empresaId })
+      .catch((e: unknown) => setErroRelatorio(e instanceof ApiError ? String(e.detail) : "Erro ao gerar relatorio"))
+      .finally(() => setGerandoRelatorio(false));
+  }
+
   return (
     <div>
       <h2>Resumos</h2>
+      {erroRelatorio && (
+        <div className="erro-box" onClick={() => setErroRelatorio(null)} style={{ cursor: "pointer" }}>
+          {erroRelatorio} (clique para fechar)
+        </div>
+      )}
       <div className="linha-toolbar">
         <div className="campo">
           <label>Mes</label>
@@ -44,6 +61,9 @@ export default function ResumosPage() {
             ))}
           </select>
         </div>
+        <button className="btn" onClick={gerarRelatorio} disabled={gerandoRelatorio} style={{ alignSelf: "flex-end" }}>
+          {gerandoRelatorio ? "Gerando..." : "Relatorio"}
+        </button>
       </div>
       <div className="linha-toolbar">
         {ABAS.map((aba) => (

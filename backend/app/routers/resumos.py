@@ -3,6 +3,7 @@ import datetime as dt
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends
+from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas
@@ -287,4 +288,25 @@ def resumo_outros(ano: int, mes: int, empresa_id: int | None = None, db: Session
         km_por_atendimento=km_por_atendimento,
         ranking_cancelamento_regiao=ranking_lista,
         atendimentos_por_local=atendimentos_por_local,
+    )
+
+
+# --------------------------------------------------------------------------
+# Relatorio PDF (capa + todas as secoes acima, reestruturado como documento)
+# --------------------------------------------------------------------------
+
+@router.get("/relatorio")
+def relatorio_pdf(ano: int, mes: int, empresa_id: int | None = None, db: Session = Depends(get_db)):
+    # import local pra evitar ciclo: services.relatorio importa as funcoes
+    # deste modulo (resumo_rodagem/resumo_atendimentos/resumo_outros) pra
+    # reaproveitar a mesma agregacao do JSON, entao nao pode ser importado
+    # no topo do arquivo.
+    from app.services.relatorio import gerar_pdf_relatorio_resumos
+
+    conteudo = gerar_pdf_relatorio_resumos(db, ano, mes, empresa_id)
+    nome_arquivo = f"relatorio-resumos-{ano}-{mes:02d}.pdf"
+    return Response(
+        content=conteudo,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nome_arquivo}"'},
     )
