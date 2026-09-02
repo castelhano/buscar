@@ -1,6 +1,7 @@
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useQueryObj } from "../../api/hooks";
 import type { ResumoRodagem } from "../../api/types";
+import BotaoExportarCsv from "../../components/board/BotaoExportarCsv";
 import { corDaSerie } from "./cores";
 
 interface Props {
@@ -61,6 +62,8 @@ export default function RodagemView({ ano, mes, empresaId }: Props) {
   const totalPercentualContrato = data.km_por_empresa.reduce((s, e) => s + e.percentual_contrato, 0);
   const totalVariacao = variacoes.reduce((s, v) => s + v, 0);
 
+  const mesRef = `${ano}-${String(mes).padStart(2, "0")}`;
+
   const totalPorEmpresa: Record<number, number> = {};
   let totalGeralFrota = 0;
   for (const d of data.uso_frota_diario) {
@@ -91,7 +94,23 @@ export default function RodagemView({ ano, mes, empresaId }: Props) {
       </section>
 
       <section>
-        <h3>Km por empresa x % contrato</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3>Km por empresa x % contrato</h3>
+          <BotaoExportarCsv
+            nomeArquivo={`km-por-empresa-${mesRef}.csv`}
+            cabecalhos={["Empresa", "Km no periodo", "% do km total", "% contrato", "Variacao vs contrato"]}
+            linhas={[
+              ...data.km_por_empresa.map((e, i) => [
+                e.empresa_nome,
+                e.km_total,
+                `${e.percentual_km_periodo}%`,
+                `${e.percentual_contrato}%`,
+                `${variacoes[i] > 0 ? "+" : ""}${variacoes[i].toFixed(1)} p.p.`,
+              ]),
+              ["Total", totalKmEmpresas, `${totalPercentualKm.toFixed(1)}%`, `${totalPercentualContrato.toFixed(1)}%`, `${totalVariacao > 0 ? "+" : ""}${totalVariacao.toFixed(1)} p.p.`],
+            ]}
+          />
+        </div>
         <table>
           <thead>
             <tr>
@@ -157,7 +176,22 @@ export default function RodagemView({ ano, mes, empresaId }: Props) {
       </section>
 
       <section>
-        <h3>Uso diario de frota</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3>Uso diario de frota</h3>
+          <BotaoExportarCsv
+            nomeArquivo={`uso-frota-${mesRef}.csv`}
+            cabecalhos={["Dia", "Sem", ...data.km_por_empresa.map((e) => e.empresa_nome), "Total"]}
+            linhas={[
+              ...data.uso_frota_diario.map((d) => [
+                d.data.slice(-2),
+                d.dia_semana,
+                ...data.km_por_empresa.map((e) => d.por_empresa[String(e.empresa_id)] ?? 0),
+                Object.values(d.por_empresa).reduce((a, b) => a + b, 0),
+              ]),
+              ["Total", "", ...data.km_por_empresa.map((e) => totalPorEmpresa[e.empresa_id] ?? 0), totalGeralFrota],
+            ]}
+          />
+        </div>
         <div style={{ overflowX: "auto" }}>
           <table>
             <thead>

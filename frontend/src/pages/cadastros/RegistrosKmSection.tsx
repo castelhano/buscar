@@ -3,6 +3,7 @@ import type { KeyboardEvent } from "react";
 import { useCreate, useList, useRemove, useUpdate } from "../../api/hooks";
 import type { RegistroKm, Veiculo } from "../../api/types";
 import ConfirmarModal from "../../components/board/ConfirmarModal";
+import BotaoExportarCsv from "../../components/board/BotaoExportarCsv";
 import { formatarData, limitesDoMes, mesAtualIso } from "../../utils/data";
 import { formatarMilhar } from "../../utils/numero";
 
@@ -37,6 +38,7 @@ export default function RegistrosKmSection() {
   const botaoSalvarRef = useRef<HTMLButtonElement>(null);
 
   const registrosFiltrados = (registros ?? []).filter((r) => r.data_inicio.slice(0, 7) === mesFiltro);
+  const totalKmRodado = registrosFiltrados.reduce((s, r) => s + (r.km_final !== null ? r.km_final - r.km_inicial : 0), 0);
 
   function selecionarMes(novoMes: string) {
     setMesFiltro(novoMes);
@@ -207,6 +209,24 @@ export default function RegistrosKmSection() {
           </button>
         )}
       </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>
+        <BotaoExportarCsv
+          nomeArquivo={`registros-km-${mesFiltro}.csv`}
+          cabecalhos={["Veiculo", "Inicio", "Fim", "Km inicial", "Km final", "Km rodado", "Observacoes"]}
+          linhas={[
+            ...registrosFiltrados.map((r) => [
+              veiculoLabel(r.veiculo_id),
+              formatarData(r.data_inicio),
+              formatarData(r.data_fim),
+              r.km_inicial,
+              r.km_final ?? "",
+              r.km_final !== null ? r.km_final - r.km_inicial : "",
+              r.observacoes ?? "",
+            ]),
+            ["Total", "", "", "", "", totalKmRodado, ""],
+          ]}
+        />
+      </div>
       <table>
         <thead>
           <tr>
@@ -249,7 +269,7 @@ export default function RegistrosKmSection() {
             <td className="col-num"></td>
             <td className="col-num"></td>
             <td className="col-num">
-              <strong>{formatarMilhar(registrosFiltrados.reduce((s, r) => s + (r.km_final !== null ? r.km_final - r.km_inicial : 0), 0))}</strong>
+              <strong>{formatarMilhar(totalKmRodado)}</strong>
             </td>
             <td></td>
             <td></td>

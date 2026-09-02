@@ -1,5 +1,6 @@
 import { useQueryObj } from "../../api/hooks";
 import type { ResumoOutros } from "../../api/types";
+import BotaoExportarCsv from "../../components/board/BotaoExportarCsv";
 import { formatarMilhar } from "../../utils/numero";
 
 interface Props {
@@ -13,6 +14,11 @@ export default function OutrosView({ ano, mes, empresaId }: Props) {
 
   if (isLoading) return <p>Carregando...</p>;
   if (error || !data) return <div className="erro-box">Erro ao carregar outros indicadores.</div>;
+
+  const mesRef = `${ano}-${String(mes).padStart(2, "0")}`;
+  const totalCancelamentosRegiao = data.ranking_cancelamento_regiao.reduce((s, r) => s + r.cancelamentos, 0);
+  const totalAtendimentosLocal = data.atendimentos_por_local.reduce((s, a) => s + a.atendimentos, 0);
+  const totalPercentualLocal = data.atendimentos_por_local.reduce((s, a) => s + a.percentual, 0);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
@@ -38,7 +44,19 @@ export default function OutrosView({ ano, mes, empresaId }: Props) {
       </section>
 
       <section>
-        <h3>Ranking de cancelamento por regiao</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3>Ranking de cancelamento por regiao</h3>
+          {data.ranking_cancelamento_regiao.length > 0 && (
+            <BotaoExportarCsv
+              nomeArquivo={`ranking-cancelamento-regiao-${mesRef}.csv`}
+              cabecalhos={["Regiao", "Cancelamentos"]}
+              linhas={[
+                ...data.ranking_cancelamento_regiao.map((r) => [r.regiao_nome, r.cancelamentos]),
+                ["Total", totalCancelamentosRegiao],
+              ]}
+            />
+          )}
+        </div>
         {data.ranking_cancelamento_regiao.length === 0 ? (
           <p>Sem cancelamentos no periodo.</p>
         ) : (
@@ -63,7 +81,7 @@ export default function OutrosView({ ano, mes, empresaId }: Props) {
                   <strong>Total</strong>
                 </td>
                 <td className="col-num">
-                  <strong>{formatarMilhar(data.ranking_cancelamento_regiao.reduce((s, r) => s + r.cancelamentos, 0))}</strong>
+                  <strong>{formatarMilhar(totalCancelamentosRegiao)}</strong>
                 </td>
               </tr>
             </tfoot>
@@ -72,7 +90,19 @@ export default function OutrosView({ ano, mes, empresaId }: Props) {
       </section>
 
       <section>
-        <h3>Atendimentos por local</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3>Atendimentos por local</h3>
+          {data.atendimentos_por_local.length > 0 && (
+            <BotaoExportarCsv
+              nomeArquivo={`atendimentos-por-local-${mesRef}.csv`}
+              cabecalhos={["Local", "Atendimentos", "%"]}
+              linhas={[
+                ...data.atendimentos_por_local.map((a) => [a.local_nome, a.atendimentos, `${a.percentual.toFixed(1)}%`]),
+                ["Total", totalAtendimentosLocal, `${totalPercentualLocal.toFixed(1)}%`],
+              ]}
+            />
+          )}
+        </div>
         <p style={{ fontSize: "0.85rem", color: "var(--cor-texto-suave)", marginTop: "-0.5rem" }}>
           Ida e volta no mesmo dia pro mesmo local conta como um unico atendimento.
         </p>
@@ -102,10 +132,10 @@ export default function OutrosView({ ano, mes, empresaId }: Props) {
                   <strong>Total</strong>
                 </td>
                 <td className="col-num">
-                  <strong>{formatarMilhar(data.atendimentos_por_local.reduce((s, a) => s + a.atendimentos, 0))}</strong>
+                  <strong>{formatarMilhar(totalAtendimentosLocal)}</strong>
                 </td>
                 <td className="col-num">
-                  <strong>{data.atendimentos_por_local.reduce((s, a) => s + a.percentual, 0).toFixed(1)}%</strong>
+                  <strong>{totalPercentualLocal.toFixed(1)}%</strong>
                 </td>
               </tr>
             </tfoot>

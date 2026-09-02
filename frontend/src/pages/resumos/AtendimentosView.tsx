@@ -1,5 +1,6 @@
 import { useQueryObj } from "../../api/hooks";
 import type { ResumoAtendimentos } from "../../api/types";
+import BotaoExportarCsv from "../../components/board/BotaoExportarCsv";
 import { diaSemanaAbrev } from "../../utils/data";
 import { formatarMilhar } from "../../utils/numero";
 
@@ -30,6 +31,8 @@ export default function AtendimentosView({ ano, mes, empresaId }: Props) {
     maxQuantidade = Math.max(maxQuantidade, c.quantidade);
   }
 
+  const mesRef = `${ano}-${String(mes).padStart(2, "0")}`;
+
   const totalPlanejadosCancelamento = data.cancelamento_por_usuario.reduce((s, c) => s + c.planejados, 0);
   const totalCancelamentos = data.cancelamento_por_usuario.reduce((s, c) => s + c.cancelamentos, 0);
   const totalViagensPerdidas = data.cancelamento_por_usuario.reduce((s, c) => s + c.viagens_perdidas, 0);
@@ -43,7 +46,24 @@ export default function AtendimentosView({ ano, mes, empresaId }: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
       <section>
-        <h3>Atendimentos planejados por dia x horario</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3>Atendimentos planejados por dia x horario</h3>
+          {datas.length > 0 && (
+            <BotaoExportarCsv
+              nomeArquivo={`atendimentos-grade-${mesRef}.csv`}
+              cabecalhos={["Dia", "DDD", ...horas.map((h) => h.slice(0, 5)), "Total"]}
+              linhas={[
+                ...datas.map((data) => [
+                  data.slice(-2),
+                  diaSemanaAbrev(data),
+                  ...horas.map((h) => porCelula.get(`${data}|${h}`) ?? 0),
+                  totalPorData.get(data) ?? 0,
+                ]),
+                ["Total", "", ...horas.map((h) => totalPorHora.get(h) ?? 0), totalGeral],
+              ]}
+            />
+          )}
+        </div>
         {datas.length === 0 ? (
           <p>Nenhum atendimento no periodo.</p>
         ) : (
@@ -101,7 +121,31 @@ export default function AtendimentosView({ ano, mes, empresaId }: Props) {
       </section>
 
       <section>
-        <h3>Cancelamentos e viagens perdidas por usuario</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3>Cancelamentos e viagens perdidas por usuario</h3>
+          {data.cancelamento_por_usuario.length > 0 && (
+            <BotaoExportarCsv
+              nomeArquivo={`cancelamentos-${mesRef}.csv`}
+              cabecalhos={["Usuario", "Planejados", "Cancelamentos", "%", "Viagens perdidas"]}
+              linhas={[
+                ...data.cancelamento_por_usuario.map((c) => [
+                  c.usuario_nome,
+                  c.planejados,
+                  c.cancelamentos,
+                  `${c.percentual_cancelamento.toFixed(1)}%`,
+                  c.viagens_perdidas,
+                ]),
+                [
+                  "Total",
+                  totalPlanejadosCancelamento,
+                  totalCancelamentos,
+                  `${(totalPlanejadosCancelamento ? (totalCancelamentos / totalPlanejadosCancelamento) * 100 : 0).toFixed(1)}%`,
+                  totalViagensPerdidas,
+                ],
+              ]}
+            />
+          )}
+        </div>
         {data.cancelamento_por_usuario.length === 0 ? (
           <p>Nenhum cancelamento no periodo.</p>
         ) : (
