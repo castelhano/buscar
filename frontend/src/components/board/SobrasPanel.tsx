@@ -29,7 +29,8 @@ export default function SobrasPanel({ sobras, onMarcarFolga, aplicando }: Props)
           {sobras.condutores.map((c) => (
             <label key={c.id} className="sobras-item">
               <span>
-                <input type="checkbox" checked={selecionados.includes(c.id)} onChange={() => alternar(c.id)} /> {c.nome}
+                <input type="checkbox" checked={selecionados.includes(c.id)} onChange={() => alternar(c.id)} />{" "}
+                <strong>{c.periodo === "Manha" ? "M" : "T"}</strong> • {c.nome}
               </span>
             </label>
           ))}
