@@ -744,6 +744,7 @@ class ViagemDiaPassageiro(Base):
     observacoes: Mapped[str | None] = mapped_column(Text, nullable=True)
     fixo: Mapped[bool] = mapped_column(default=True)
     viagem_perdida: Mapped[bool] = mapped_column(default=False)
+    cancelado_pela_empresa: Mapped[bool] = mapped_column(default=False)
 
     viagem_dia: Mapped["ViagemDia | None"] = relationship(back_populates="passageiros")
     usuario: Mapped["Usuario"] = relationship()

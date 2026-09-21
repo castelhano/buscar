@@ -882,8 +882,11 @@ def alterar_status_passageiro(
     status: models.StatusAtendimentoDia,
     observacoes: str | None = None,
     viagem_perdida: bool = False,
+    cancelado_pela_empresa: bool = False,
     db: Session = Depends(get_db),
 ):
+    if viagem_perdida and cancelado_pela_empresa:
+        raise HTTPException(status_code=400, detail="Viagem perdida e cancelamento pela empresa sao mutuamente exclusivos")
     passageiro = _get_passageiro_ou_404(db, passageiro_id)
     if status != models.StatusAtendimentoDia.CANCELADO:
         # Cancelar continua liberado com o dia travado (unico botao que
@@ -893,6 +896,7 @@ def alterar_status_passageiro(
     if observacoes is not None:
         passageiro.observacoes = observacoes
     passageiro.viagem_perdida = viagem_perdida if status == models.StatusAtendimentoDia.CANCELADO else False
+    passageiro.cancelado_pela_empresa = cancelado_pela_empresa if status == models.StatusAtendimentoDia.CANCELADO else False
     db.commit()
     if passageiro.viagem_dia_id is None:
         return _serializar_passageiro_orfao(db, passageiro)  # orfao (sem vaga) -- nao ha viagem pra serializar

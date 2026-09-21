@@ -165,11 +165,22 @@ export default function AgendamentoDiaPage() {
     onSuccess: invalidarDia,
   });
   const cancelarPassageiro = useMutation({
-    mutationFn: ({ id, motivo, viagemPerdida }: { id: number; motivo: string; viagemPerdida: boolean }) =>
+    mutationFn: ({
+      id,
+      motivo,
+      viagemPerdida,
+      canceladoPelaEmpresa,
+    }: {
+      id: number;
+      motivo: string;
+      viagemPerdida: boolean;
+      canceladoPelaEmpresa: boolean;
+    }) =>
       api.patch(`/viagens/passageiros/${id}/status`, undefined, {
         status: "Cancelado",
         observacoes: motivo || undefined,
         viagem_perdida: viagemPerdida,
+        cancelado_pela_empresa: canceladoPelaEmpresa,
       }),
     onSuccess: invalidarDia,
   });
@@ -1058,16 +1069,16 @@ export default function AgendamentoDiaPage() {
         <CancelarPassageiroModal
           onFechar={() => setModalCancelar(null)}
           temOutrosAtendimentos={outrosAtendimentosDoDia(modalCancelar).length > 0}
-          onConfirmar={(motivo, cancelarTodos, viagemPerdida) => {
+          onConfirmar={(motivo, cancelarTodos, viagemPerdida, canceladoPelaEmpresa) => {
             const outros = cancelarTodos ? outrosAtendimentosDoDia(modalCancelar) : [];
             cancelarPassageiro.mutate(
-              { id: modalCancelar, motivo, viagemPerdida },
+              { id: modalCancelar, motivo, viagemPerdida, canceladoPelaEmpresa },
               {
                 onSuccess: () => {
                   setModalCancelar(null);
                   for (const p of outros) {
                     cancelarPassageiro.mutate(
-                      { id: p.id, motivo, viagemPerdida },
+                      { id: p.id, motivo, viagemPerdida, canceladoPelaEmpresa },
                       { onError: (e: unknown) => setErro(mensagemErro(e, "Erro ao cancelar outros atendimentos do passageiro")) },
                     );
                   }

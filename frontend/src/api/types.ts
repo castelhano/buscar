@@ -268,6 +268,7 @@ export interface ViagemDiaPassageiro {
   observacoes: string | null;
   fixo: boolean;
   viagem_perdida: boolean;
+  cancelado_pela_empresa: boolean;
   irregular: boolean;
   motivo_irregular: string | null;
 }

@@ -167,11 +167,12 @@ def resumo_atendimentos(ano: int, mes: int, empresa_id: int | None = None, db: S
         grade_contagem[chave] = grade_contagem.get(chave, 0) + 1
         planejados_por_usuario[p.usuario_id] = planejados_por_usuario.get(p.usuario_id, 0) + 1
 
-        if p.status == models.StatusAtendimentoDia.CANCELADO or p.viagem_perdida:
+        cancelado_usuario = p.status == models.StatusAtendimentoDia.CANCELADO and not p.cancelado_pela_empresa
+        if cancelado_usuario or p.viagem_perdida:
             entrada = cancelamento_por_usuario.setdefault(
                 p.usuario_id, {"nome": p.usuario.nome, "cancelamentos": 0, "viagens_perdidas": 0}
             )
-            if p.status == models.StatusAtendimentoDia.CANCELADO:
+            if cancelado_usuario:
                 entrada["cancelamentos"] += 1
             if p.viagem_perdida:
                 entrada["viagens_perdidas"] += 1
@@ -238,7 +239,7 @@ def resumo_outros(ano: int, mes: int, empresa_id: int | None = None, db: Session
     passageiros = _passageiros_periodo(db, inicio, fim, empresa_id)
     ranking: dict[int, dict] = {}
     for p in passageiros:
-        if p.status == models.StatusAtendimentoDia.CANCELADO and p.regiao_origem_id is not None:
+        if p.status == models.StatusAtendimentoDia.CANCELADO and not p.cancelado_pela_empresa and p.regiao_origem_id is not None:
             entrada = ranking.setdefault(p.regiao_origem_id, {"nome": p.regiao_origem.nome if p.regiao_origem else "-", "cancelamentos": 0})
             entrada["cancelamentos"] += 1
     ranking_lista = sorted(

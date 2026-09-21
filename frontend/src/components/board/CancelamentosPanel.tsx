@@ -6,11 +6,15 @@ interface Props {
   passageirosSemVaga?: ViagemDiaPassageiro[];
 }
 
+interface InfoTrechoCancelado {
+  viagemPerdida: boolean;
+  canceladoPelaEmpresa: boolean;
+}
+
 interface CancelamentoUsuario {
   usuarioId: number;
   usuarioNome: string;
-  // ordem_trecho -> viagem_perdida
-  trechosCancelados: Map<number, boolean>;
+  trechosCancelados: Map<number, InfoTrechoCancelado>;
 }
 
 function agruparCancelamentos(passageiros: ViagemDiaPassageiro[]): CancelamentoUsuario[] {
@@ -22,9 +26,12 @@ function agruparCancelamentos(passageiros: ViagemDiaPassageiro[]): CancelamentoU
     const atual = porUsuario.get(passageiro.usuario_id) ?? {
       usuarioId: passageiro.usuario_id,
       usuarioNome: passageiro.usuario.nome,
-      trechosCancelados: new Map<number, boolean>(),
+      trechosCancelados: new Map<number, InfoTrechoCancelado>(),
     };
-    atual.trechosCancelados.set(passageiro.ordem_trecho, passageiro.viagem_perdida);
+    atual.trechosCancelados.set(passageiro.ordem_trecho, {
+      viagemPerdida: passageiro.viagem_perdida,
+      canceladoPelaEmpresa: passageiro.cancelado_pela_empresa,
+    });
     porUsuario.set(passageiro.usuario_id, atual);
   }
 
@@ -44,7 +51,7 @@ export default function CancelamentosPanel({ viagens, passageirosSemVaga = [] }:
   ]);
   if (cancelamentos.length === 0) return null;
 
-  const perdidas = cancelamentos.filter((c) => [...c.trechosCancelados.values()].some(Boolean)).length;
+  const perdidas = cancelamentos.filter((c) => [...c.trechosCancelados.values()].some((v) => v.viagemPerdida)).length;
 
   return (
     <div className="painel">
@@ -55,12 +62,17 @@ export default function CancelamentosPanel({ viagens, passageirosSemVaga = [] }:
             {c.usuarioNome}{" "}
             {[...c.trechosCancelados.entries()]
               .sort(([a], [b]) => a - b)
-              .map(([ordem, viagemPerdida]) => (
+              .map(([ordem, info]) => (
                 <span key={ordem} style={{ marginLeft: "0.25rem" }}>
                   <span className="badge-rotulo">{rotuloTrecho(ordem)}</span>
-                  {viagemPerdida && (
+                  {info.viagemPerdida && (
                     <span className="tag tag-inativo" style={{ marginLeft: "0.25rem" }}>
                       V PERDIDA
+                    </span>
+                  )}
+                  {info.canceladoPelaEmpresa && (
+                    <span className="tag tag-empresa" style={{ marginLeft: "0.25rem" }}>
+                      EMPRESA
                     </span>
                   )}
                 </span>

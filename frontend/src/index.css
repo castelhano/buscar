@@ -423,6 +423,12 @@ td.col-num {
   font-weight: 600;
 }
 
+.tag-empresa {
+  background: #e0e7ff;
+  color: #3730a3;
+  font-weight: 600;
+}
+
 .tag-regiao {
   background: var(--cor-primaria);
   color: #fff;

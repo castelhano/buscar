@@ -329,6 +329,7 @@ class ViagemDiaPassageiroRead(ORMModel):
     observacoes: str | None
     fixo: bool
     viagem_perdida: bool = False
+    cancelado_pela_empresa: bool = False
     irregular: bool = False
     motivo_irregular: str | None = None
 
