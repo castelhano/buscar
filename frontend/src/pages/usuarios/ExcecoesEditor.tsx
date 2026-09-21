@@ -131,6 +131,8 @@ export default function ExcecoesEditor({
     return id ? locais.find((l) => l.id === id)?.nome : undefined;
   }
 
+  const excecoesOrdenadas = [...excecoes].sort((a, b) => b.data_inicio.localeCompare(a.data_inicio));
+
   return (
     <div>
       <h4>Exceções</h4>
@@ -216,6 +218,7 @@ export default function ExcecoesEditor({
           {erro} (clique para fechar)
         </div>
       )}
+      <div className="tabela-scroll">
       <table>
         <thead>
           <tr>
@@ -227,7 +230,7 @@ export default function ExcecoesEditor({
           </tr>
         </thead>
         <tbody>
-          {excecoes.map((e) => (
+          {excecoesOrdenadas.map((e) => (
             <tr key={e.id}>
               <td>
                 {formatarData(e.data_inicio)}
@@ -267,6 +270,7 @@ export default function ExcecoesEditor({
           ))}
         </tbody>
       </table>
+      </div>
       {removendo && (
         <ConfirmarModal
           titulo="Remover excecao"

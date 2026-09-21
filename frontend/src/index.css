@@ -807,6 +807,18 @@ td.col-num {
   width: 640px;
 }
 
+.tabela-scroll {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.tabela-scroll table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--cor-superficie);
+  z-index: 1;
+}
+
 .badge-grade {
   display: flex;
   flex-wrap: wrap;
