@@ -61,8 +61,10 @@ export default function CarroCard({
 
   const primeira = pernas[0];
   const veiculo = veiculos.find((v) => v.id === primeira.veiculo_id);
-  const empresa = empresas.find((e) => e.id === primeira.empresa_id);
   const condutor = condutores.find((c) => c.id === primeira.condutor_id);
+  // Exibe a empresa do condutor (nao a do veiculo/viagem); sem condutor, cai
+  // na empresa da viagem.
+  const empresa = empresas.find((e) => e.id === (condutor?.empresa_id ?? primeira.empresa_id));
 
   // Ancora do bloco: a perna com grupo_viagem_id nulo (ou a unica perna, se o
   // carro so tem uma). Usada pro droppable do bloco inteiro -- soltar um
