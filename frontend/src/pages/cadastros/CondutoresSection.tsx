@@ -278,13 +278,17 @@ export default function CondutoresSection() {
         <div className="resumo-empresas">
           {(empresas ?? []).map((e) => {
             const contagem = ativosPorEmpresa.get(e.id) ?? { Manha: 0, Tarde: 0 };
+            const selecionada = filtroEmpresa === e.id && filtroStatus === "Ativo";
             return (
               <button
                 key={e.id}
                 type="button"
-                className={`tag resumo-empresa ${filtroEmpresa === e.id ? "resumo-empresa-ativa" : ""}`}
+                className={`tag resumo-empresa ${selecionada ? "resumo-empresa-ativa" : ""}`}
                 title={`Ativos: ${contagem.Manha} manha | ${contagem.Tarde} tarde`}
-                onClick={() => setFiltroEmpresa(filtroEmpresa === e.id ? "" : e.id)}
+                onClick={() => {
+                  setFiltroEmpresa(selecionada ? "" : e.id);
+                  setFiltroStatus(selecionada ? "" : "Ativo");
+                }}
               >
                 <strong>{e.nome}</strong> • {contagem.Manha}
                 <span className="resumo-empresa-divisor" />
