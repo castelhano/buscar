@@ -104,7 +104,9 @@ export default function FeriasSection() {
           </tr>
         </thead>
         <tbody>
-          {(ferias ?? []).map((f) => (
+          {[...(ferias ?? [])]
+            .sort((a, b) => b.data_inicio.localeCompare(a.data_inicio) || b.data_fim.localeCompare(a.data_fim))
+            .map((f) => (
             <tr key={f.id}>
               <td>{nomeCondutor(f.condutor_id)}</td>
               <td>{formatarData(f.data_inicio)}</td>

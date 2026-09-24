@@ -108,7 +108,9 @@ export default function LocalRecessoSection() {
           </tr>
         </thead>
         <tbody>
-          {(recessos ?? []).map((r) => (
+          {[...(recessos ?? [])]
+            .sort((a, b) => b.data_inicio.localeCompare(a.data_inicio) || b.data_fim.localeCompare(a.data_fim))
+            .map((r) => (
             <tr key={r.id}>
               <td>{nomeLocal(r.local_id)}</td>
               <td>{formatarData(r.data_inicio)}</td>
