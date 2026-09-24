@@ -127,6 +127,14 @@ export default function CondutoresSection() {
     if (grupo.length < 2) continue;
     for (const c of grupo) condutoresEmConflito.set(c.id, grupo.filter((outro) => outro.id !== c.id));
   }
+  const ativosPorEmpresa = new Map<number, Record<PeriodoCondutor, number>>();
+  for (const c of condutores ?? []) {
+    if (c.status !== "Ativo") continue;
+    const contagem = ativosPorEmpresa.get(c.empresa_id) ?? { Manha: 0, Tarde: 0 };
+    contagem[c.periodo]++;
+    ativosPorEmpresa.set(c.empresa_id, contagem);
+  }
+
   const vansEmConflito = new Set([...grupoPorVeiculoPeriodo.values()].filter((g) => g.length >= 2).map((g) => g[0].veiculo_preferencial_id));
 
   return (
@@ -266,6 +274,26 @@ export default function CondutoresSection() {
           Limpar filtros
         </button>
       </div>
+      {(empresas ?? []).length > 0 && (
+        <div className="resumo-empresas">
+          {(empresas ?? []).map((e) => {
+            const contagem = ativosPorEmpresa.get(e.id) ?? { Manha: 0, Tarde: 0 };
+            return (
+              <button
+                key={e.id}
+                type="button"
+                className={`tag resumo-empresa ${filtroEmpresa === e.id ? "resumo-empresa-ativa" : ""}`}
+                title={`Ativos: ${contagem.Manha} manha | ${contagem.Tarde} tarde`}
+                onClick={() => setFiltroEmpresa(filtroEmpresa === e.id ? "" : e.id)}
+              >
+                <strong>{e.nome}</strong> • {contagem.Manha}
+                <span className="resumo-empresa-divisor" />
+                {contagem.Tarde}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <table>
         <thead>
           <tr>
