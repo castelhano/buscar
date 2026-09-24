@@ -57,8 +57,11 @@ export default function CancelamentosPanel({ viagens, passageirosSemVaga = [] }:
     <div className="painel">
       <h3>Cancelamentos do dia {rotuloContador(cancelamentos.length, perdidas)}</h3>
       <ol>
-        {cancelamentos.map((c) => (
-          <li key={c.usuarioId}>
+        {/* value explicito: ao trocar de dia o React reaproveita os <li> de
+            mesmo usuario e remove os anteriores, e o Chrome nao recalcula a
+            numeracao automatica do <ol> (ex: lista comecando em 5). */}
+        {cancelamentos.map((c, i) => (
+          <li key={c.usuarioId} value={i + 1}>
             {c.usuarioNome}{" "}
             {[...c.trechosCancelados.entries()]
               .sort(([a], [b]) => a - b)
