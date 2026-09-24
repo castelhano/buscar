@@ -409,7 +409,8 @@ class UsuarioExcecao(Base):
 
     Intervalos de excecoes do mesmo usuario podem se sobrepor sem validacao
     (igual ao resto do sistema); quando sobrepoem, `_agendas_do_dia` resolve
-    pegando a excecao de maior id (mais recente) pra cada dia.
+    pela operacao (ADICAO > MODIFICACAO > SUSPENSAO) e, empatando, pela de
+    maior id (mais recente) pra cada dia.
     Assim como o Fixo, o itinerario da excecao (quando `operacao` nao e
     SUSPENSAO) fica em `trechos`. Uma MODIFICACAO com `trechos` preenchidos
     substitui o itinerario do dia inteiro (nao ha mais merge campo-a-campo com

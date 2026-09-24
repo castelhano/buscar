@@ -71,6 +71,14 @@ def agendas_fixo_da_semana(db: Session, dia_semana: DiaSemana) -> list[UsuarioAg
     )
 
 
+# Desempate entre excecoes sobrepostas do mesmo usuario numa data: maior vence.
+_PRIORIDADE_OPERACAO = {
+    OperacaoExcecao.ADICAO: 3,
+    OperacaoExcecao.MODIFICACAO: 2,
+    OperacaoExcecao.SUSPENSAO: 1,
+}
+
+
 def _agendas_do_dia(db: Session, data: dt.date):
     """Agendas Fixo/ativas do dia da semana de `data` mais TODAS as
     `UsuarioExcecao` cujo intervalo [data_inicio, data_fim] cobre essa data --
@@ -80,8 +88,9 @@ def _agendas_do_dia(db: Session, data: dt.date):
     diagnostico de desconsiderados.
 
     Excecoes do mesmo usuario com intervalos sobrepostos nao sao validadas na
-    escrita (ver `UsuarioExcecao`); quando isso acontece, a de maior id
-    (mais recente) vence.
+    escrita (ver `UsuarioExcecao`); quando isso acontece, vence a de maior
+    prioridade por operacao (ADICAO > MODIFICACAO > SUSPENSAO, ver
+    `_PRIORIDADE_OPERACAO`) e, empatando, a de maior id (mais recente).
     """
     dia_semana = dia_semana_from_date(data)
     agendas = agendas_fixo_da_semana(db, dia_semana)
@@ -90,15 +99,16 @@ def _agendas_do_dia(db: Session, data: dt.date):
     # (mesmo Inativo): lancar atendimento avulso na excecao deve constar na
     # geracao do dia -- diferente do Fixo, que so pega usuario Ativo (ver
     # `agendas_fixo_da_semana`).
-    for e in (
+    vigentes = (
         db.query(UsuarioExcecao)
         .options(joinedload(UsuarioExcecao.usuario), joinedload(UsuarioExcecao.trechos))
         .filter(
             UsuarioExcecao.data_inicio <= data,
             UsuarioExcecao.data_fim >= data,
         )
-        .order_by(UsuarioExcecao.id.desc())
-    ):
+        .all()
+    )
+    for e in sorted(vigentes, key=lambda e: (_PRIORIDADE_OPERACAO[e.operacao], e.id), reverse=True):
         excecoes.setdefault(e.usuario_id, e)
     locais_em_recesso = {
         row[0]
