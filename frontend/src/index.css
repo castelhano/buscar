@@ -429,6 +429,41 @@ td.col-num {
   font-weight: 600;
 }
 
+.resumo-empresas {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: -0.25rem 0 1rem;
+}
+
+.resumo-empresa {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-variant-numeric: tabular-nums;
+  font-family: inherit;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.resumo-empresa:hover {
+  border-color: var(--cor-borda);
+}
+
+.resumo-empresa-ativa {
+  border-color: var(--cor-primaria);
+}
+
+.resumo-empresa strong {
+  color: var(--cor-texto);
+}
+
+.resumo-empresa-divisor {
+  align-self: stretch;
+  width: 1px;
+  background: var(--cor-borda);
+}
+
 .tag-regiao {
   background: var(--cor-primaria);
   color: #fff;
