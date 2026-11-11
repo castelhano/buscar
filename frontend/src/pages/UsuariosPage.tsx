@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useCreate, useList, useUpdate } from "../api/hooks";
 import type { GrupoFamiliar, Local, Regiao, StatusAtivoInativo, Usuario, UsuarioComAgenda } from "../api/types";
-import { useAuth } from "../auth/AuthContext";
 import { rotuloIdade } from "../utils/data";
 import { corGrupoFamiliar } from "../components/board/coresGrupoFamiliar";
 import AgendaSemanalEditor from "./usuarios/AgendaSemanalEditor";
@@ -37,7 +36,6 @@ const vazio: FormState = {
 };
 
 export default function UsuariosPage() {
-  const { isAdmin } = useAuth();
   const [filtroNome, setFiltroNome] = useState("");
   const [filtroFixo, setFiltroFixo] = useState(false);
   const [filtroStatus, setFiltroStatus] = useState<StatusAtivoInativo | "">("");
@@ -169,13 +167,11 @@ export default function UsuariosPage() {
   return (
     <div style={{ display: "flex", gap: "1.5rem", alignItems: "flex-start" }}>
       <div className="painel" style={{ width: 280, flexShrink: 0 }}>
-        {isAdmin && (
-          <div className="linha-toolbar">
-            <button className="btn btn-primario" onClick={iniciarNovo}>
-              Novo usuario
-            </button>
-          </div>
-        )}
+        <div className="linha-toolbar">
+          <button className="btn btn-primario" onClick={iniciarNovo}>
+            Novo usuario
+          </button>
+        </div>
         <div className="campo" style={{ marginBottom: "0.5rem" }}>
           <input placeholder="Buscar por nome..." value={filtroNome} onChange={(e) => setFiltroNome(e.target.value)} />
         </div>
@@ -321,7 +317,6 @@ export default function UsuariosPage() {
                   <input
                     value={basico.nome}
                     onChange={(e) => setBasico({ ...basico, nome: e.target.value })}
-                    disabled={!isAdmin}
                   />
                 </div>
                 <div className="campo">
@@ -329,7 +324,6 @@ export default function UsuariosPage() {
                   <input
                     value={basico.abbr}
                     onChange={(e) => setBasico({ ...basico, abbr: e.target.value })}
-                    disabled={!isAdmin}
                   />
                 </div>
                 <div className="campo">
@@ -337,7 +331,6 @@ export default function UsuariosPage() {
                   <select
                     value={basico.status}
                     onChange={(e) => setBasico({ ...basico, status: e.target.value as StatusAtivoInativo })}
-                    disabled={!isAdmin}
                   >
                     <option value="Ativo">Ativo</option>
                     <option value="Inativo">Inativo</option>
@@ -348,7 +341,6 @@ export default function UsuariosPage() {
                   <input
                     value={basico.contato}
                     onChange={(e) => setBasico({ ...basico, contato: e.target.value })}
-                    disabled={!isAdmin}
                   />
                 </div>
                 <div className="campo">
@@ -357,7 +349,6 @@ export default function UsuariosPage() {
                     type="date"
                     value={basico.data_nascimento}
                     onChange={(e) => setBasico({ ...basico, data_nascimento: e.target.value })}
-                    disabled={!isAdmin}
                   />
                 </div>
                 <div className="campo">
@@ -367,7 +358,6 @@ export default function UsuariosPage() {
                     onChange={(e) =>
                       setBasico({ ...basico, grupo_familiar_id: e.target.value ? Number(e.target.value) : "" })
                     }
-                    disabled={!isAdmin}
                   >
                     <option value="">Nenhum</option>
                     {(gruposFamiliares ?? []).map((g) => (
@@ -382,7 +372,6 @@ export default function UsuariosPage() {
                   <select
                     value={basico.regiao_id}
                     onChange={(e) => setBasico({ ...basico, regiao_id: e.target.value ? Number(e.target.value) : "" })}
-                    disabled={!isAdmin}
                   >
                     <option value="">Nenhuma</option>
                     {(regioes ?? []).map((r) => (
@@ -399,7 +388,6 @@ export default function UsuariosPage() {
                   <input
                     value={basico.bairro}
                     onChange={(e) => setBasico({ ...basico, bairro: e.target.value })}
-                    disabled={!isAdmin}
                   />
                 </div>
                 <div className="campo" style={{ flex: 1 }}>
@@ -407,7 +395,6 @@ export default function UsuariosPage() {
                   <input
                     value={basico.detalhe}
                     onChange={(e) => setBasico({ ...basico, detalhe: e.target.value })}
-                    disabled={!isAdmin}
                   />
                 </div>
                 <div className="campo" style={{ flex: 1 }}>
@@ -415,24 +402,21 @@ export default function UsuariosPage() {
                   <input
                     value={basico.observacao}
                     onChange={(e) => setBasico({ ...basico, observacao: e.target.value })}
-                    disabled={!isAdmin}
                   />
                 </div>
               </div>
-              {isAdmin && (
-                <div className="linha-toolbar" style={{ justifyContent: "flex-end" }}>
-                  <button className="btn btn-sm btn-primario" onClick={salvarEdicaoBasica} disabled={atualizar.isPending}>
-                    Salvar
-                  </button>
-                  <button
-                    className="btn btn-sm btn-perigo"
-                    onClick={() => setConfirmandoRemocao(true)}
-                    disabled={removerMutation.isPending}
-                  >
-                    Remover usuario
-                  </button>
-                </div>
-              )}
+              <div className="linha-toolbar" style={{ justifyContent: "flex-end" }}>
+                <button className="btn btn-sm btn-primario" onClick={salvarEdicaoBasica} disabled={atualizar.isPending}>
+                  Salvar
+                </button>
+                <button
+                  className="btn btn-sm btn-perigo"
+                  onClick={() => setConfirmandoRemocao(true)}
+                  disabled={removerMutation.isPending}
+                >
+                  Remover usuario
+                </button>
+              </div>
               {erroRemocao && (
                 <div className="erro-box" onClick={() => setErroRemocao(null)} style={{ cursor: "pointer" }}>
                   {erroRemocao} (clique para fechar)
@@ -448,7 +432,6 @@ export default function UsuariosPage() {
                 agenda={detalhe.data.agenda_semanal}
                 regioes={regioes ?? []}
                 locais={locais ?? []}
-                somenteLeitura={!isAdmin}
               />
             </div>
 
@@ -460,7 +443,6 @@ export default function UsuariosPage() {
                 agendaSemanal={detalhe.data.agenda_semanal}
                 regioes={regioes ?? []}
                 locais={locais ?? []}
-                somenteLeitura={!isAdmin}
               />
             </div>
           </div>
