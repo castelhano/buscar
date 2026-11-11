@@ -17,7 +17,7 @@ export default function ResumosPage() {
   const [mesAno, setMesAno] = useState(mesAtualIso());
   const [empresaId, setEmpresaId] = useState<number | "">("");
   const [abaAtiva, setAbaAtiva] = useState<(typeof ABAS)[number]["chave"]>("rodagem");
-  const [gerandoRelatorio, setGerandoRelatorio] = useState(false);
+  const [gerandoRelatorio, setGerandoRelatorio] = useState<"pdf" | "xlsx" | null>(null);
   const [erroRelatorio, setErroRelatorio] = useState<string | null>(null);
 
   const { data: empresas } = useList<Empresa>("empresas", "/empresas");
@@ -28,13 +28,14 @@ export default function ResumosPage() {
 
   const Ativa = (ABAS.find((a) => a.chave === abaAtiva) ?? ABAS[0]).Componente;
 
-  function gerarRelatorio() {
+  function gerarRelatorio(formato: "pdf" | "xlsx") {
     setErroRelatorio(null);
-    setGerandoRelatorio(true);
+    setGerandoRelatorio(formato);
+    const caminho = formato === "pdf" ? "/resumos/relatorio" : "/resumos/relatorio-xlsx";
     api
-      .download("/resumos/relatorio", { ano, mes, empresa_id: empresaId === "" ? undefined : empresaId })
+      .download(caminho, { ano, mes, empresa_id: empresaId === "" ? undefined : empresaId })
       .catch((e: unknown) => setErroRelatorio(e instanceof ApiError ? String(e.detail) : "Erro ao gerar relatorio"))
-      .finally(() => setGerandoRelatorio(false));
+      .finally(() => setGerandoRelatorio(null));
   }
 
   return (
@@ -61,8 +62,21 @@ export default function ResumosPage() {
             ))}
           </select>
         </div>
-        <button className="btn" onClick={gerarRelatorio} disabled={gerandoRelatorio} style={{ alignSelf: "flex-end" }}>
-          {gerandoRelatorio ? "Gerando..." : "Relatorio"}
+        <button
+          className="btn"
+          onClick={() => gerarRelatorio("pdf")}
+          disabled={gerandoRelatorio !== null}
+          style={{ alignSelf: "flex-end" }}
+        >
+          {gerandoRelatorio === "pdf" ? "Gerando..." : "PDF"}
+        </button>
+        <button
+          className="btn"
+          onClick={() => gerarRelatorio("xlsx")}
+          disabled={gerandoRelatorio !== null}
+          style={{ alignSelf: "flex-end" }}
+        >
+          {gerandoRelatorio === "xlsx" ? "Gerando..." : "XLSX"}
         </button>
       </div>
       <div className="linha-toolbar">
