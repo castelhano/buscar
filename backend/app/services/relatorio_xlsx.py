@@ -504,9 +504,18 @@ def _aba_regioes_locais(ws: Worksheet, subtitulo: str, outros) -> None:
     _impressao(ws, paisagem=False)
 
 
-def _aba_dados(ws: Worksheet, subtitulo: str, passageiros: list[models.ViagemDiaPassageiro]) -> None:
+def _aba_dados(
+    ws: Worksheet, subtitulo: str, passageiros: list[models.ViagemDiaPassageiro], incluir_cancelados_empresa: bool
+) -> None:
     linha = _cabecalho_aba(ws, "Dados – um registro por trecho de atendimento", subtitulo)
-    ws.cell(row=3, column=1, value="Base para filtros e tabela dinâmica. Inclui trechos cancelados e sem vaga.").font = _F_SUBTITULO
+    nota = "Base para filtros e tabela dinâmica. Inclui trechos cancelados e sem vaga."
+    if not incluir_cancelados_empresa:
+        nota += " Não inclui cancelamentos feitos pela empresa."
+        passageiros = [
+            p for p in passageiros
+            if not (p.status == models.StatusAtendimentoDia.CANCELADO and p.cancelado_pela_empresa)
+        ]
+    ws.cell(row=3, column=1, value=nota).font = _F_SUBTITULO
 
     # Origem em branco = herda o destino do trecho anterior do mesmo usuario
     # no mesmo dia (mesma regra das exportacoes do dia -- ver exportacao._dados_origem).
@@ -576,7 +585,9 @@ def _aba_dados(ws: Worksheet, subtitulo: str, passageiros: list[models.ViagemDia
 # Montagem final
 # --------------------------------------------------------------------------
 
-def gerar_xlsx_relatorio_resumos(db: Session, ano: int, mes: int, empresa_id: int | None) -> bytes:
+def gerar_xlsx_relatorio_resumos(
+    db: Session, ano: int, mes: int, empresa_id: int | None, incluir_cancelados_empresa: bool = True
+) -> bytes:
     rodagem = resumo_rodagem(ano, mes, empresa_id, db)
     atendimentos = resumo_atendimentos(ano, mes, empresa_id, db)
     outros = resumo_outros(ano, mes, empresa_id, db)
@@ -600,7 +611,9 @@ def gerar_xlsx_relatorio_resumos(db: Session, ano: int, mes: int, empresa_id: in
     _aba_atendimentos(wb.create_sheet("Atendimentos"), subtitulo, atendimentos, ano, mes)
     _aba_cancelamentos(wb.create_sheet("Cancelamentos"), subtitulo, atendimentos)
     _aba_regioes_locais(wb.create_sheet("Regiões e locais"), subtitulo, outros)
-    _aba_dados(wb.create_sheet("Dados"), subtitulo, passageiros)
+    # o filtro de cancelados pela empresa vale so pra aba Dados; as demais
+    # abas seguem as regras fixas de agregacao do resumo.
+    _aba_dados(wb.create_sheet("Dados"), subtitulo, passageiros, incluir_cancelados_empresa)
 
     cores_abas = [_PRIMARIA, "4A6FA5", "4A6FA5", "2E7D32", "C0392B", "8E44AD", _TEXTO_SUAVE]
     for ws, cor in zip(wb.worksheets, cores_abas):

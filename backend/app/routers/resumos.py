@@ -314,11 +314,17 @@ def relatorio_pdf(ano: int, mes: int, empresa_id: int | None = None, db: Session
 
 
 @router.get("/relatorio-xlsx")
-def relatorio_xlsx(ano: int, mes: int, empresa_id: int | None = None, db: Session = Depends(get_db)):
+def relatorio_xlsx(
+    ano: int,
+    mes: int,
+    empresa_id: int | None = None,
+    incluir_cancelados_empresa: bool = True,
+    db: Session = Depends(get_db),
+):
     # import local pelo mesmo motivo do relatorio_pdf (ciclo de import)
     from app.services.relatorio_xlsx import gerar_xlsx_relatorio_resumos
 
-    conteudo = gerar_xlsx_relatorio_resumos(db, ano, mes, empresa_id)
+    conteudo = gerar_xlsx_relatorio_resumos(db, ano, mes, empresa_id, incluir_cancelados_empresa)
     nome_arquivo = f"relatorio-resumos-{ano}-{mes:02d}.xlsx"
     return Response(
         content=conteudo,
