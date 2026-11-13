@@ -6,6 +6,7 @@ import { mesAtualIso } from "../utils/data";
 import RodagemView from "./resumos/RodagemView";
 import AtendimentosView from "./resumos/AtendimentosView";
 import OutrosView from "./resumos/OutrosView";
+import ExportarXlsxModal from "./resumos/ExportarXlsxModal";
 
 const ABAS = [
   { chave: "rodagem", label: "Rodagem", Componente: RodagemView },
@@ -17,8 +18,9 @@ export default function ResumosPage() {
   const [mesAno, setMesAno] = useState(mesAtualIso());
   const [empresaId, setEmpresaId] = useState<number | "">("");
   const [abaAtiva, setAbaAtiva] = useState<(typeof ABAS)[number]["chave"]>("rodagem");
-  const [gerandoRelatorio, setGerandoRelatorio] = useState(false);
+  const [gerandoRelatorio, setGerandoRelatorio] = useState<"pdf" | "xlsx" | null>(null);
   const [erroRelatorio, setErroRelatorio] = useState<string | null>(null);
+  const [modalXlsxAberto, setModalXlsxAberto] = useState(false);
 
   const { data: empresas } = useList<Empresa>("empresas", "/empresas");
 
@@ -28,13 +30,19 @@ export default function ResumosPage() {
 
   const Ativa = (ABAS.find((a) => a.chave === abaAtiva) ?? ABAS[0]).Componente;
 
-  function gerarRelatorio() {
+  function gerarRelatorio(formato: "pdf" | "xlsx", incluirCanceladosEmpresa?: boolean) {
     setErroRelatorio(null);
-    setGerandoRelatorio(true);
+    setGerandoRelatorio(formato);
+    const caminho = formato === "pdf" ? "/resumos/relatorio" : "/resumos/relatorio-xlsx";
     api
-      .download("/resumos/relatorio", { ano, mes, empresa_id: empresaId === "" ? undefined : empresaId })
+      .download(caminho, {
+        ano,
+        mes,
+        empresa_id: empresaId === "" ? undefined : empresaId,
+        incluir_cancelados_empresa: incluirCanceladosEmpresa,
+      })
       .catch((e: unknown) => setErroRelatorio(e instanceof ApiError ? String(e.detail) : "Erro ao gerar relatorio"))
-      .finally(() => setGerandoRelatorio(false));
+      .finally(() => setGerandoRelatorio(null));
   }
 
   return (
@@ -61,8 +69,21 @@ export default function ResumosPage() {
             ))}
           </select>
         </div>
-        <button className="btn" onClick={gerarRelatorio} disabled={gerandoRelatorio} style={{ alignSelf: "flex-end" }}>
-          {gerandoRelatorio ? "Gerando..." : "Relatorio"}
+        <button
+          className="btn"
+          onClick={() => gerarRelatorio("pdf")}
+          disabled={gerandoRelatorio !== null}
+          style={{ alignSelf: "flex-end" }}
+        >
+          {gerandoRelatorio === "pdf" ? "Gerando..." : "PDF"}
+        </button>
+        <button
+          className="btn"
+          onClick={() => setModalXlsxAberto(true)}
+          disabled={gerandoRelatorio !== null}
+          style={{ alignSelf: "flex-end" }}
+        >
+          {gerandoRelatorio === "xlsx" ? "Gerando..." : "XLSX"}
         </button>
       </div>
       <div className="linha-toolbar">
@@ -79,6 +100,15 @@ export default function ResumosPage() {
       <div className="painel">
         <Ativa ano={ano} mes={mes} empresaId={empresaId === "" ? undefined : empresaId} />
       </div>
+      {modalXlsxAberto && (
+        <ExportarXlsxModal
+          onFechar={() => setModalXlsxAberto(false)}
+          onExportar={(incluir) => {
+            setModalXlsxAberto(false);
+            gerarRelatorio("xlsx", incluir);
+          }}
+        />
+      )}
     </div>
   );
 }

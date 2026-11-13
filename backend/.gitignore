@@ -4,3 +4,5 @@ __pycache__/
 buscar.db
 buscar.db-wal
 buscar.db-shm
+bkp/
+buscar_backup_*.db

@@ -3,7 +3,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas
-from app.auth import exigir_admin, obter_conta_atual
+from app.auth import obter_conta_atual
 from app.database import get_db
 from app.services.pontos import PontoInvalido, resolver_trecho
 
@@ -108,7 +108,7 @@ def _verificar_regiao(db: Session, regiao_id: int | None) -> None:
         raise HTTPException(status_code=404, detail=f"Regiao {regiao_id} nao encontrada")
 
 
-@router.post("", response_model=schemas.UsuarioRead, status_code=201, dependencies=[Depends(exigir_admin)])
+@router.post("", response_model=schemas.UsuarioRead, status_code=201)
 def criar_usuario(payload: schemas.UsuarioCreate, db: Session = Depends(get_db)):
     _verificar_grupo_familiar(db, payload.grupo_familiar_id)
     _verificar_regiao(db, payload.regiao_id)
@@ -132,7 +132,7 @@ def obter_usuario(usuario_id: int, db: Session = Depends(get_db)):
     return usuario
 
 
-@router.put("/{usuario_id}", response_model=schemas.UsuarioRead, dependencies=[Depends(exigir_admin)])
+@router.put("/{usuario_id}", response_model=schemas.UsuarioRead)
 def atualizar_usuario(usuario_id: int, payload: schemas.UsuarioCreate, db: Session = Depends(get_db)):
     usuario = _get_usuario_ou_404(db, usuario_id)
     _verificar_grupo_familiar(db, payload.grupo_familiar_id)
@@ -144,7 +144,7 @@ def atualizar_usuario(usuario_id: int, payload: schemas.UsuarioCreate, db: Sessi
     return usuario
 
 
-@router.delete("/{usuario_id}", status_code=204, dependencies=[Depends(exigir_admin)])
+@router.delete("/{usuario_id}", status_code=204)
 def remover_usuario(usuario_id: int, db: Session = Depends(get_db)):
     usuario = _get_usuario_ou_404(db, usuario_id)
 
@@ -180,7 +180,6 @@ def listar_agenda_semanal(usuario_id: int, db: Session = Depends(get_db)):
     "/{usuario_id}/agenda-semanal",
     response_model=schemas.UsuarioAgendaSemanalRead,
     status_code=201,
-    dependencies=[Depends(exigir_admin)],
 )
 def criar_agenda_semanal(usuario_id: int, payload: schemas.UsuarioAgendaSemanalCreate, db: Session = Depends(get_db)):
     usuario = _get_usuario_ou_404(db, usuario_id)
@@ -199,7 +198,6 @@ def criar_agenda_semanal(usuario_id: int, payload: schemas.UsuarioAgendaSemanalC
 @router.put(
     "/{usuario_id}/agenda-semanal/{agenda_id}",
     response_model=schemas.UsuarioAgendaSemanalRead,
-    dependencies=[Depends(exigir_admin)],
 )
 def atualizar_agenda_semanal(
     usuario_id: int, agenda_id: int, payload: schemas.UsuarioAgendaSemanalCreate, db: Session = Depends(get_db)
@@ -218,7 +216,7 @@ def atualizar_agenda_semanal(
     return agenda
 
 
-@router.delete("/{usuario_id}/agenda-semanal/{agenda_id}", status_code=204, dependencies=[Depends(exigir_admin)])
+@router.delete("/{usuario_id}/agenda-semanal/{agenda_id}", status_code=204)
 def remover_agenda_semanal(usuario_id: int, agenda_id: int, db: Session = Depends(get_db)):
     agenda = db.get(models.UsuarioAgendaSemanal, agenda_id)
     if agenda is None or agenda.usuario_id != usuario_id:
@@ -246,7 +244,6 @@ def listar_excecoes(usuario_id: int, db: Session = Depends(get_db)):
     "/{usuario_id}/excecoes",
     response_model=schemas.UsuarioExcecaoRead,
     status_code=201,
-    dependencies=[Depends(exigir_admin)],
 )
 def criar_excecao(usuario_id: int, payload: schemas.UsuarioExcecaoCreate, db: Session = Depends(get_db)):
     usuario = _get_usuario_ou_404(db, usuario_id)
@@ -264,7 +261,7 @@ def criar_excecao(usuario_id: int, payload: schemas.UsuarioExcecaoCreate, db: Se
 
 
 @router.put(
-    "/{usuario_id}/excecoes/{excecao_id}", response_model=schemas.UsuarioExcecaoRead, dependencies=[Depends(exigir_admin)]
+    "/{usuario_id}/excecoes/{excecao_id}", response_model=schemas.UsuarioExcecaoRead
 )
 def atualizar_excecao(
     usuario_id: int, excecao_id: int, payload: schemas.UsuarioExcecaoCreate, db: Session = Depends(get_db)
@@ -284,7 +281,7 @@ def atualizar_excecao(
     return excecao
 
 
-@router.delete("/{usuario_id}/excecoes/{excecao_id}", status_code=204, dependencies=[Depends(exigir_admin)])
+@router.delete("/{usuario_id}/excecoes/{excecao_id}", status_code=204)
 def remover_excecao(usuario_id: int, excecao_id: int, db: Session = Depends(get_db)):
     excecao = db.get(models.UsuarioExcecao, excecao_id)
     if excecao is None or excecao.usuario_id != usuario_id:

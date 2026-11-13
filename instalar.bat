@@ -1,6 +1,28 @@
 @echo off
 setlocal
 
+rem Atualiza o codigo antes de instalar. Tudo fica dentro de um bloco ( )
+rem porque o cmd le o bloco inteiro antes de executar: se o pull alterar
+rem este proprio arquivo, a execucao nao se perde. Depois do pull o script
+rem chama a si mesmo (versao nova) com --sem-pull e nao volta pra ca.
+if /i not "%~1"=="--sem-pull" (
+    echo === Atualizando codigo ^(git pull^) ===
+    where git >nul 2>nul
+    if errorlevel 1 (
+        echo Git nao encontrado no PATH. Seguindo com a versao atual.
+    ) else (
+        git -C "%~dp0." pull --ff-only
+        if errorlevel 1 (
+            echo.
+            echo Nao foi possivel atualizar o codigo ^(sem internet ou alteracoes locais^).
+            choice /m "Continuar a instalacao com a versao atual"
+            if errorlevel 2 exit /b 1
+        )
+    )
+    echo.
+    "%~f0" --sem-pull
+)
+
 echo === Instalando backend ===
 cd /d "%~dp0backend"
 
